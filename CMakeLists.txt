@@ -10,18 +10,24 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(FetchContent)
 
-# Tell Eigen not to build its own tests
-set(EIGEN_BUILD_DOC OFF  CACHE BOOL "" FORCE)
-set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
-
+# --- Eigen: treat as pure header-only, don't run its CMake, no tests ----
 FetchContent_Declare(
-  eigen
-  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-  GIT_TAG 3.4.0       # or whatever tag you're using
+    eigen
+    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+    GIT_TAG 3.4.0
+    GIT_SHALLOW TRUE
 )
 
-FetchContent_MakeAvailable(eigen)
+FetchContent_GetProperties(eigen)
+if(NOT eigen_POPULATED)
+    FetchContent_Populate(eigen)
 
+    # Define the standard Eigen target name used in examples/docs:
+    add_library(Eigen3::Eigen INTERFACE IMPORTED)
+    set_target_properties(Eigen3::Eigen PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${eigen_SOURCE_DIR}"
+    )
+endif()
 
 # --- pybind11 ---
 FetchContent_Declare(
@@ -32,6 +38,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(pybind11)
 
 # --- Catch2 ---
+set(CATCH_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     Catch2
     GIT_REPOSITORY https://github.com/catchorg/Catch2.git
