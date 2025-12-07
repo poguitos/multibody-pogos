@@ -1,0 +1,43 @@
+# Build directories
+build/
+out/
+dist/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+DartConfiguration.tcl
+Testing/
+
+# MSVC / linker / compiler outputs
+*.obj
+*.pdb
+*.pch
+*.idb
+*.ilk
+*.log
+*.tlog
+*.tmp
+*.exe
+*.dll
+*.lib
+*.exp
+
+# VSCode
+.vscode/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Other IDE / OS noise
+*.user
+*.suo
+*.cache
+*.vcxproj*
+*.sln
+Thumbs.db
+.DS_Store
