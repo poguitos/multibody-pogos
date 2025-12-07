@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python (for pybind11 detection)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Configure CMake
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=20
+
+      - name: Build
+        run: |
+          cmake --build build --config Debug --parallel
+
+      - name: Run tests
+        run: |
+          ctest --test-dir build --output-on-failure
