@@ -5,6 +5,7 @@ add_executable(test_core
     test_math.cpp
     test_core_types.cpp
     test_rigid_body.cpp
+    test_rigid_body_dynamics.cpp
 )
 
 target_link_libraries(test_core
