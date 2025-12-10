@@ -4,32 +4,36 @@ project(MultibodyCore
     VERSION 0.1.0
     LANGUAGES CXX)
 
+# --- C++ standard ---
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(FetchContent)
 
-# --- Eigen: treat as pure header-only, don't run its CMake, no tests ----
+#  Eigen: header-only, no tests, no subproject CMake
+# We *only* want the headers, not Eigen's own CMake/CTest setup.
+# So we download the sources and create our own INTERFACE target.
+
 FetchContent_Declare(
     eigen
-    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-    GIT_TAG 3.4.0
-    GIT_SHALLOW TRUE
+    URL https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
+    # You can add URL_HASH here later if you want reproducible builds
 )
 
 FetchContent_GetProperties(eigen)
-if(NOT eigen_POPULATED)
+if (NOT eigen_POPULATED)
     FetchContent_Populate(eigen)
 
-    # Define the standard Eigen target name used in examples/docs:
+    # Create a header-only imported target for Eigen
     add_library(Eigen3::Eigen INTERFACE IMPORTED)
-    set_target_properties(Eigen3::Eigen PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${eigen_SOURCE_DIR}"
+
+    target_include_directories(Eigen3::Eigen INTERFACE
+        "${eigen_SOURCE_DIR}"
     )
 endif()
 
-# --- pybind11 ---
+#  pybind11
 FetchContent_Declare(
     pybind11
     GIT_REPOSITORY https://github.com/pybind/pybind11.git
@@ -37,8 +41,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(pybind11)
 
-# --- Catch2 ---
+#  Catch2 (our test framework)
 set(CATCH_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+
 FetchContent_Declare(
     Catch2
     GIT_REPOSITORY https://github.com/catchorg/Catch2.git
@@ -46,7 +51,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Catch2)
 
-# --- spdlog ---
+#  spdlog (logging)
 FetchContent_Declare(
     spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog.git
@@ -54,13 +59,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(spdlog)
 
-# ---- CTest / testing ----
+#  Testing setup (only *our* tests)
 include(CTest)
 
-# Optionally wrap tests behind BUILD_TESTING (CTest sets this option)
 if (BUILD_TESTING)
     add_subdirectory(tests)
 endif()
 
+#  Library + Python bindings
 add_subdirectory(src)
 add_subdirectory(python)
