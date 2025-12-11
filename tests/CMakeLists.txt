@@ -6,6 +6,7 @@ add_executable(test_core
     test_core_types.cpp
     test_rigid_body.cpp
     test_rigid_body_dynamics.cpp
+    test_transform3.cpp
 )
 
 target_link_libraries(test_core
