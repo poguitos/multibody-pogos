@@ -6,7 +6,8 @@
 
 #include "mbd/core.hpp"  // includes math + logging + basic types
 
-namespace mbd {
+namespace mbd
+{
 
 //------------------------------------------------------------------------------
 // Rigid body inertia (about a body-fixed frame)
@@ -20,9 +21,9 @@ namespace mbd {
 //
 struct RigidBodyInertia
 {
-    Real mass{0.0};       // total mass [kg]
-    Vec3 com_B{Vec3::Zero()}; // center of mass position expressed in body frame B [m]
-    Mat3 I_com_B{Mat3::Zero()}; // inertia tensor about COM, expressed in B [kg m^2]
+    Real mass{0.0};              // total mass [kg]
+    Vec3 com_B{Vec3::Zero()};    // center of mass position expressed in body frame B [m]
+    Mat3 I_com_B{Mat3::Zero()};  // inertia tensor about COM, expressed in B [kg m^2]
 
     RigidBodyInertia() = default;
 
@@ -51,7 +52,7 @@ struct RigidBodyInertia
         }
 
         const auto vals = es.eigenvalues();
-        if (vals.minCoeff() < -tol) { // allow tiny negative due to numerics
+        if (vals.minCoeff() < -tol) {  // allow tiny negative due to numerics
             return false;
         }
 
@@ -135,7 +136,6 @@ struct RigidBodyState
     //   x_W = pose_WB().R * x_B + pose_WB().p
     Transform3 pose_WB() const
     {
-        // q_WB represents the rotation from B to W.
         const RotMat3 R_WB = q_WB.toRotationMatrix();
         return Transform3(R_WB, p_WB);
     }

@@ -6,8 +6,9 @@
 
 using Catch::Matchers::WithinAbs;
 
-namespace {
-constexpr mbd::Real eps = 1e-12;
+namespace
+{
+    constexpr mbd::Real eps = 1e-12;
 }
 
 TEST_CASE("RigidBodyInertia from_solid_box computes correct diagonal inertia",
@@ -59,8 +60,8 @@ TEST_CASE("RigidBodyInertia invalid configurations are detected",
     REQUIRE_FALSE(I.is_physically_valid());
 
     // Non-symmetric inertia matrix is invalid
-    I.mass = 1.0;
-    I.com_B = mbd::Vec3::Zero();
+    I.mass   = 1.0;
+    I.com_B  = mbd::Vec3::Zero();
     I.I_com_B << 1.0, 2.0, 3.0,
                  0.0, 1.0, 4.0,
                  0.0, 0.0, 1.0;
@@ -99,8 +100,8 @@ TEST_CASE("RigidBodyState pose_WB returns a Transform3 consistent with p_WB and 
     // Position and orientation for the body frame
     Vec3 p(1.0, -2.0, 0.5);
 
-    const Real angle = 0.3;            // rad
-    const Vec3 axis  = Vec3::UnitZ();  // rotate about Z
+    const Real angle = 0.3;           // rad
+    const Vec3 axis  = Vec3::UnitZ(); // rotate about Z
 
     Quat q_rot(Eigen::AngleAxisd(angle, axis));
 
