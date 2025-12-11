@@ -1,19 +1,27 @@
 #pragma once
 
 // Basic rigid-body types: inertia and state representation.
-#include <Eigen/Eigenvalues> 
-#include <mbd/core.hpp>   // includes math + logging + basic types
+
+#include <Eigen/Eigenvalues>
+
+#include "mbd/core.hpp"  // includes math + logging + basic types
 
 namespace mbd {
 
 //------------------------------------------------------------------------------
 // Rigid body inertia (about a body-fixed frame)
 //------------------------------------------------------------------------------
-
+//
+// The inertia is described w.r.t. a body-fixed frame B.
+//
+//  - mass    : total mass [kg]
+//  - com_B   : center of mass position expressed in B [m]
+//  - I_com_B : inertia tensor about COM, expressed in B [kg m^2]
+//
 struct RigidBodyInertia
 {
-    Real mass{0.0};      // total mass [kg]
-    Vec3 com_B{Vec3::Zero()};  // center of mass position expressed in body frame B [m]
+    Real mass{0.0};       // total mass [kg]
+    Vec3 com_B{Vec3::Zero()}; // center of mass position expressed in body frame B [m]
     Mat3 I_com_B{Mat3::Zero()}; // inertia tensor about COM, expressed in B [kg m^2]
 
     RigidBodyInertia() = default;
@@ -41,19 +49,22 @@ struct RigidBodyInertia
         if (es.info() != Eigen::Success) {
             return false;
         }
-        auto vals = es.eigenvalues();
+
+        const auto vals = es.eigenvalues();
         if (vals.minCoeff() < -tol) { // allow tiny negative due to numerics
             return false;
         }
+
         return true;
     }
 
     // Factory: solid box with half extents hx, hy, hz about COM.
+    //
     // Full side lengths are 2*hx, 2*hy, 2*hz.
-    static RigidBodyInertia from_solid_box(Real mass,
-                                           const Vec3& half_extents_B)
+    static RigidBodyInertia from_solid_box(Real mass, const Vec3& half_extents_B)
     {
-        MBD_THROW_IF(mass <= Real(0.0), "RigidBodyInertia::from_solid_box: mass must be > 0");
+        MBD_THROW_IF(mass <= Real(0.0),
+                     "RigidBodyInertia::from_solid_box: mass must be > 0");
 
         const Real hx = half_extents_B.x();
         const Real hy = half_extents_B.y();
@@ -63,7 +74,7 @@ struct RigidBodyInertia
                      "RigidBodyInertia::from_solid_box: half extents must be > 0");
 
         // For a box of size (2hx, 2hy, 2hz) about COM:
-        // Ixx = (1/3) * m * (hy^2 + hz^2), etc.
+        //   Ixx = (1/3) * m * (hy^2 + hz^2), etc.
         const Real Ixx = (mass / Real(3.0)) * (hy * hy + hz * hz);
         const Real Iyy = (mass / Real(3.0)) * (hx * hx + hz * hz);
         const Real Izz = (mass / Real(3.0)) * (hx * hx + hy * hy);
@@ -79,15 +90,16 @@ struct RigidBodyInertia
 // Rigid body state (pose and velocities)
 //------------------------------------------------------------------------------
 //
-// World frame: W
-// Body frame:  B
+// Frames:
+//   - World frame: W
+//   - Body frame:  B
 //
-// p_WB : position of body frame origin B expressed in W
-// q_WB : orientation of B w.r.t W (mapping from B to W)
-// v_WB : linear velocity of B-origin expressed in W
-// w_WB : angular velocity of body frame B expressed in W
+// Stored quantities:
+//   - p_WB : position of body frame origin B expressed in W [m]
+//   - q_WB : orientation of B w.r.t W (rotation from B to W)
+//   - v_WB : linear velocity of B-origin expressed in W [m/s]
+//   - w_WB : angular velocity of body frame B expressed in W [rad/s]
 //
-
 struct RigidBodyState
 {
     Vec3 p_WB{Vec3::Zero()};
@@ -97,8 +109,10 @@ struct RigidBodyState
 
     RigidBodyState() = default;
 
-    RigidBodyState(const Vec3& p, const Quat& q,
-                   const Vec3& v, const Vec3& w)
+    RigidBodyState(const Vec3& p,
+                   const Quat& q,
+                   const Vec3& v,
+                   const Vec3& w)
         : p_WB(p)
         , q_WB(normalize_quat(q))
         , v_WB(v)
@@ -113,6 +127,17 @@ struct RigidBodyState
                               normalize_quat(q_WB),
                               Vec3::Zero(),
                               Vec3::Zero());
+    }
+
+    // Pose as a Transform3: mapping from body frame B to world frame W.
+    //
+    // For a point x_B expressed in body frame B, its world coordinates are:
+    //   x_W = pose_WB().R * x_B + pose_WB().p
+    Transform3 pose_WB() const
+    {
+        // q_WB represents the rotation from B to W.
+        const RotMat3 R_WB = q_WB.toRotationMatrix();
+        return Transform3(R_WB, p_WB);
     }
 };
 
