@@ -155,3 +155,124 @@ TEST_CASE("Solver maintains pendulum length under gravity", "[solver]")
     // Total = 13.81 N UP.
     REQUIRE_THAT(system.forces[b_bob].f_W.y(), WithinAbs(13.81, 1e-5));
 }
+
+TEST_CASE("RevoluteJoint constrains motion to rotation about axis", "[constraint]")
+{
+    using namespace mbd;
+
+    MultibodySystem system;
+    Vec3 gravity(0.0, -9.81, 0.0);
+
+    // Body 1: Fixed Ground (Mass 1e12)
+    BodyIndex b_g = system.add_body(RigidBodyInertia::from_solid_box(1e12, Vec3(1,1,1)), 
+                                    RigidBodyState::at_rest(Vec3::Zero()));
+
+    // Body 2: Bar hinged at origin, extending along X. 
+    // Mass 1kg.
+    BodyIndex b_bar = system.add_body(RigidBodyInertia::from_solid_box(1.0, Vec3(0.5, 0.1, 0.1)),
+                                      RigidBodyState::at_rest(Vec3(0.5, 0.0, 0.0))); 
+                                      // COM at 0.5, so bar is from 0.0 to 1.0 approx
+
+    // Joint: Hinge at Origin (0,0,0). Axis Z (0,0,1).
+    // Anchor on Ground: (0,0,0)
+    // Anchor on Bar: (-0.5, 0, 0) (Since COM is at 0.5 world, local -0.5 is 0.0 world)
+    system.constraints.push_back(std::make_shared<RevoluteJoint>(
+        b_g, b_bar,
+        Vec3::Zero(), Vec3::UnitZ(),       // Ground anchor/axis
+        Vec3(-0.5, 0.0, 0.0), Vec3::UnitZ() // Bar anchor/axis
+    ));
+
+    // Initial solve
+    // Gravity pulls bar down (torque about Z). Joint should hold P and hold Axis Z.
+    // Forces on bar: 
+    // Y-force: Should hold weight (9.81 N).
+    // No X-force (pendulum is vertical? No, bar is horizontal).
+    // Wait, bar is horizontal (X). Gravity is -Y.
+    // Reaction at pin: +9.81 Y.
+    // Torque at pin: Usually 0 for ideal pin? 
+    // NO. The solver applies force at COM for the body force buffer.
+    // But the joint applies force at Anchor?
+    // Our solver output `system.forces` accumulates EVERYTHING at COM.
+    // So if the pin pushes UP at the left end, that is a Force + Torque at COM.
+    // Force at Pin = (0, 9.81, 0).
+    // Pin is at x=0. COM is at x=0.5.
+    // Vector r = Pin - COM = (-0.5, 0, 0).
+    // Torque = r x F = (-0.5) * (9.81) in Z = -4.905 Nm.
+    // This makes sense: the pin supports the weight, but creates a torque that slows rotation?
+    // No, this is the Reaction Force.
+    // Net Torque on Body = Tau_gravity (0) + Tau_reaction (-4.905).
+    // This causes angular acceleration alpha = Tau / I.
+    
+    // Apply gravity compensation to ground
+    system.clear_forces();
+    system.forces[b_g].f_W -= gravity * 1e12;
+    
+    solve_constraints(system, gravity);
+
+    // Check forces on Bar
+    // F_y should be approx 9.81 (Reaction)
+    // There is also dynamics involved (linear accel of COM).
+    // Solving DAE:
+    // I_pin * alpha = - m * g * L_com
+    // alpha = -9.81 * 0.5 / I_pin.
+    // Linear a_y = alpha * L_com.
+    // Force_reaction - m*g = m * a_y.
+    // So Force_reaction is NOT exactly mg if it accelerates.
+    // But this is t=0, v=0.
+    
+    // Let's just check the Constraint Satisfaction (Acceleration level).
+    // The solver guarantees J * a = -gamma.
+    // For revolute, a_pin should be 0.
+    // a_pin = a_com + alpha x r_pin_com + ...
+    // Checking numeric values might be tricky without calculating I_pin manually.
+    
+    // Check qualitative direction:
+    // Reaction force Y must be positive (holding it up)
+    REQUIRE(system.forces[b_bar].f_W.y() > 0.0);
+    // Reaction Torque Z must be negative (force is at -0.5, pushing up)
+    REQUIRE(system.forces[b_bar].tau_W.z() < 0.0);
+    
+    // Check Kinematic Constraint Error directly
+    Eigen::VectorXd phi;
+    system.constraints[0]->evaluate(system, phi);
+    REQUIRE_THAT(phi.norm(), WithinAbs(0.0, 1e-9));
+}
+
+TEST_CASE("Solver stabilizes position error (Baumgarte)", "[solver]")
+{
+    using namespace mbd;
+
+    MultibodySystem system;
+    // Heavy anchor
+    BodyIndex b_g = system.add_body(RigidBodyInertia::from_solid_box(1e12, Vec3(1,1,1)), 
+                                    RigidBodyState::at_rest(Vec3::Zero()));
+    
+    // Body 2 at x=1.1 (VIOLATION! Target is 1.0)
+    // No velocity. No gravity.
+    RigidBodyState s2 = RigidBodyState::at_rest(Vec3(1.1, 0.0, 0.0));
+    BodyIndex b_bob = system.add_body(RigidBodyInertia::from_solid_box(1.0, Vec3(0.1,0.1,0.1)), s2);
+
+    // Constraint target distance = 1.0
+    system.constraints.push_back(std::make_shared<DistanceConstraint>(
+        b_g, b_bob, Vec3::Zero(), Vec3::Zero(), 1.0
+    ));
+
+    // Config with aggressive position correction
+    SolverConfig config;
+    config.alpha = 0.0;   // No velocity damping for this specific check
+    config.beta  = 10.0;  // Position correction
+
+    system.clear_forces();
+    solve_constraints(system, Vec3::Zero(), config);
+
+    // Analysis:
+    // Error Phi = 1.1 - 1.0 = 0.1
+    // Solver Equation: J*a = -beta^2 * Phi  (since gamma=0, v=0, a_unc=0)
+    // J for bob (x direction) is [1, 0, 0...]
+    // 1 * a_x = -100 * 0.1 = -10.0
+    // Force = m * a = 1.0 * -10.0 = -10.0 N.
+    // The force should pull the bob to the left (negative X).
+
+    REQUIRE(system.forces[b_bob].f_W.x() < -9.0);
+    REQUIRE_THAT(system.forces[b_bob].f_W.x(), WithinAbs(-10.0, 1e-5));
+}

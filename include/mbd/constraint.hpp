@@ -166,4 +166,178 @@ public:
     }
 };
 
+// A Revolute Joint (Hinge) constrains two bodies to share a common point (anchor)
+// and a common axis of rotation. Removes 5 DOFs.
+class RevoluteJoint : public Constraint {
+public:
+    Vec3 anchor1_B; // Anchor on Body 1
+    Vec3 axis1_B;   // Axis of rotation on Body 1 (must be normalized)
+    
+    Vec3 anchor2_B; // Anchor on Body 2
+    Vec3 axis2_B;   // Axis of rotation on Body 2 (must be normalized)
+
+    // Precomputed orthogonal basis vectors for Body 2's axis.
+    // axis2_B, u2_B, v2_B form an orthonormal basis.
+    Vec3 u2_B;
+    Vec3 v2_B;
+
+    RevoluteJoint(BodyIndex b1, BodyIndex b2,
+                  const Vec3& a1, const Vec3& axis1,
+                  const Vec3& a2, const Vec3& axis2)
+        : Constraint(b1, b2)
+        , anchor1_B(a1)
+        , axis1_B(axis1.normalized())
+        , anchor2_B(a2)
+        , axis2_B(axis2.normalized())
+    {
+        // Generate orthogonal basis u2, v2 for axis2
+        // Find a vector not parallel to axis2
+        Vec3 temp = Vec3::UnitX();
+        if (std::abs(axis2_B.dot(temp)) > 0.9) {
+            temp = Vec3::UnitY();
+        }
+        u2_B = axis2_B.cross(temp).normalized();
+        v2_B = axis2_B.cross(u2_B).normalized();
+    }
+
+    int equation_count() const override { return 5; }
+
+    void evaluate(const MultibodySystem& system, Eigen::VectorXd& phi) const override {
+        const RigidBodyState& s1 = system.states[body1_idx];
+        const RigidBodyState& s2 = system.states[body2_idx];
+
+        phi.resize(5);
+
+        // --- 1. Position Constraints (3 eqs) ---
+        // p2_W - p1_W = 0
+        Vec3 r1_W = s1.pose_WB().rotate(anchor1_B);
+        Vec3 r2_W = s2.pose_WB().rotate(anchor2_B);
+        Vec3 p1_W = s1.p_WB + r1_W;
+        Vec3 p2_W = s2.p_WB + r2_W;
+        
+        Vec3 pos_error = p2_W - p1_W;
+        phi.segment<3>(0) = pos_error;
+
+        // --- 2. Orientation Constraints (2 eqs) ---
+        // axis1_W must be perpendicular to u2_W and v2_W
+        Vec3 axis1_W = s1.pose_WB().rotate(axis1_B);
+        Vec3 u2_W    = s2.pose_WB().rotate(u2_B);
+        Vec3 v2_W    = s2.pose_WB().rotate(v2_B);
+
+        phi(3) = axis1_W.dot(u2_W);
+        phi(4) = axis1_W.dot(v2_W);
+    }
+
+    void jacobian(const MultibodySystem& system, 
+                  Eigen::MatrixXd& J1, 
+                  Eigen::MatrixXd& J2) const override 
+    {
+        J1.resize(5, 6);
+        J2.resize(5, 6);
+        J1.setZero();
+        J2.setZero();
+
+        const RigidBodyState& s1 = system.states[body1_idx];
+        const RigidBodyState& s2 = system.states[body2_idx];
+
+        // Transforms
+        Vec3 r1_W = s1.pose_WB().rotate(anchor1_B);
+        Vec3 r2_W = s2.pose_WB().rotate(anchor2_B);
+
+        // --- Position Rows (0,1,2) ---
+        // Similar to spherical joint
+        // J1_pos = [-I,  skew(r1)] (Note: skew(r1)*w = w x r1 = -r1 x w. Formula is v + w x r. 
+        // d/dt(p + r) = v + w x r = v - r x w.
+        // So J_w term is -skew(r).
+        // Let's re-verify sign.
+        // Phi = p2 + r2 - p1 - r1
+        // dot(Phi) = v2 - r2 x w2 - v1 + r1 x w1
+        // J1 (coeff of v1, w1): [-I,  skew(r1)]
+        // J2 (coeff of v2, w2): [ I, -skew(r2)]
+        
+        J1.block<3,3>(0,0) = -Mat3::Identity();
+        J1.block<3,3>(0,3) = skew(r1_W);
+        
+        J2.block<3,3>(0,0) = Mat3::Identity();
+        J2.block<3,3>(0,3) = -skew(r2_W);
+
+        // --- Orientation Rows (3,4) ---
+        Vec3 a1_W = s1.pose_WB().rotate(axis1_B);
+        Vec3 u2_W = s2.pose_WB().rotate(u2_B);
+        Vec3 v2_W = s2.pose_WB().rotate(v2_B);
+
+        // Eq 3: Phi = a1 . u2 = 0
+        // dot(Phi) = dot(a1) . u2 + a1 . dot(u2)
+        //          = (w1 x a1) . u2 + a1 . (w2 x u2)
+        //          = w1 . (a1 x u2) + w2 . (u2 x a1)
+        //          = w1 . (a1 x u2) - w2 . (a1 x u2)
+        // Let n1 = a1 x u2
+        Vec3 n1 = a1_W.cross(u2_W);
+        
+        // J1 row 3 (angular part only, linear is 0) -> n1^T
+        J1.block<1,3>(3,3) = n1.transpose();
+        // J2 row 3 -> -n1^T
+        J2.block<1,3>(3,3) = -n1.transpose();
+
+        // Eq 4: Phi = a1 . v2 = 0
+        // Let n2 = a1 x v2
+        Vec3 n2 = a1_W.cross(v2_W);
+        
+        J1.block<1,3>(4,3) = n2.transpose();
+        J2.block<1,3>(4,3) = -n2.transpose();
+    }
+
+    void velocity_bias(const MultibodySystem& system, Eigen::VectorXd& gamma) const override {
+        gamma.resize(5);
+        
+        const RigidBodyState& s1 = system.states[body1_idx];
+        const RigidBodyState& s2 = system.states[body2_idx];
+
+        // --- Position Bias ---
+        // gamma_pos = (w1 x (w1 x r1)) - (w2 x (w2 x r2))
+        // Because J*a terms handle the linear a and alpha x r terms.
+        // The bias is the "velocity dependent acceleration".
+        // acc_point = a + alpha x r + w x (w x r)
+        // Constraint: acc_p2 - acc_p1 = 0
+        // (a2 + alpha2 x r2 + w2 x w2 x r2) - (a1 + ... ) = 0
+        // J*a terms are (a2 - skew(r2)alpha2) - (a1 - skew(r1)alpha1)
+        // Remaining terms moved to RHS (-gamma): -(w2 x w2 x r2 - w1 x w1 x r1)
+        // So gamma = w2 x (w2 x r2) - w1 x (w1 x r1)
+        
+        Vec3 r1_W = s1.pose_WB().rotate(anchor1_B);
+        Vec3 r2_W = s2.pose_WB().rotate(anchor2_B);
+        
+        Vec3 w1 = s1.w_WB;
+        Vec3 w2 = s2.w_WB;
+
+        Vec3 bias_pos = w2.cross(w2.cross(r2_W)) - w1.cross(w1.cross(r1_W));
+        gamma.segment<3>(0) = bias_pos;
+
+        // --- Orientation Bias ---
+        // Eq: a1 . u2 = 0
+        // 2nd deriv: d/dt ( w1.(a1xu2) - w2.(a1xu2) )
+        // This is getting complex analytically.
+        // Ideally: gamma = dot(J) * v
+        // J row is [0, (a1 x u2)^T]. 
+        // dot(J) row is [0, d/dt(a1 x u2)^T]
+        // d/dt(a1 x u2) = dot(a1) x u2 + a1 x dot(u2)
+        //               = (w1 x a1) x u2 + a1 x (w2 x u2)
+        // gamma_i = (d/dt(n) . w1) - (d/dt(n) . w2) 
+        //         = d/dt(n) . (w1 - w2)
+        
+        Vec3 a1_W = s1.pose_WB().rotate(axis1_B);
+        Vec3 u2_W = s2.pose_WB().rotate(u2_B);
+        Vec3 v2_W = s2.pose_WB().rotate(v2_B);
+
+        Vec3 n1 = a1_W.cross(u2_W);
+        Vec3 n2 = a1_W.cross(v2_W);
+
+        Vec3 n1_dot = (w1.cross(a1_W)).cross(u2_W) + a1_W.cross(w2.cross(u2_W));
+        Vec3 n2_dot = (w1.cross(a1_W)).cross(v2_W) + a1_W.cross(w2.cross(v2_W));
+
+        gamma(3) = n1_dot.dot(w1 - w2);
+        gamma(4) = n2_dot.dot(w1 - w2);
+    }
+};
+
 } // namespace mbd
