@@ -88,3 +88,60 @@ TEST_CASE("Semi-implicit Euler reproduces discrete free fall with gravity only",
     // No torque -> no angular acceleration
     REQUIRE(state.w_WB.isApprox(mbd::Vec3::Zero(), tol));
 }
+
+TEST_CASE("Gyroscopic torque is computed for non-principal axis rotation", "[rigid_body_dynamics]")
+{
+    // 1. Setup an asymmetric object (e.g., a brick)
+    // Ix < Iy < Iz
+    mbd::Real mass = 1.0;
+    mbd::Vec3 half_extents(0.1, 0.2, 0.3); 
+    mbd::RigidBodyInertia inertia = mbd::RigidBodyInertia::from_solid_box(mass, half_extents);
+
+    // 2. Set state: Rotating around an axis that is NOT X, Y, or Z
+    // If we rotate exactly around X, Y, or Z (principal axes), w x (I w) is zero.
+    // So we pick a diagonal axis.
+    mbd::RigidBodyState state;
+    state.q_WB = mbd::Quat::Identity(); // Body frame aligned with World
+    state.w_WB = mbd::Vec3(1.0, 1.0, 1.0); // Diagonal rotation
+    state.p_WB = mbd::Vec3::Zero();
+    state.v_WB = mbd::Vec3::Zero();
+
+    // 3. Zero external forces/torques
+    mbd::RigidBodyForces forces; // defaults to zero
+    mbd::Vec3 gravity_W = mbd::Vec3::Zero();
+
+    // 4. Compute acceleration
+    mbd::Vec3 a_W, alpha_W;
+    mbd::compute_rigid_body_acceleration(inertia, state, forces, gravity_W, a_W, alpha_W);
+
+    // 5. Verify results
+    // Linear acceleration should be zero
+    REQUIRE_THAT(a_W.norm(), Catch::Matchers::WithinAbs(0.0, 1e-12));
+
+    // Angular acceleration should NOT be zero
+    // In the old implementation, tau=0 implied alpha=0.
+    // Here, alpha = -I_inv * (w x Iw). Since w is (1,1,1) and I is diagonal with distinct entries,
+    // w is not an eigenvector, so w x Iw is non-zero.
+    REQUIRE(alpha_W.norm() > 0.01);
+
+    // 6. Manual Check for correctness
+    // In body frame (aligned with world here):
+    // I = diag(Ixx, Iyy, Izz)
+    // w = (1, 1, 1)
+    // Iw = (Ixx, Iyy, Izz)
+    // w x Iw = (Iz - Iy, Ix - Iz, Iy - Ix)
+    // alpha = -I_inv * (w x Iw) 
+    //       = - ( (Iz-Iy)/Ix, (Ix-Iz)/Iy, (Iy-Ix)/Iz )
+    
+    double Ixx = inertia.I_com_B(0,0);
+    double Iyy = inertia.I_com_B(1,1);
+    double Izz = inertia.I_com_B(2,2);
+
+    double expected_x = - (Izz - Iyy) / Ixx;
+    double expected_y = - (Ixx - Izz) / Iyy;
+    double expected_z = - (Iyy - Ixx) / Izz;
+
+    REQUIRE_THAT(alpha_W.x(), Catch::Matchers::WithinAbs(expected_x, 1e-12));
+    REQUIRE_THAT(alpha_W.y(), Catch::Matchers::WithinAbs(expected_y, 1e-12));
+    REQUIRE_THAT(alpha_W.z(), Catch::Matchers::WithinAbs(expected_z, 1e-12));
+}
