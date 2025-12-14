@@ -78,4 +78,22 @@ TEST_CASE("integrate_quat integrates small constant yaw rate", "[math]")
     REQUIRE_THAT(q1.norm(), WithinAbs(1.0, 1e-12));
 }
 
+TEST_CASE("delta_rotation_from_omega handles microscopic rotations", "[math]")
+{
+    // Angular velocity of 1e-13 rad/s (below the old threshold of 1e-12)
+    mbd::Vec3 omega(1e-13, 0.0, 0.0);
+    mbd::Real dt = 1.0;
+    
+    mbd::Quat dq = mbd::delta_rotation_from_omega(omega, dt);
+    
+    // It should NOT be exactly identity
+    // Identity.x is 0.0. Our q.x should be approx (1e-13 * 1.0) / 2 = 0.5e-13
+    REQUIRE_THAT(dq.x(), Catch::Matchers::WithinAbs(0.5e-13, 1e-15));
+    
+    // Real part should be extremely close to 1.0 but technically slightly less
+    REQUIRE_THAT(dq.w(), Catch::Matchers::WithinAbs(1.0, 1e-15));
+    
+    // Norm should still be 1.0
+    REQUIRE_THAT(dq.norm(), Catch::Matchers::WithinAbs(1.0, 1e-15));
+}
 

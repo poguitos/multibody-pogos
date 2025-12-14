@@ -82,20 +82,28 @@ inline Quat delta_rotation_from_omega(const Vec3& omega, Real dt)
 {
     const Vec3 theta = omega * dt;
     const Real angle = theta.norm();
-
+    const Real half = angle * Real(0.5);
+    
+    Real s_over_angle;
+    
+    // Taylor expansion for sin(x)/x near 0 avoids division by zero
+    // sin(h)/h approx 1 - h^2/6
     if (angle < Real(1e-12)) {
-        // Very small rotation: use first-order approximation
-        return Quat::Identity();
+        const Real half_sq = half * half;
+        // s_over_angle = (sin(half)/half) * 0.5
+        // effectively we need s/angle. 
+        // s = sin(half). 
+        // term we need is sin(half)/angle = (sin(half)/half) * 0.5
+        // approx (1 - half^2/6) * 0.5
+        s_over_angle = Real(0.5) * (Real(1.0) - half_sq * Real(1.0/6.0));
+    } else {
+        s_over_angle = std::sin(half) / angle;
     }
 
-    const Vec3 axis = theta / angle;
-    const Real half = Real(0.5) * angle;
-    const Real s    = std::sin(half);
-
     return Quat(std::cos(half),
-                axis.x() * s,
-                axis.y() * s,
-                axis.z() * s);
+                theta.x() * s_over_angle,
+                theta.y() * s_over_angle,
+                theta.z() * s_over_angle);
 }
 
 // Apply small rotation represented by angular velocity*dt to a quaternion.
