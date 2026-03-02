@@ -136,8 +136,7 @@ struct RigidBodyState
     //   x_W = pose_WB().R * x_B + pose_WB().p
     Transform3 pose_WB() const
     {
-        const RotMat3 R_WB = q_WB.toRotationMatrix();
-        return Transform3(R_WB, p_WB);
+        return Transform3(q_WB, p_WB);
     }
 };
 

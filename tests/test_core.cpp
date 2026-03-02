@@ -1,22 +1,22 @@
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/catch_approx.hpp>   // <-- for Approx
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include "core.hpp"
 #include <Eigen/Dense>
 
-using Catch::Approx;
+using Catch::Matchers::WithinAbs;
 
 TEST_CASE("compute_mean works for simple vectors", "[core]") {
     Eigen::VectorXd v(3);
     v << 1.0, 2.0, 3.0;
 
     double m = compute_mean(v);
-    REQUIRE(m == Approx(2.0));
+    REQUIRE_THAT(m, WithinAbs(2.0, 1e-12));
 }
 
 TEST_CASE("compute_mean handles empty vector", "[core]") {
-    Eigen::VectorXd v; // size 0
+    Eigen::VectorXd v;
     double m = compute_mean(v);
-    REQUIRE(m == Approx(0.0));
+    REQUIRE_THAT(m, WithinAbs(0.0, 1e-12));
 }
 
 TEST_CASE("make_greeting returns expected string", "[core]") {

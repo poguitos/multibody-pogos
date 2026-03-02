@@ -1,84 +1,76 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
-#include <mbd/force_element.hpp>
+
+#include <mbd/system.hpp>
 
 using Catch::Matchers::WithinAbs;
 
-TEST_CASE("LinearSpringDamper applies correct force and torque", "[force_element]")
+TEST_CASE("LinearSpringDamper applies correct force between ground and body",
+          "[force_element]")
 {
     using namespace mbd;
 
-    // Setup:
-    // Spring connected to World Origin (0,0,0)
-    // Connected to Body at (0, 0.5, 0) relative to COM
-    // Body COM is at (2, 0, 0)
-    // Body is rotated 90 deg around Z.
-    
-    // 1. Define geometry
-    Vec3 anchor_W(0.0, 0.0, 0.0);
-    Vec3 anchor_B(0.0, 0.5, 0.0); // Offset in Y_body
-    Real k = 100.0;
-    Real c = 10.0;
-    Real rest_length = 1.0;
-    
-    LinearSpringDamper spring(anchor_W, anchor_B, k, c, rest_length);
+    MultibodySystem system;
 
-    // 2. Set State
-    RigidBodyState state;
-    state.p_WB = Vec3(2.0, 0.0, 0.0); // COM at x=2
-    // Rotate 90 deg around Z: X_body -> Y_world, Y_body -> -X_world
-    state.q_WB = Quat(Eigen::AngleAxisd(mbd::pi/2.0, Vec3::UnitZ()));
-    state.v_WB = Vec3(1.0, 0.0, 0.0); // Moving away from origin at 1 m/s
-    state.w_WB = Vec3::Zero();
+    RigidBodyInertia inertia = RigidBodyInertia::from_solid_box(1.0, Vec3(0.5, 0.5, 0.5));
+    RigidBodyState s_body;
+    s_body.p_WB = Vec3(2.0, 0.0, 0.0);
+    s_body.q_WB = Quat(Eigen::AngleAxisd(pi / 2.0, Vec3::UnitZ()));
+    s_body.v_WB = Vec3(1.0, 0.0, 0.0);
+    s_body.w_WB = Vec3::Zero();
 
-    // 3. Expected Geometry Analysis:
-    // R_WB * anchor_B 
-    // R_z(90) * (0, 0.5, 0) = (-0.5, 0, 0)
-    // Abs Position of attach point = p_WB + (-0.5, 0, 0) = (1.5, 0, 0)
-    // Distance to anchor_W (0,0,0) = 1.5 meters.
-    // Direction vector (World -> Body) = (1, 0, 0)
-    
-    // 4. Expected Force Analysis:
-    // Extension = 1.5 - rest_length(1.0) = 0.5 m
-    // Velocity of attach point:
-    // v_point = v_com + w x r = (1,0,0) + 0 = (1,0,0)
-    // vel_rel = dot((1,0,0), dir(1,0,0)) = 1.0 m/s
-    // Force Mag = -k(0.5) - c(1.0) = -100*0.5 - 10*1 = -50 - 10 = -60 N
-    // Force Vector = (-60, 0, 0) (Pulling back towards origin)
+    BodyIndex b_body = system.add_body(inertia, s_body);
 
-    // 5. Expected Torque Analysis:
-    // r = (-0.5, 0, 0)
-    // F = (-60, 0, 0)
-    // tau = r x F = (-0.5 * 0) - (0 * -60) ... = 0 (Force is collinear with radius in this specific setup)
-    
-    // Let's modify Setup slightly to generate Torque:
-    // Move anchor_W to (0, 1, 0).
-    // New setup in code below:
-    
-    Vec3 anchor_W_offset(0.0, 1.0, 0.0);
-    LinearSpringDamper spring2(anchor_W_offset, anchor_B, k, c, rest_length);
-    
-    RigidBodyForces forces;
-    spring2.apply(state, forces);
+    // Spring from ground anchor at (0,1,0) to body-local anchor at (0,0.5,0)
+    LinearSpringDamper spring(kGroundIndex, b_body,
+                              Vec3(0.0, 1.0, 0.0),
+                              Vec3(0.0, 0.5, 0.0),
+                              100.0, 10.0, 1.0);
 
-    // Re-calc for spring2:
-    // Attach Point (P) = (1.5, 0, 0)
-    // Anchor W (A)     = (0.0, 1.0, 0.0)
-    // Vector A->P      = (1.5, -1.0, 0.0)
-    // Dist             = sqrt(1.5^2 + 1^2) = sqrt(2.25 + 1) = sqrt(3.25) approx 1.80277
-    // Dir              = (1.5, -1.0, 0) / 1.80277...
-    
-    // We check purely if forces are populated non-zero and signs make sense
-    // The force should pull P towards A.
-    // P is at y=0, A is at y=1. Force y component should be positive.
-    REQUIRE(forces.f_W.y() > 0.01); 
-    // P is at x=1.5, A is at x=0. Force x component should be negative.
-    REQUIRE(forces.f_W.x() < -0.01);
-    
-    // Torque check:
-    // Force acts at P=(1.5,0,0) relative to World Origin, but torque is about COM.
-    // COM is at (2,0,0). Lever arm r = P - COM = (-0.5, 0, 0).
-    // F has +Y component.
-    // r(-x) cross F(+y) => Torque in -Z direction.
-    REQUIRE(forces.tau_W.z() < -0.001);
+    system.clear_forces();
+    spring.apply(system.states, system.forces);
+
+    auto& forces_body = system.forces[b_body];
+
+    // Body rotated 90 deg about Z: local Y -> -world X
+    // Body attachment in world: (2,0,0) + Rz(90)*(0,0.5,0) = (2,0,0) + (-0.5,0,0) = (1.5,0,0)
+    // Ground anchor in world: (0,1,0) (ground is identity pose)
+    // diff = (1.5, -1.0, 0)
+    // Force pulls body attachment toward ground anchor:
+    //   x-component negative (pull left), y-component positive (pull up)
+    REQUIRE(forces_body.f_W.x() < -0.01);
+    REQUIRE(forces_body.f_W.y() > 0.01);
+
+    // Torque: lever arm r = (-0.5, 0, 0), force has +Y component
+    // r cross F: (-0.5,0,0) x (Fx,Fy,0) = (0, 0, -0.5*Fy)  =>  tau_z < 0
+    REQUIRE(forces_body.tau_W.z() < -0.001);
+
+    // Newton's 3rd law: ground forces equal and opposite
+    auto& forces_ground = system.forces[kGroundIndex];
+    REQUIRE_THAT(forces_ground.f_W.x() + forces_body.f_W.x(), WithinAbs(0.0, 1e-9));
+    REQUIRE_THAT(forces_ground.f_W.y() + forces_body.f_W.y(), WithinAbs(0.0, 1e-9));
+    REQUIRE_THAT(forces_ground.f_W.z() + forces_body.f_W.z(), WithinAbs(0.0, 1e-9));
+}
+
+TEST_CASE("LinearSpringDamper at rest length with zero velocity gives zero force",
+          "[force_element]")
+{
+    using namespace mbd;
+
+    MultibodySystem system;
+
+    RigidBodyInertia inertia = RigidBodyInertia::from_solid_box(1.0, Vec3(0.1, 0.1, 0.1));
+    RigidBodyState s_body;
+    s_body.p_WB = Vec3(1.0, 0.0, 0.0);
+    BodyIndex b_body = system.add_body(inertia, s_body);
+
+    // Spring from ground origin to body origin, rest_length = 1.0, no velocity
+    LinearSpringDamper spring(kGroundIndex, b_body,
+                              Vec3::Zero(), Vec3::Zero(),
+                              100.0, 10.0, 1.0);
+
+    system.clear_forces();
+    spring.apply(system.states, system.forces);
+
+    REQUIRE_THAT(system.forces[b_body].f_W.norm(), WithinAbs(0.0, 1e-9));
 }

@@ -2,12 +2,35 @@
 
 // Core math types and utilities for the multibody solver.
 // This header is intended to be header-only.
+//
+// ============================================================================
+//  CONVENTIONS (L0.1.2)
+// ============================================================================
+//
+//  Quaternion convention (Hamilton, Eigen default):
+//    - Storage order in Eigen: (x, y, z, w) internally, but the constructor
+//      is Quat(w, x, y, z).
+//    - q_WB rotates vectors FROM frame B TO frame W:
+//        v_W = q_WB * v_B * q_WB_conj
+//      or equivalently:
+//        v_W = q_WB.toRotationMatrix() * v_B
+//    - Composition: q_WC = q_WB * q_BC  (right-to-left, same as matrices).
+//
+//  Transform3 convention:
+//    - T_WB maps points from local frame B to world frame W:
+//        x_W = T_WB.apply(x_B) = T_WB.q * x_B + T_WB.p
+//    - T_WB.q is the rotation from B to W.
+//    - T_WB.p is the origin of frame B expressed in W.
+//    - Composition: T_WC = T_WB * T_BC.
+//    - Inverse: T_BW = T_WB.inverse().
+//
+// ============================================================================
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
-#include <cmath>    // std::sin, std::cos
-#include <cstddef>  // std::size_t, if needed later
+#include <cmath>
+#include <cstddef>
 
 namespace mbd
 {
@@ -15,8 +38,8 @@ namespace mbd
 // Scalar and index types
 //------------------------------------------------------------------------------
 
-using Real  = double;       // Main scalar type for dynamics
-using Index = Eigen::Index; // For sizes/indices compatible with Eigen
+using Real  = double;
+using Index = Eigen::Index;
 
 //------------------------------------------------------------------------------
 // Fixed-size vector and matrix aliases
@@ -30,72 +53,59 @@ using Mat2 = Eigen::Matrix2d;
 using Mat3 = Eigen::Matrix3d;
 using Mat4 = Eigen::Matrix4d;
 
-// Rotations: 3x3 rotation matrix and unit quaternion
 using RotMat3 = Eigen::Matrix3d;
 using Quat    = Eigen::Quaterniond;
 
-// 6D spatial types (we'll use them later for spatial algebra)
+// 6D spatial types (used later for spatial algebra)
 using Vec6 = Eigen::Matrix<Real, 6, 1>;
 using Mat6 = Eigen::Matrix<Real, 6, 6>;
+
+// Dynamic-size types (for generalized coordinates, Jacobians, etc.)
+using VecX = Eigen::VectorXd;
+using MatX = Eigen::MatrixXd;
 
 //------------------------------------------------------------------------------
 // Constants
 //------------------------------------------------------------------------------
 
-// Gravitational acceleration magnitude (SI units: m/s^2).
-// We keep it simple for now; later we can make it configurable per scenario.
-inline constexpr Real g = 9.81;
+inline constexpr Real g_accel = 9.81;
 
 //------------------------------------------------------------------------------
 // Basic helpers
 //------------------------------------------------------------------------------
 
-// Build the 3x3 skew-symmetric matrix associated with a 3D vector v:
-//   skew(v) * w = v x w
+/// Build the 3x3 skew-symmetric matrix so that skew(v) * w == v.cross(w).
 inline Mat3 skew(const Vec3& v)
 {
     Mat3 S;
-    S << Real(0),   -v.z(),   v.y(),
-         v.z(),      Real(0), -v.x(),
-        -v.y(),      v.x(),   Real(0);
+    S << Real(0),  -v.z(),   v.y(),
+         v.z(),    Real(0), -v.x(),
+        -v.y(),    v.x(),   Real(0);
     return S;
 }
 
-// Safely normalize a quaternion; if the norm is too small, return identity.
+/// Safely normalize a quaternion; returns identity if the norm is degenerate.
 inline Quat normalize_quat(const Quat& q)
 {
-    Quat qn = q;
-    const Real n = qn.norm();
+    const Real n = q.norm();
     if (n < Real(1e-12)) {
         return Quat::Identity();
     }
-    qn.normalize();
-    return qn;
+    return Quat(q.w() / n, q.x() / n, q.y() / n, q.z() / n);
 }
 
-// Convert a 3D angular velocity omega and time step dt into a small rotation
-// quaternion using the exponential map.
-//
-// (The exact frame in which omega is expressed will be decided by the
-// higher-level convention; here we just compute exp([omega]× dt).)
+/// Exponential map: angular velocity * dt -> small rotation quaternion.
 inline Quat delta_rotation_from_omega(const Vec3& omega, Real dt)
 {
     const Vec3 theta = omega * dt;
     const Real angle = theta.norm();
-    const Real half = angle * Real(0.5);
-    
+    const Real half  = angle * Real(0.5);
+
     Real s_over_angle;
-    
-    // Taylor expansion for sin(x)/x near 0 avoids division by zero
-    // sin(h)/h approx 1 - h^2/6
+
     if (angle < Real(1e-12)) {
         const Real half_sq = half * half;
-        // s_over_angle = (sin(half)/half) * 0.5
-        // effectively we need s/angle. 
-        // s = sin(half). 
-        // term we need is sin(half)/angle = (sin(half)/half) * 0.5
-        // approx (1 - half^2/6) * 0.5
-        s_over_angle = Real(0.5) * (Real(1.0) - half_sq * Real(1.0/6.0));
+        s_over_angle = Real(0.5) * (Real(1.0) - half_sq * Real(1.0 / 6.0));
     } else {
         s_over_angle = std::sin(half) / angle;
     }
@@ -106,184 +116,150 @@ inline Quat delta_rotation_from_omega(const Vec3& omega, Real dt)
                 theta.z() * s_over_angle);
 }
 
-// Apply small rotation represented by angular velocity*dt to a quaternion.
-// This is a building block for simple orientation integration schemes.
+/// Apply a small rotation (omega * dt) to a quaternion and re-normalize.
 inline Quat integrate_quat(const Quat& q, const Vec3& omega, Real dt)
 {
-    Quat dq     = delta_rotation_from_omega(omega, dt);
+    Quat dq = delta_rotation_from_omega(omega, dt);
     Quat result = dq * q;
     return normalize_quat(result);
 }
 
 //------------------------------------------------------------------------------
-// Transform3: rigid transform in 3D
+// Transform3: rigid transform in 3D  (Quat + Vec3 storage)
 //------------------------------------------------------------------------------
 //
-// Convention: this transform maps coordinates from a local frame B to world W.
-// For a point x_B expressed in frame B, the world coordinates are:
-//
-//   x_W = R * x_B + p
+// Convention: maps from local frame B to world W.
+//   x_W = q * x_B + p
 //
 struct Transform3
 {
-    Mat3 R; // rotation from local to world
+    Quat q; // rotation from local to world
     Vec3 p; // origin of local frame expressed in world coordinates
 
-    // Default: identity transform.
+    /// Default: identity transform.
     Transform3()
-        : R(Mat3::Identity())
+        : q(Quat::Identity())
         , p(Vec3::Zero())
     {}
 
-    // Construct from rotation matrix and translation.
-    Transform3(const Mat3& R_in, const Vec3& p_in)
-        : R(R_in)
-        , p(p_in)
-    {}
-
-    // Construct from quaternion and translation.
-    // The quaternion is normalized internally to protect the rotation invariant.
+    /// Construct from quaternion and translation.
+    /// The quaternion is normalized to protect the rotation invariant.
     Transform3(const Quat& q_in, const Vec3& p_in)
-        : R(normalize_quat(q_in).toRotationMatrix())
+        : q(normalize_quat(q_in))
         , p(p_in)
     {}
 
-    // Identity transform.
+    /// Construct from rotation matrix and translation.
+    /// Converts the matrix to a quaternion internally.
+    Transform3(const Mat3& R_in, const Vec3& p_in)
+        : q(normalize_quat(Quat(R_in)))
+        , p(p_in)
+    {}
+
+    /// Identity transform (named constructor).
     static Transform3 Identity()
     {
-        return Transform3(Mat3::Identity(), Vec3::Zero());
+        return Transform3{};
     }
 
-    // Named constructors / factory helpers ------------------------------------
+    // --- Named factories ----------------------------------------------------
 
-    // Build from rotation matrix + translation (thin wrapper).
-    static Transform3 FromRotationTranslation(const Mat3& R_in,
-                                              const Vec3& p_in)
+    static Transform3 FromRotationTranslation(const Mat3& R, const Vec3& t)
     {
-        return Transform3(R_in, p_in);
+        return Transform3(R, t);
     }
 
-    // Build from quaternion + translation (normalizes the quaternion).
-    static Transform3 FromQuatTranslation(const Quat& q_in,
-                                          const Vec3& p_in)
+    static Transform3 FromQuatTranslation(const Quat& q_in, const Vec3& t)
     {
-        return Transform3(q_in, p_in);
+        return Transform3(q_in, t);
     }
 
-    // Pure translation (identity rotation).
-    static Transform3 FromTranslation(const Vec3& p_in)
+    static Transform3 FromTranslation(const Vec3& t)
     {
-        return Transform3(Mat3::Identity(), p_in);
+        return Transform3(Quat::Identity(), t);
     }
 
-    // Pure rotation with zero translation (matrix version).
-    static Transform3 FromRotation(const Mat3& R_in)
+    static Transform3 FromRotation(const Mat3& R)
     {
-        return Transform3(R_in, Vec3::Zero());
+        return Transform3(R, Vec3::Zero());
     }
 
-    // Pure rotation with zero translation (quaternion version, normalized).
     static Transform3 FromRotation(const Quat& q_in)
     {
         return Transform3(q_in, Vec3::Zero());
     }
 
-    // Accessors ----------------------------------------------------------------
+    // --- Accessors ----------------------------------------------------------
 
-    Mat3& rotation()             { return R; }
-    const Mat3& rotation() const { return R; }
+    /// Rotation as a quaternion (the internal representation).
+    Quat&       rotation()       { return q; }
+    const Quat& rotation() const { return q; }
 
-    Vec3& translation()               { return p; }
-    const Vec3& translation() const   { return p; }
+    /// Translation.
+    Vec3&       translation()       { return p; }
+    const Vec3& translation() const { return p; }
 
-    // Apply transform to a point in the local frame:
-    //   x_W = R * x_L + p
+    /// Rotation as a 3x3 matrix (derived -- computed on each call).
+    Mat3 rotation_matrix() const { return q.toRotationMatrix(); }
+
+    // --- Point / vector operations ------------------------------------------
+
+    /// Transform a point from local to world: x_W = q * x_B + p.
     Vec3 apply(const Vec3& x_local) const
     {
-        return R * x_local + p;
+        return q * x_local + p;
     }
 
-    // Rotate a vector (direction) by this transform, ignoring translation:
-    //   v_W = R * v_L
+    /// Rotate a direction vector (ignoring translation): v_W = q * v_B.
     Vec3 rotate(const Vec3& v_local) const
     {
-        return R * v_local;
+        return q * v_local;
     }
 
-    // Inverse transform: from world back to local.
-    //
-    // For x_W = R * x_L + p, we have:
-    //   x_L = R^T * (x_W - p).
+    /// Inverse transform: from world back to local.
     Transform3 inverse() const
     {
-        Mat3 R_inv = R.transpose();
-        Vec3 p_inv = -R_inv * p;
-        return Transform3(R_inv, p_inv);
+        Quat q_inv = q.conjugate();
+        Vec3 p_inv = -(q_inv * p);
+        return Transform3(q_inv, p_inv);
     }
 };
 
-// Composition of transforms.
-//
-// If T1 maps from A to B, and T2 maps from B to C,
-// then (T1 * T2) maps from A to C.
-//
-// For points: (T1 * T2) * x == T1 * (T2 * x)
+// --- Free operators ---------------------------------------------------------
+
+/// Composition: if T1 maps A->B and T2 maps B->C, then T1*T2 maps A->C.
 inline Transform3 operator*(const Transform3& T1, const Transform3& T2)
 {
-    Transform3 result;
-    result.R = T1.R * T2.R;
-    result.p = T1.R * T2.p + T1.p;
-    return result;
+    return Transform3(T1.q * T2.q,
+                      T1.q * T2.p + T1.p);
 }
 
-// Apply transform to a point using operator*.
-//   x_W = T * x_L
+/// Apply transform to a point: x_W = T * x_B.
 inline Vec3 operator*(const Transform3& T, const Vec3& x_local)
 {
     return T.apply(x_local);
 }
 
 //------------------------------------------------------------------------------
-// Frame-to-frame helpers based on Transform3
+// Frame-to-frame helpers
 //------------------------------------------------------------------------------
 
-// Compute the relative transform X_AB given world-frame transforms X_WA and X_WB.
-//
-// By convention, X_WA maps a point from frame A to world:
-//   p_W = X_WA.apply(p_A)
-//
-// and X_AB maps from B to A:
-//   p_A = X_AB.apply(p_B)
-//
-// so:
-//   X_AB = X_AW * X_WB = X_WA.inverse() * X_WB
 inline Transform3 ComputeRelativeTransform(const Transform3& X_WA,
                                            const Transform3& X_WB)
 {
     return X_WA.inverse() * X_WB;
 }
 
-// Convenience wrapper: transform a point from frame B to frame A given X_AB.
-// This is simply a named wrapper around Transform3::apply.
 inline Vec3 TransformPoint(const Transform3& X_AB, const Vec3& p_B)
 {
     return X_AB.apply(p_B);
 }
 
-// Transform a point expressed in frame B into frame A using the world-frame
-// poses of A and B.
-//
-// Given:
-//   p_W = X_WA.apply(p_A)
-//   p_W = X_WB.apply(p_B)
-// we want p_A such that:
-//   p_A = X_AB.apply(p_B) with X_AB = X_WA.inverse() * X_WB.
 inline Vec3 TransformPointBetweenFrames(const Transform3& X_WA,
                                         const Transform3& X_WB,
                                         const Vec3&       p_B)
 {
-    const Transform3 X_AB = ComputeRelativeTransform(X_WA, X_WB);
-    return X_AB.apply(p_B);
+    return ComputeRelativeTransform(X_WA, X_WB).apply(p_B);
 }
 
 } // namespace mbd

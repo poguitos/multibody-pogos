@@ -1,9 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/catch_approx.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <mbd/core.hpp>
 
-using Catch::Approx;
+using Catch::Matchers::WithinAbs;
 
 TEST_CASE("BodyIndex behaves as an integer", "[core]")
 {
@@ -17,7 +17,7 @@ TEST_CASE("deg2rad and rad2deg are approximate inverses", "[core]")
     mbd::Real rad = mbd::deg2rad(deg);
     mbd::Real deg_back = mbd::rad2deg(rad);
 
-    REQUIRE(deg_back == Approx(deg).margin(1e-12));
+    REQUIRE_THAT(deg_back, WithinAbs(deg, 1e-12));
 }
 
 TEST_CASE("MbdError can be thrown and caught", "[core]")
@@ -38,6 +38,12 @@ TEST_CASE("Logger initialization returns a non-null logger", "[core]")
     auto logger = mbd::get_logger();
     REQUIRE(logger != nullptr);
 
-    // We don't assert on output: just ensure it doesn't crash.
     REQUIRE_NOTHROW(logger->info("Test log message from test_core_types"));
+}
+
+TEST_CASE("Ground index and no-parent sentinel are distinct", "[core]")
+{
+    REQUIRE(mbd::kGroundIndex == 0);
+    REQUIRE(mbd::kNoParent == -1);
+    REQUIRE(mbd::kGroundIndex != mbd::kNoParent);
 }

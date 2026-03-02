@@ -9,6 +9,7 @@ add_executable(test_core
     test_transform3.cpp
     test_force_elements.cpp
     test_constraints.cpp
+    test_joints.cpp
 )
 
 target_link_libraries(test_core

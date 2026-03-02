@@ -1,4 +1,5 @@
-#include <catch2/catch_all.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <Eigen/Geometry>
 
 #include "mbd/math.hpp"
@@ -17,10 +18,8 @@ TEST_CASE("Transform3 identity behaves as expected", "[math][transform3]")
     const Transform3 I_default;
     const Transform3 I_static = Transform3::Identity();
 
-    // A generic test point
     const Vec3 x_local(1.2, -3.4, 5.6);
 
-    // Identity should not change the point
     const Vec3 x_world_1 = I_default * x_local;
     const Vec3 x_world_2 = I_static * x_local;
 
@@ -32,13 +31,20 @@ TEST_CASE("Transform3 identity behaves as expected", "[math][transform3]")
     REQUIRE_THAT(x_world_2.y(), WithinAbs(x_local.y(), eps));
     REQUIRE_THAT(x_world_2.z(), WithinAbs(x_local.z(), eps));
 
-    // Check that translation is zero
+    // Translation should be zero
     REQUIRE_THAT(I_default.p.x(), WithinAbs(0.0, eps));
     REQUIRE_THAT(I_default.p.y(), WithinAbs(0.0, eps));
     REQUIRE_THAT(I_default.p.z(), WithinAbs(0.0, eps));
 
-    // Check that rotation is identity by applying it
-    const Vec3 Rv = I_default.R * x_local;
+    // Quaternion should be identity (w=1, xyz=0)
+    REQUIRE_THAT(I_default.q.w(), WithinAbs(1.0, eps));
+    REQUIRE_THAT(I_default.q.x(), WithinAbs(0.0, eps));
+    REQUIRE_THAT(I_default.q.y(), WithinAbs(0.0, eps));
+    REQUIRE_THAT(I_default.q.z(), WithinAbs(0.0, eps));
+
+    // rotation_matrix() should give identity matrix
+    const Mat3 R = I_default.rotation_matrix();
+    const Vec3 Rv = R * x_local;
     REQUIRE_THAT(Rv.x(), WithinAbs(x_local.x(), eps));
     REQUIRE_THAT(Rv.y(), WithinAbs(x_local.y(), eps));
     REQUIRE_THAT(Rv.z(), WithinAbs(x_local.z(), eps));
@@ -49,9 +55,8 @@ TEST_CASE("Transform3 composition is consistent with sequential application",
 {
     using namespace mbd;
 
-    // Build two simple rotations + translations
-    const Real angle1 = 0.3;  // rad
-    const Real angle2 = -0.5; // rad
+    const Real angle1 = 0.3;
+    const Real angle2 = -0.5;
 
     Mat3 R1 = Eigen::AngleAxisd(angle1, Vec3::UnitZ()).toRotationMatrix();
     Mat3 R2 = Eigen::AngleAxisd(angle2, Vec3::UnitX()).toRotationMatrix();
@@ -64,7 +69,6 @@ TEST_CASE("Transform3 composition is consistent with sequential application",
 
     Transform3 T12 = T1 * T2;
 
-    // Test point
     const Vec3 x_local(0.7, -1.1, 2.3);
 
     const Vec3 x_world_seq  = T1 * (T2 * x_local);
@@ -87,15 +91,11 @@ TEST_CASE("Transform3 inversion correctly undoes a transform",
     Transform3 T(R, p);
     Transform3 T_inv = T.inverse();
 
-    // A couple of test points
     const Vec3 x_local_1(0.0, 0.0, 0.0);
     const Vec3 x_local_2(1.0, 2.0, 3.0);
 
-    const Vec3 x_world_1 = T * x_local_1;
-    const Vec3 x_world_2 = T * x_local_2;
-
-    const Vec3 x_back_1 = T_inv * x_world_1;
-    const Vec3 x_back_2 = T_inv * x_world_2;
+    const Vec3 x_back_1 = T_inv * (T * x_local_1);
+    const Vec3 x_back_2 = T_inv * (T * x_local_2);
 
     REQUIRE_THAT(x_back_1.x(), WithinAbs(x_local_1.x(), eps));
     REQUIRE_THAT(x_back_1.y(), WithinAbs(x_local_1.y(), eps));
@@ -105,7 +105,6 @@ TEST_CASE("Transform3 inversion correctly undoes a transform",
     REQUIRE_THAT(x_back_2.y(), WithinAbs(x_local_2.y(), eps));
     REQUIRE_THAT(x_back_2.z(), WithinAbs(x_local_2.z(), eps));
 
-    // Also check T * T^{-1} behaves like identity on a point in world frame
     const Vec3 x_world_test(4.0, -1.0, 0.5);
     const Vec3 x_local_test = T_inv * x_world_test;
     const Vec3 x_world_back = T * x_local_test;
@@ -128,10 +127,7 @@ TEST_CASE("Transform3 can be built from quaternion and translation",
 
     const Vec3 p(0.1, -0.2, 0.3);
 
-    // Reference transform built from rotation matrix
     Transform3 T_mat(aa.toRotationMatrix(), p);
-
-    // Construct from quaternion:
     Transform3 T_q_ctor(q_from_aa, p);
     Transform3 T_q_factory = Transform3::FromQuatTranslation(q_from_aa, p);
 
@@ -166,13 +162,13 @@ TEST_CASE("Transform3 factory helpers and accessors behave as expected",
     REQUIRE_THAT(x_world.y(), WithinAbs(x_local.y() + t.y(), eps));
     REQUIRE_THAT(x_world.z(), WithinAbs(x_local.z() + t.z(), eps));
 
-    // Pure rotation (matrix and quaternion) with zero translation
+    // Pure rotation (matrix and quaternion)
     const Real angle = 0.3;
     Mat3 R = Eigen::AngleAxisd(angle, Vec3::UnitY()).toRotationMatrix();
-    Quat q(R); // Equivalent rotation
+    Quat q_rot(R);
 
-    Transform3 T_rot_mat = Transform3::FromRotation(R);
-    Transform3 T_rot_quat = Transform3::FromRotation(q);
+    Transform3 T_rot_mat  = Transform3::FromRotation(R);
+    Transform3 T_rot_quat = Transform3::FromRotation(q_rot);
 
     const Vec3 v_local(1.0, 0.0, 0.0);
 
@@ -188,22 +184,40 @@ TEST_CASE("Transform3 factory helpers and accessors behave as expected",
     REQUIRE_THAT(v_world_q.y(), WithinAbs(v_world_ref.y(), eps));
     REQUIRE_THAT(v_world_q.z(), WithinAbs(v_world_ref.z(), eps));
 
-    // Accessors should reflect and allow changes to R and p.
+    // Accessors: rotation() now returns Quat&, translation() returns Vec3&
     Transform3 T = Transform3::Identity();
     T.translation() = t;
-    T.rotation()    = R;
+    T.rotation()    = normalize_quat(Quat(R));
 
     const Vec3 x0   = Vec3::Zero();
     const Vec3 xW   = T * x0;
     const Vec3 xW_r = T.rotate(v_local);
 
-    // Translation-only on origin should give t.
     REQUIRE_THAT(xW.x(), WithinAbs(t.x(), eps));
     REQUIRE_THAT(xW.y(), WithinAbs(t.y(), eps));
     REQUIRE_THAT(xW.z(), WithinAbs(t.z(), eps));
 
-    // Rotation helper should still match R * v_local.
     REQUIRE_THAT(xW_r.x(), WithinAbs(v_world_ref.x(), eps));
     REQUIRE_THAT(xW_r.y(), WithinAbs(v_world_ref.y(), eps));
     REQUIRE_THAT(xW_r.z(), WithinAbs(v_world_ref.z(), eps));
+}
+
+TEST_CASE("Transform3 rotation_matrix() is consistent with quaternion",
+          "[math][transform3]")
+{
+    using namespace mbd;
+
+    const Real angle = 1.23;
+    Mat3 R_ref = Eigen::AngleAxisd(angle, Vec3(1, 2, 3).normalized()).toRotationMatrix();
+    Vec3 p(0.5, -0.3, 1.7);
+
+    Transform3 T(R_ref, p);
+
+    Mat3 R_got = T.rotation_matrix();
+
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            REQUIRE_THAT(R_got(i, j), WithinAbs(R_ref(i, j), eps));
+        }
+    }
 }

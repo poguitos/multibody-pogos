@@ -1,86 +1,79 @@
 #pragma once
 
 #include "mbd/core.hpp"
-#include "mbd/math.hpp"
 #include "mbd/rigid_body.hpp"
 #include "mbd/dynamics.hpp"
 
 namespace mbd {
 
-// Abstract base class for any element that generates forces/torques
+/// Abstract base class for force-generating elements.
+///
+/// The apply() method reads from `states` and accumulates into `forces`.
+/// Each concrete element stores which body indices it operates on.
 class ForceElement {
 public:
     virtual ~ForceElement() = default;
 
-    // Calculate forces based on state and accumulate them into 'forces'
-    // internal_time can be used for time-varying forces (optional)
-    virtual void apply(const RigidBodyState& state, 
-                       RigidBodyForces& forces) const = 0;
+    virtual void apply(const std::vector<RigidBodyState>& states,
+                       std::vector<RigidBodyForces>& forces) const = 0;
 };
 
-// A linear spring-damper connecting a fixed point in World to a point on Body.
+/// Linear spring-damper connecting a point on body1 to a point on body2.
+/// For a world-anchored spring, use body1_idx = kGroundIndex (0).
 class LinearSpringDamper : public ForceElement {
 public:
-    Vec3 anchor_W;      // Fixed anchor position in World Frame
-    Vec3 anchor_B;      // Attachment point in Body Frame (relative to COM)
-    Real k;             // Stiffness [N/m]
-    Real c;             // Damping [N*s/m]
-    Real rest_length;   // Unstretched length [m]
+    BodyIndex body1_idx;
+    BodyIndex body2_idx;
+    Vec3 anchor1_B;     // attachment in body1 local frame
+    Vec3 anchor2_B;     // attachment in body2 local frame
+    Real k;
+    Real c;
+    Real rest_length;
 
-    LinearSpringDamper(const Vec3& anchor_world,
-                       const Vec3& anchor_body,
-                       Real stiffness,
-                       Real damping,
-                       Real length_0)
-        : anchor_W(anchor_world)
-        , anchor_B(anchor_body)
-        , k(stiffness)
-        , c(damping)
-        , rest_length(length_0)
+    LinearSpringDamper(BodyIndex b1, BodyIndex b2,
+                       const Vec3& a1_local, const Vec3& a2_local,
+                       Real stiffness, Real damping, Real length_0)
+        : body1_idx(b1), body2_idx(b2)
+        , anchor1_B(a1_local), anchor2_B(a2_local)
+        , k(stiffness), c(damping), rest_length(length_0)
     {
-        MBD_THROW_IF(k < 0 || c < 0 || rest_length < 0, 
+        MBD_THROW_IF(k < 0 || c < 0 || rest_length < 0,
             "SpringDamper parameters must be non-negative");
     }
 
-    void apply(const RigidBodyState& state, RigidBodyForces& forces) const override
+    void apply(const std::vector<RigidBodyState>& states,
+               std::vector<RigidBodyForces>& forces) const override
     {
-        // 1. Calculate kinematics of the body attachment point in World
-        const Mat3 R_WB = state.q_WB.toRotationMatrix();
-        const Vec3 r_W = R_WB * anchor_B; // vector from COM to attachment in W
-        const Vec3 pos_B_in_W = state.p_WB + r_W;
+        const auto& s1 = states[static_cast<size_t>(body1_idx)];
+        const auto& s2 = states[static_cast<size_t>(body2_idx)];
 
-        // 2. Vector from World Anchor to Body Anchor
-        const Vec3 diff = pos_B_in_W - anchor_W;
+        // Attachment point kinematics in world frame
+        const Vec3 r1_W = s1.q_WB * anchor1_B;
+        const Vec3 r2_W = s2.q_WB * anchor2_B;
+        const Vec3 p1_W = s1.p_WB + r1_W;
+        const Vec3 p2_W = s2.p_WB + r2_W;
+
+        const Vec3 diff = p2_W - p1_W;
         const Real dist = diff.norm();
+        if (dist < Real(1e-9)) return;
 
-        // Avoid division by zero if anchors coincide
-        if (dist < Real(1e-9)) {
-            return; 
-        }
+        const Vec3 dir = diff / dist;
 
-        const Vec3 dir = diff / dist; // Unit vector pointing towards body
+        // Relative velocity along spring axis
+        const Vec3 v1_W = s1.v_WB + s1.w_WB.cross(r1_W);
+        const Vec3 v2_W = s2.v_WB + s2.w_WB.cross(r2_W);
+        const Real vel_rel = (v2_W - v1_W).dot(dir);
 
-        // 3. Velocity of the body attachment point
-        // v_point = v_com + w x r
-        const Vec3 vel_point_W = state.v_WB + state.w_WB.cross(r_W);
-        
-        // Projected velocity along the spring axis (scalar)
-        // positive means separating (lengthening)
-        const Real vel_rel = vel_point_W.dot(dir);
-
-        // 4. Spring-Damper Force Magnitude (Hooke's Law + Damping)
-        // F_spring = -k * (current_len - rest_len)
-        // F_damper = -c * velocity
         const Real force_mag = -k * (dist - rest_length) - c * vel_rel;
 
-        // Force vector acting on the body (along direction dir)
-        const Vec3 F_vec = dir * force_mag;
+        const Vec3 F_on_2 = dir * force_mag;
+        const Vec3 F_on_1 = -F_on_2;
 
-        // 5. Accumulate
-        forces.f_W += F_vec;
-        
-        // Torque = r x F
-        forces.tau_W += r_W.cross(F_vec);
+        // Equal and opposite on both bodies
+        forces[static_cast<size_t>(body1_idx)].f_W   += F_on_1;
+        forces[static_cast<size_t>(body1_idx)].tau_W += r1_W.cross(F_on_1);
+        forces[static_cast<size_t>(body2_idx)].f_W   += F_on_2;
+        forces[static_cast<size_t>(body2_idx)].tau_W += r2_W.cross(F_on_2);
     }
 };
 

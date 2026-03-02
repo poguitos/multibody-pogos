@@ -1,92 +1,81 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+
 #include <mbd/constraint.hpp>
+#include <mbd/solver.hpp>
 
 using Catch::Matchers::WithinAbs;
 
-TEST_CASE("DistanceConstraint Jacobian is consistent with Finite Differences", "[constraint]")
+TEST_CASE("DistanceConstraint Jacobian is consistent with Finite Differences",
+          "[constraint]")
 {
     using namespace mbd;
 
     MultibodySystem system;
 
-    // Body 1: At origin
+    // Body 1 at origin
     RigidBodyInertia I1 = RigidBodyInertia::from_solid_box(1.0, Vec3(0.1, 0.1, 0.1));
-    RigidBodyState s1; 
-    s1.p_WB = Vec3(0,0,0);
+    RigidBodyState s1;
+    s1.p_WB = Vec3(0, 0, 0);
     BodyIndex b1 = system.add_body(I1, s1);
 
-    // Body 2: At (2,0,0) rotated 90 deg around Z
+    // Body 2 at (2,0,0) rotated 90 deg around Z
     RigidBodyInertia I2 = RigidBodyInertia::from_solid_box(1.0, Vec3(0.1, 0.1, 0.1));
     RigidBodyState s2;
     s2.p_WB = Vec3(2.0, 0.0, 0.0);
-    s2.q_WB = Quat(Eigen::AngleAxisd(mbd::pi / 2.0, Vec3::UnitZ()));
+    s2.q_WB = Quat(Eigen::AngleAxisd(pi / 2.0, Vec3::UnitZ()));
     BodyIndex b2 = system.add_body(I2, s2);
 
-    // Constraint: Link local(0.5, 0, 0) on B1 to local(0, 0.5, 0) on B2
     Vec3 anchor1(0.5, 0.0, 0.0);
     Vec3 anchor2(0.0, 0.5, 0.0);
-    Real target_dist = 1.0; // Arbitrary, doesn't affect Jacobian deriv
-    
+    Real target_dist = 1.0;
+
     DistanceConstraint constraint(b1, b2, anchor1, anchor2, target_dist);
 
-    // Analytical Jacobian
     Eigen::MatrixXd J1_ana, J2_ana;
     constraint.jacobian(system, J1_ana, J2_ana);
 
-    // Finite Difference Check
-    const Real eps = 1e-7;
-    
-    // Check J1 (Derivative w.r.t Body 1 state changes)
-    // We simulate small velocity v * dt
+    const Real eps_fd = 1e-7;
     Eigen::VectorXd phi_0;
     constraint.evaluate(system, phi_0);
 
-    // 1. Linear X perturbation on Body 1
+    // Linear X perturbation on Body 1
     {
-        system.states[b1].p_WB.x() += eps; 
+        system.states[b1].p_WB.x() += eps_fd;
         Eigen::VectorXd phi_p;
         constraint.evaluate(system, phi_p);
-        system.states[b1].p_WB.x() -= eps; // reset
+        system.states[b1].p_WB.x() -= eps_fd;
 
-        Real num_deriv = (phi_p(0) - phi_0(0)) / eps;
+        Real num_deriv = (phi_p(0) - phi_0(0)) / eps_fd;
         REQUIRE_THAT(num_deriv, WithinAbs(J1_ana(0, 0), 1e-5));
     }
 
-    // 2. Angular Z perturbation on Body 1
+    // Angular Z perturbation on Body 1
     {
-        // Apply small rotation: q_new = q_old * exp(w * dt/2) ...
-        // Small rotation approx: w = [0,0,1], angle = eps
-        Vec3 w_small(0,0, eps);
-        Quat dq = delta_rotation_from_omega(w_small, 1.0); 
+        Vec3 w_small(0, 0, eps_fd);
         Quat q_orig = system.states[b1].q_WB;
-        
+
         system.states[b1].q_WB = integrate_quat(q_orig, w_small, 1.0);
-        
+
         Eigen::VectorXd phi_p;
         constraint.evaluate(system, phi_p);
-        system.states[b1].q_WB = q_orig; // reset
+        system.states[b1].q_WB = q_orig;
 
-        Real num_deriv = (phi_p(0) - phi_0(0)) / eps;
-        // J1 column 5 is Z-angular
+        Real num_deriv = (phi_p(0) - phi_0(0)) / eps_fd;
         REQUIRE_THAT(num_deriv, WithinAbs(J1_ana(0, 5), 1e-5));
     }
 
-    // Check J2 (Body 2)
-    // 3. Linear Y perturbation on Body 2
+    // Linear Y perturbation on Body 2
     {
-        system.states[b2].p_WB.y() += eps;
+        system.states[b2].p_WB.y() += eps_fd;
         Eigen::VectorXd phi_p;
         constraint.evaluate(system, phi_p);
-        system.states[b2].p_WB.y() -= eps;
+        system.states[b2].p_WB.y() -= eps_fd;
 
-        Real num_deriv = (phi_p(0) - phi_0(0)) / eps;
+        Real num_deriv = (phi_p(0) - phi_0(0)) / eps_fd;
         REQUIRE_THAT(num_deriv, WithinAbs(J2_ana(0, 1), 1e-5));
     }
-    
 }
-
-#include "mbd/solver.hpp" // Include the new solver
 
 TEST_CASE("Solver maintains pendulum length under gravity", "[solver]")
 {
@@ -95,64 +84,41 @@ TEST_CASE("Solver maintains pendulum length under gravity", "[solver]")
     MultibodySystem system;
     Vec3 gravity(0.0, -9.81, 0.0);
 
-    // Body 1: "Ground"
-    // We use a very large mass to approximate a fixed body.
-    // Increased to 1e12 to minimize recoil error in the constraint solver.
-    Real m_ground = 1e12;
-    RigidBodyInertia I_ground = RigidBodyInertia::from_solid_box(m_ground, Vec3(1,1,1));
-    RigidBodyState s_ground;
-    BodyIndex b_ground = system.add_body(I_ground, s_ground); // At 0,0,0
-
-    // Body 2: Pendulum bob
+    // Pendulum bob (body 1). Ground is already body 0.
     RigidBodyInertia I_bob = RigidBodyInertia::from_solid_box(1.0, Vec3(0.1, 0.1, 0.1));
     RigidBodyState s_bob;
-    s_bob.p_WB = Vec3(1.0, 0.0, 0.0); // 1m to the right
+    s_bob.p_WB = Vec3(1.0, 0.0, 0.0);
     BodyIndex b_bob = system.add_body(I_bob, s_bob);
 
-    // Constraint: Distance 1.0m
+    // Distance constraint: ground origin to bob origin, length 1.0
     system.constraints.push_back(std::make_shared<DistanceConstraint>(
-        b_ground, b_bob, Vec3::Zero(), Vec3::Zero(), 1.0
+        kGroundIndex, b_bob, Vec3::Zero(), Vec3::Zero(), 1.0
     ));
 
-    // Helper to reset and solve
-    auto reset_and_solve = [&]() {
-        system.clear_forces();
-        // FIX: Apply counter-gravity force to ground so it doesn't fall
-        system.forces[b_ground].f_W -= gravity * m_ground;
-        
-        solve_constraints(system, gravity);
-    };
+    // TEST 1: Horizontal (gravity tangential to constraint)
+    system.clear_forces();
+    solve_constraints(system, gravity);
 
-    // TEST 1: Horizontal (Static release)
-    reset_and_solve();
-    
-    // Gravity is tangential to the constraint (vertical vs horizontal). 
-    // Tension should be zero.
     REQUIRE_THAT(system.forces[b_bob].f_W.norm(), WithinAbs(0.0, 1e-9));
 
-    // TEST 2: Pendulum hanging DOWN (Static equilibrium)
-    // Bob at (0, -1, 0)
+    // TEST 2: Hanging straight down
     system.states[b_bob].p_WB = Vec3(0.0, -1.0, 0.0);
-    
-    reset_and_solve();
-    
-    // Analysis:
-    // Bob wants to fall (-9.81). Ground stays put.
-    // Constraint must pull Bob UP with 9.81 N.
+    system.states[b_bob].v_WB = Vec3::Zero();
+
+    system.clear_forces();
+    solve_constraints(system, gravity);
+
     REQUIRE_THAT(system.forces[b_bob].f_W.x(), WithinAbs(0.0, 1e-9));
     REQUIRE_THAT(system.forces[b_bob].f_W.y(), WithinAbs(9.81, 1e-5));
     REQUIRE_THAT(system.forces[b_bob].f_W.z(), WithinAbs(0.0, 1e-9));
-    
-    // TEST 3: Centripetal Force
-    // Bob at (0, -1, 0), moving at X=2 m/s
+
+    // TEST 3: Centripetal force (bob at bottom, moving at 2 m/s)
     system.states[b_bob].v_WB = Vec3(2.0, 0.0, 0.0);
-    
-    reset_and_solve();
-    
-    // Analysis:
-    // Tension = Gravity compensation (9.81) + Centripetal (mv^2/r)
-    // Centripetal = 1.0 * 2^2 / 1.0 = 4.0 N
-    // Total = 13.81 N UP.
+
+    system.clear_forces();
+    solve_constraints(system, gravity);
+
+    // gravity comp (9.81) + centripetal (mv^2/r = 4.0) = 13.81 N up
     REQUIRE_THAT(system.forces[b_bob].f_W.y(), WithinAbs(13.81, 1e-5));
 }
 
@@ -163,76 +129,27 @@ TEST_CASE("RevoluteJoint constrains motion to rotation about axis", "[constraint
     MultibodySystem system;
     Vec3 gravity(0.0, -9.81, 0.0);
 
-    // Body 1: Fixed Ground (Mass 1e12)
-    BodyIndex b_g = system.add_body(RigidBodyInertia::from_solid_box(1e12, Vec3(1,1,1)), 
-                                    RigidBodyState::at_rest(Vec3::Zero()));
+    // Bar hinged at origin, extending along X
+    BodyIndex b_bar = system.add_body(
+        RigidBodyInertia::from_solid_box(1.0, Vec3(0.5, 0.1, 0.1)),
+        RigidBodyState::at_rest(Vec3(0.5, 0.0, 0.0)));
 
-    // Body 2: Bar hinged at origin, extending along X. 
-    // Mass 1kg.
-    BodyIndex b_bar = system.add_body(RigidBodyInertia::from_solid_box(1.0, Vec3(0.5, 0.1, 0.1)),
-                                      RigidBodyState::at_rest(Vec3(0.5, 0.0, 0.0))); 
-                                      // COM at 0.5, so bar is from 0.0 to 1.0 approx
-
-    // Joint: Hinge at Origin (0,0,0). Axis Z (0,0,1).
-    // Anchor on Ground: (0,0,0)
-    // Anchor on Bar: (-0.5, 0, 0) (Since COM is at 0.5 world, local -0.5 is 0.0 world)
+    // Revolute: ground to bar at origin, axis Z
     system.constraints.push_back(std::make_shared<RevoluteJoint>(
-        b_g, b_bar,
-        Vec3::Zero(), Vec3::UnitZ(),       // Ground anchor/axis
-        Vec3(-0.5, 0.0, 0.0), Vec3::UnitZ() // Bar anchor/axis
+        kGroundIndex, b_bar,
+        Vec3::Zero(), Vec3::UnitZ(),
+        Vec3(-0.5, 0.0, 0.0), Vec3::UnitZ()
     ));
 
-    // Initial solve
-    // Gravity pulls bar down (torque about Z). Joint should hold P and hold Axis Z.
-    // Forces on bar: 
-    // Y-force: Should hold weight (9.81 N).
-    // No X-force (pendulum is vertical? No, bar is horizontal).
-    // Wait, bar is horizontal (X). Gravity is -Y.
-    // Reaction at pin: +9.81 Y.
-    // Torque at pin: Usually 0 for ideal pin? 
-    // NO. The solver applies force at COM for the body force buffer.
-    // But the joint applies force at Anchor?
-    // Our solver output `system.forces` accumulates EVERYTHING at COM.
-    // So if the pin pushes UP at the left end, that is a Force + Torque at COM.
-    // Force at Pin = (0, 9.81, 0).
-    // Pin is at x=0. COM is at x=0.5.
-    // Vector r = Pin - COM = (-0.5, 0, 0).
-    // Torque = r x F = (-0.5) * (9.81) in Z = -4.905 Nm.
-    // This makes sense: the pin supports the weight, but creates a torque that slows rotation?
-    // No, this is the Reaction Force.
-    // Net Torque on Body = Tau_gravity (0) + Tau_reaction (-4.905).
-    // This causes angular acceleration alpha = Tau / I.
-    
-    // Apply gravity compensation to ground
     system.clear_forces();
-    system.forces[b_g].f_W -= gravity * 1e12;
-    
     solve_constraints(system, gravity);
 
-    // Check forces on Bar
-    // F_y should be approx 9.81 (Reaction)
-    // There is also dynamics involved (linear accel of COM).
-    // Solving DAE:
-    // I_pin * alpha = - m * g * L_com
-    // alpha = -9.81 * 0.5 / I_pin.
-    // Linear a_y = alpha * L_com.
-    // Force_reaction - m*g = m * a_y.
-    // So Force_reaction is NOT exactly mg if it accelerates.
-    // But this is t=0, v=0.
-    
-    // Let's just check the Constraint Satisfaction (Acceleration level).
-    // The solver guarantees J * a = -gamma.
-    // For revolute, a_pin should be 0.
-    // a_pin = a_com + alpha x r_pin_com + ...
-    // Checking numeric values might be tricky without calculating I_pin manually.
-    
-    // Check qualitative direction:
-    // Reaction force Y must be positive (holding it up)
+    // Reaction force Y positive (holding bar up)
     REQUIRE(system.forces[b_bar].f_W.y() > 0.0);
-    // Reaction Torque Z must be negative (force is at -0.5, pushing up)
+    // Reaction torque Z negative (pin force at -0.5 from COM creates -Z torque)
     REQUIRE(system.forces[b_bar].tau_W.z() < 0.0);
-    
-    // Check Kinematic Constraint Error directly
+
+    // Constraint satisfied
     Eigen::VectorXd phi;
     system.constraints[0]->evaluate(system, phi);
     REQUIRE_THAT(phi.norm(), WithinAbs(0.0, 1e-9));
@@ -243,36 +160,44 @@ TEST_CASE("Solver stabilizes position error (Baumgarte)", "[solver]")
     using namespace mbd;
 
     MultibodySystem system;
-    // Heavy anchor
-    BodyIndex b_g = system.add_body(RigidBodyInertia::from_solid_box(1e12, Vec3(1,1,1)), 
-                                    RigidBodyState::at_rest(Vec3::Zero()));
-    
-    // Body 2 at x=1.1 (VIOLATION! Target is 1.0)
-    // No velocity. No gravity.
-    RigidBodyState s2 = RigidBodyState::at_rest(Vec3(1.1, 0.0, 0.0));
-    BodyIndex b_bob = system.add_body(RigidBodyInertia::from_solid_box(1.0, Vec3(0.1,0.1,0.1)), s2);
 
-    // Constraint target distance = 1.0
+    // Body at x=1.1 (VIOLATION: target is 1.0)
+    RigidBodyState s2 = RigidBodyState::at_rest(Vec3(1.1, 0.0, 0.0));
+    BodyIndex b_bob = system.add_body(
+        RigidBodyInertia::from_solid_box(1.0, Vec3(0.1, 0.1, 0.1)), s2);
+
     system.constraints.push_back(std::make_shared<DistanceConstraint>(
-        b_g, b_bob, Vec3::Zero(), Vec3::Zero(), 1.0
+        kGroundIndex, b_bob, Vec3::Zero(), Vec3::Zero(), 1.0
     ));
 
-    // Config with aggressive position correction
     SolverConfig config;
-    config.alpha = 0.0;   // No velocity damping for this specific check
-    config.beta  = 10.0;  // Position correction
+    config.alpha = 0.0;
+    config.beta  = 10.0;
 
     system.clear_forces();
     solve_constraints(system, Vec3::Zero(), config);
 
-    // Analysis:
-    // Error Phi = 1.1 - 1.0 = 0.1
-    // Solver Equation: J*a = -beta^2 * Phi  (since gamma=0, v=0, a_unc=0)
-    // J for bob (x direction) is [1, 0, 0...]
-    // 1 * a_x = -100 * 0.1 = -10.0
-    // Force = m * a = 1.0 * -10.0 = -10.0 N.
-    // The force should pull the bob to the left (negative X).
-
+    // Force pulls bob left: -10.0 N (beta^2 * phi = 100 * 0.1 = 10)
     REQUIRE(system.forces[b_bob].f_W.x() < -9.0);
     REQUIRE_THAT(system.forces[b_bob].f_W.x(), WithinAbs(-10.0, 1e-5));
+}
+
+TEST_CASE("MultibodySystem ground body exists at index 0", "[system]")
+{
+    using namespace mbd;
+
+    MultibodySystem system;
+
+    REQUIRE(system.body_count() == 1);
+    REQUIRE(system.is_ground(kGroundIndex));
+
+    REQUIRE(system.states[0].p_WB.isApprox(Vec3::Zero()));
+    REQUIRE_THAT(system.states[0].q_WB.angularDistance(Quat::Identity()),
+                 WithinAbs(0.0, 1e-12));
+
+    BodyIndex b1 = system.add_body(
+        RigidBodyInertia::from_solid_box(1.0, Vec3(0.1, 0.1, 0.1)));
+    REQUIRE(b1 == 1);
+    REQUIRE(system.body_count() == 2);
+    REQUIRE_FALSE(system.is_ground(b1));
 }
