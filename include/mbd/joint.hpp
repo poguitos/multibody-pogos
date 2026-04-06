@@ -74,6 +74,10 @@ public:
     /// Index of the child body in the MultibodySystem.
     BodyIndex child_body_idx{kNoParent};
 
+    /// Starting index of this joint's coordinates in the system q vector.
+    /// Set by MultibodySystem::add_joint().
+    int q_offset{-1};
+
 protected:
     Joint() = default;
 
@@ -176,4 +180,244 @@ public:
     }
 };
 
+// ============================================================================
+// Exponential map helpers (used by SphericalCoordJoint and FreeCoordJoint)
+// ============================================================================
+
+namespace detail {
+
+/// Rodrigues' formula: rotation matrix from rotation vector r.
+inline Mat3 exp_map_rotation(const Vec3& r)
+{
+    const Real theta = r.norm();
+    if (theta < Real(1e-10)) {
+        return Mat3::Identity() + skew(r);
+    }
+    const Vec3 axis = r / theta;
+    return Eigen::AngleAxisd(theta, axis).toRotationMatrix();
+}
+
+/// Right Jacobian of SO(3): maps r_dot to angular velocity in the
+/// ROTATED (body/child) frame.
+///   omega_body = J_R(r) * r_dot
+///
+/// This is the correct Jacobian for our convention because the FK code
+/// rotates the result by q_WJ which includes the joint rotation R_J(q).
+/// Composing: R_J * omega_body = R_J * J_R * r_dot = J_L * r_dot = omega_parent_frame.
+///
+/// J_R(r) = I - (1 - cos(theta))/theta^2 * [r]x + (theta - sin(theta))/theta^3 * [r]x^2
+inline Mat3 exp_map_jacobian(const Vec3& r)
+{
+    const Real theta = r.norm();
+    if (theta < Real(1e-10)) {
+        // Taylor: J_R = I - 0.5 * [r]x + ...
+        return Mat3::Identity() - Real(0.5) * skew(r);
+    }
+    const Real th2 = theta * theta;
+    const Real th3 = th2 * theta;
+    const Mat3 rx  = skew(r);
+    return Mat3::Identity()
+         - ((Real(1.0) - std::cos(theta)) / th2) * rx
+         + ((theta - std::sin(theta)) / th3) * (rx * rx);
+}
+
+/// Time derivative of E(r) * r_dot, evaluated at (r, r_dot).
+/// Returns the bias acceleration contribution for the spherical joint:
+///   c = dE/dt * r_dot = (dE/dr * r_dot) * r_dot
+/// This is needed for RNEA when S depends on q.
+///
+/// Computed by finite difference internally for robustness.
+inline Vec3 exp_map_bias(const Vec3& r, const Vec3& r_dot)
+{
+    const Real eps = Real(1e-7);
+    Vec3 bias = Vec3::Zero();
+    for (int k = 0; k < 3; ++k) {
+        Vec3 r_plus = r;
+        r_plus(k) += eps;
+        Vec3 r_minus = r;
+        r_minus(k) -= eps;
+        const Mat3 E_plus  = exp_map_jacobian(r_plus);
+        const Mat3 E_minus = exp_map_jacobian(r_minus);
+        const Mat3 dE_drk  = (E_plus - E_minus) / (Real(2.0) * eps);
+        bias += dE_drk * r_dot * r_dot(k);
+    }
+    return bias;
+}
+
+} // namespace detail
+
+// ============================================================================
+// Spherical joint: 3 DOF rotation, parameterized by rotation vector
+// ============================================================================
+//
+// q = [rx, ry, rz]: rotation vector (exponential map).
+// At q = 0 the child frame is aligned with the joint frame.
+
+class SphericalCoordJoint : public Joint {
+public:
+    SphericalCoordJoint(const Transform3& x_pj, const Transform3& x_cj,
+                        BodyIndex parent, BodyIndex child)
+        : Joint(x_pj, x_cj, parent, child)
+    {}
+
+    int num_dof() const override { return 3; }
+
+    Transform3 joint_transform(const VecX& q) const override
+    {
+        MBD_ASSERT(q.size() == 3);
+        const Vec3 r(q(0), q(1), q(2));
+        const Mat3 R = detail::exp_map_rotation(r);
+        return Transform3(R, Vec3::Zero());
+    }
+
+    Eigen::Matrix<Real, 6, Eigen::Dynamic>
+    motion_subspace(const VecX& q) const override
+    {
+        MBD_ASSERT(q.size() == 3);
+        const Vec3 r(q(0), q(1), q(2));
+        const Mat3 E = detail::exp_map_jacobian(r);
+
+        Eigen::Matrix<Real, 6, 3> S;
+        S.setZero();
+        S.topRows(3) = E;  // angular part: omega = E * r_dot
+        return S;
+    }
+
+    Vec6 bias_acceleration(const VecX& q, const VecX& q_dot) const override
+    {
+        MBD_ASSERT(q.size() == 3 && q_dot.size() == 3);
+        const Vec3 r(q(0), q(1), q(2));
+        const Vec3 r_dot(q_dot(0), q_dot(1), q_dot(2));
+
+        Vec6 bias = Vec6::Zero();
+        bias.head<3>() = detail::exp_map_bias(r, r_dot);
+        return bias;
+    }
+};
+
+// ============================================================================
+// Universal joint: 2 DOF rotation about Z then rotated X
+// ============================================================================
+//
+// q = [theta_z, theta_x]: first rotate about joint Z by q(0),
+// then about the (rotated) X-axis by q(1).
+
+class UniversalCoordJoint : public Joint {
+public:
+    UniversalCoordJoint(const Transform3& x_pj, const Transform3& x_cj,
+                        BodyIndex parent, BodyIndex child)
+        : Joint(x_pj, x_cj, parent, child)
+    {}
+
+    int num_dof() const override { return 2; }
+
+    Transform3 joint_transform(const VecX& q) const override
+    {
+        MBD_ASSERT(q.size() == 2);
+        const Quat q_z(Eigen::AngleAxisd(q(0), Vec3::UnitZ()));
+        const Quat q_x(Eigen::AngleAxisd(q(1), Vec3::UnitX()));
+        return Transform3(q_z * q_x, Vec3::Zero());
+    }
+
+    Eigen::Matrix<Real, 6, Eigen::Dynamic>
+    motion_subspace(const VecX& q) const override
+    {
+        MBD_ASSERT(q.size() == 2);
+
+        // omega = [0,0,1] * q_dot(0) + Rz(q0) * [1,0,0] * q_dot(1)
+        // S = [ [0,0,1]^T | Rz(q0)*[1,0,0]^T ]  (angular rows)
+        // Linear rows are zero (pure rotation).
+        const Real c0 = std::cos(q(0));
+        const Real s0 = std::sin(q(0));
+
+        Eigen::Matrix<Real, 6, 2> S;
+        S.setZero();
+
+        // Column 0: rotation about Z
+        S(2, 0) = Real(1.0);
+
+        // Column 1: rotation about the rotated X-axis = Rz(q0) * [1,0,0]
+        S(0, 1) = c0;
+        S(1, 1) = s0;
+
+        return S;
+    }
+
+    Vec6 bias_acceleration(const VecX& q, const VecX& q_dot) const override
+    {
+        MBD_ASSERT(q.size() == 2 && q_dot.size() == 2);
+
+        // S depends on q(0), so dS/dt * q_dot is non-zero.
+        // d/dt(Rz(q0)*[1,0,0]) = q_dot(0) * [-sin(q0), cos(q0), 0]
+        // bias = dS/dt * q_dot, only column 1 contributes:
+        //   bias_angular = q_dot(0) * [-sin(q0), cos(q0), 0] * q_dot(1)
+        const Real s0 = std::sin(q(0));
+        const Real c0 = std::cos(q(0));
+
+        Vec6 bias = Vec6::Zero();
+        bias(0) = -s0 * q_dot(0) * q_dot(1);
+        bias(1) =  c0 * q_dot(0) * q_dot(1);
+        return bias;
+    }
+};
+
+// ============================================================================
+// Free joint: 6 DOF (3 translation + 3 rotation)
+// ============================================================================
+//
+// q = [tx, ty, tz, rx, ry, rz]:
+//   First three: translation in the joint frame.
+//   Last three: rotation vector (exponential map).
+//
+// This joint is used for a floating body (e.g., vehicle chassis).
+
+class FreeCoordJoint : public Joint {
+public:
+    FreeCoordJoint(const Transform3& x_pj, const Transform3& x_cj,
+                   BodyIndex parent, BodyIndex child)
+        : Joint(x_pj, x_cj, parent, child)
+    {}
+
+    int num_dof() const override { return 6; }
+
+    Transform3 joint_transform(const VecX& q) const override
+    {
+        MBD_ASSERT(q.size() == 6);
+        const Vec3 t(q(0), q(1), q(2));
+        const Vec3 r(q(3), q(4), q(5));
+        const Mat3 R = detail::exp_map_rotation(r);
+        return Transform3(R, t);
+    }
+
+    Eigen::Matrix<Real, 6, Eigen::Dynamic>
+    motion_subspace(const VecX& q) const override
+    {
+        MBD_ASSERT(q.size() == 6);
+        const Vec3 r(q(3), q(4), q(5));
+        const Mat3 E = detail::exp_map_jacobian(r);
+
+        Eigen::Matrix<Real, 6, 6> S;
+        S.setZero();
+
+        // Columns 0-2: translation (linear velocity in joint frame)
+        S.block<3,3>(3, 0) = Mat3::Identity();
+
+        // Columns 3-5: rotation (angular velocity via exponential map Jacobian)
+        S.block<3,3>(0, 3) = E;
+
+        return S;
+    }
+
+    Vec6 bias_acceleration(const VecX& q, const VecX& q_dot) const override
+    {
+        MBD_ASSERT(q.size() == 6 && q_dot.size() == 6);
+        const Vec3 r(q(3), q(4), q(5));
+        const Vec3 r_dot(q_dot(3), q_dot(4), q_dot(5));
+
+        Vec6 bias = Vec6::Zero();
+        // Only the rotation part has a bias (translation part is linear)
+        bias.head<3>() = detail::exp_map_bias(r, r_dot);
+        return bias;
+    }
+};
 } // namespace mbd

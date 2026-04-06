@@ -340,4 +340,230 @@ public:
     }
 };
 
+// ============================================================================
+// Coincident point constraint: 3 equations (p1_W = p2_W)
+// ============================================================================
+
+class CoincidentPointConstraint : public Constraint {
+public:
+    Vec3 point1_B;
+    Vec3 point2_B;
+
+    CoincidentPointConstraint(BodyIndex b1, BodyIndex b2,
+                              const Vec3& p1_local, const Vec3& p2_local)
+        : Constraint(b1, b2)
+        , point1_B(p1_local)
+        , point2_B(p2_local)
+    {}
+
+    int equation_count() const override { return 3; }
+
+    void evaluate(const MultibodySystem& system,
+                  Eigen::VectorXd& phi) const override
+    {
+        const auto& s1 = system.states[body1_idx];
+        const auto& s2 = system.states[body2_idx];
+
+        Vec3 r1_W = s1.pose_WB().rotate(point1_B);
+        Vec3 r2_W = s2.pose_WB().rotate(point2_B);
+
+        Vec3 p1_W = s1.p_WB + r1_W;
+        Vec3 p2_W = s2.p_WB + r2_W;
+
+        phi.resize(3);
+        phi = p2_W - p1_W;
+    }
+
+    void jacobian(const MultibodySystem& system,
+                  Eigen::MatrixXd& J1,
+                  Eigen::MatrixXd& J2) const override
+    {
+        J1.resize(3, 6);
+        J2.resize(3, 6);
+
+        const auto& s1 = system.states[body1_idx];
+        const auto& s2 = system.states[body2_idx];
+
+        Vec3 r1_W = s1.pose_WB().rotate(point1_B);
+        Vec3 r2_W = s2.pose_WB().rotate(point2_B);
+
+        // Phi = p2 - p1: same structure as revolute position rows
+        J1.block<3,3>(0,0) = -Mat3::Identity();
+        J1.block<3,3>(0,3) = skew(r1_W);
+
+        J2.block<3,3>(0,0) = Mat3::Identity();
+        J2.block<3,3>(0,3) = -skew(r2_W);
+    }
+
+    void velocity_bias(const MultibodySystem& system,
+                       Eigen::VectorXd& gamma) const override
+    {
+        const auto& s1 = system.states[body1_idx];
+        const auto& s2 = system.states[body2_idx];
+
+        Vec3 r1_W = s1.pose_WB().rotate(point1_B);
+        Vec3 r2_W = s2.pose_WB().rotate(point2_B);
+
+        Vec3 w1 = s1.w_WB;
+        Vec3 w2 = s2.w_WB;
+
+        gamma.resize(3);
+        gamma = w2.cross(w2.cross(r2_W)) - w1.cross(w1.cross(r1_W));
+    }
+};
+
+// ============================================================================
+// Point coordinate constraint: 1 equation (fixes X, Y, or Z of a body point)
+// ============================================================================
+
+class PointCoordinateConstraint : public Constraint {
+public:
+    Vec3 point_B;     ///< Point in body2's local frame
+    int axis;         ///< 0=X, 1=Y, 2=Z
+    Real target;      ///< Target world coordinate value
+
+    PointCoordinateConstraint(BodyIndex body_idx,
+                              const Vec3& point_local,
+                              int coord_axis,
+                              Real target_value)
+        : Constraint(kGroundIndex, body_idx)
+        , point_B(point_local)
+        , axis(coord_axis)
+        , target(target_value)
+    {
+        MBD_THROW_IF(axis < 0 || axis > 2,
+                     "PointCoordinateConstraint: axis must be 0, 1, or 2");
+    }
+
+    int equation_count() const override { return 1; }
+
+    void evaluate(const MultibodySystem& system,
+                  Eigen::VectorXd& phi) const override
+    {
+        const auto& s = system.states[body2_idx];
+        Vec3 p_W = s.p_WB + s.pose_WB().rotate(point_B);
+        phi.resize(1);
+        phi(0) = p_W(axis) - target;
+    }
+
+    void jacobian(const MultibodySystem& system,
+                  Eigen::MatrixXd& J1,
+                  Eigen::MatrixXd& J2) const override
+    {
+        J1.resize(1, 6);
+        J1.setZero();
+
+        J2.resize(1, 6);
+        J2.setZero();
+
+        const auto& s = system.states[body2_idx];
+        Vec3 r_W = s.pose_WB().rotate(point_B);
+
+        // Linear part: row 'axis' of identity
+        J2(0, axis) = 1.0;
+
+        // Angular part: row 'axis' of -skew(r_W)
+        Mat3 neg_skew_r = -skew(r_W);
+        J2(0, 3) = neg_skew_r(axis, 0);
+        J2(0, 4) = neg_skew_r(axis, 1);
+        J2(0, 5) = neg_skew_r(axis, 2);
+    }
+
+    void velocity_bias(const MultibodySystem& system,
+                       Eigen::VectorXd& gamma) const override
+    {
+        const auto& s = system.states[body2_idx];
+        Vec3 r_W = s.pose_WB().rotate(point_B);
+        Vec3 w = s.w_WB;
+
+        gamma.resize(1);
+        gamma(0) = (w.cross(w.cross(r_W)))(axis);
+    }
+};
+// ============================================================================
+// Strut line constraint: a fixed point must lie on a line attached to a body.
+// ============================================================================
+//
+// Used for McPherson strut kinematics. The strut top mount (fixed on ground)
+// must lie on the strut axis (rigidly attached to the upright body).
+//
+// Formulation: Phi = (T_W - S_W) x u_W = 0  (3 equations, rank 2)
+// where T_W is the fixed point, S_W is a point on the line (body frame),
+// and u_W is the line direction (body frame), both on body2.
+//
+// The QR solver in position kinematics handles the rank deficiency gracefully.
+// Velocity bias is zero (sufficient for kinematic analysis).
+
+class StrutLineConstraint : public Constraint {
+public:
+    Vec3 T_W;   ///< Fixed world point (strut top mount)
+    Vec3 S_B;   ///< Point on line in body2 frame (strut bottom attachment)
+    Vec3 u_B;   ///< Line direction in body2 frame (strut axis, normalized)
+
+    /// \param upright_idx Body index of the upright.
+    /// \param top_mount   Strut top mount position in world frame.
+    /// \param strut_bottom Strut lower attachment in upright body frame.
+    /// \param strut_axis  Strut axis direction in upright body frame (will be normalized).
+    StrutLineConstraint(BodyIndex upright_idx,
+                        const Vec3& top_mount,
+                        const Vec3& strut_bottom,
+                        const Vec3& strut_axis)
+        : Constraint(kGroundIndex, upright_idx)
+        , T_W(top_mount)
+        , S_B(strut_bottom)
+        , u_B(strut_axis.normalized())
+    {}
+
+    int equation_count() const override { return 3; }
+
+    void evaluate(const MultibodySystem& system,
+                  Eigen::VectorXd& phi) const override
+    {
+        const auto& s = system.states[body2_idx];
+        const Vec3 S_W = s.p_WB + s.pose_WB().rotate(S_B);
+        const Vec3 u_W = s.pose_WB().rotate(u_B);
+        const Vec3 e   = T_W - S_W;
+
+        phi.resize(3);
+        phi = e.cross(u_W);
+    }
+
+    void jacobian(const MultibodySystem& system,
+                  Eigen::MatrixXd& J1,
+                  Eigen::MatrixXd& J2) const override
+    {
+        J1.resize(3, 6);
+        J1.setZero();
+
+        J2.resize(3, 6);
+
+        const auto& s = system.states[body2_idx];
+        const Vec3 r_s = s.pose_WB().rotate(S_B);
+        const Vec3 u_W = s.pose_WB().rotate(u_B);
+        const Vec3 S_W = s.p_WB + r_s;
+        const Vec3 e   = T_W - S_W;
+
+        // Phi = e x u_W
+        // d(Phi)/d(p2): delta_e = -delta_p, u_W fixed w.r.t. p2
+        //   delta(e x u) = (-delta_p) x u = skew(u) * delta_p
+        J2.block<3,3>(0, 0) = skew(u_W);
+
+        // d(Phi)/d(theta2): two contributions
+        //   delta_e from rotating S: delta_e_theta = skew(r_s) * delta_theta
+        //   delta_u from rotating u: delta_u_theta = -skew(u_W) * delta_theta
+        //   delta(Phi) = delta_e_theta x u_W + e x delta_u_theta
+        //              = (-skew(u_W)*skew(r_s) - skew(e)*skew(u_W)) * delta_theta
+        J2.block<3,3>(0, 3) = -skew(u_W) * skew(r_s) - skew(e) * skew(u_W);
+    }
+
+    void velocity_bias(const MultibodySystem& system,
+                       Eigen::VectorXd& gamma) const override
+    {
+        (void)system;
+        // Zero bias: sufficient for position-level kinematic analysis.
+        gamma.resize(3);
+        gamma.setZero();
+    }
+};
+
 } // namespace mbd

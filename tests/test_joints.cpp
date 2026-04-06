@@ -3,6 +3,8 @@
 #include <Eigen/Geometry>
 
 #include "mbd/joint.hpp"
+#include "mbd/system.hpp"
+#include "mbd/simulator.hpp"
 
 using Catch::Matchers::WithinAbs;
 
@@ -262,7 +264,7 @@ TEST_CASE("PrismaticCoordJoint with rotated joint frame slides along world Y",
     // Rotate joint frame so that joint Z aligns with parent Y
     // Rotation: 90 deg about X maps Z -> Y
     // Actually Rx(90): Y->-Z, Z->Y. So joint Z maps to parent Y. Correct.
-    Mat3 R_90x = Eigen::AngleAxisd(pi / 2.0, Vec3::UnitX()).toRotationMatrix();
+    Mat3 R_90x = Eigen::AngleAxisd(-pi / 2.0, Vec3::UnitX()).toRotationMatrix();
     Transform3 X_PJ = Transform3::FromRotation(R_90x);
     Transform3 X_CJ = Transform3::FromRotation(R_90x);
 
@@ -347,4 +349,416 @@ TEST_CASE("Simple joints have zero bias acceleration", "[joint]")
         REQUIRE_THAT(bias_rev(i), WithinAbs(0.0, eps));
         REQUIRE_THAT(bias_pri(i), WithinAbs(0.0, eps));
     }
+}
+
+// ============================================================================
+// SphericalCoordJoint tests
+// ============================================================================
+
+TEST_CASE("SphericalCoordJoint at q=0 gives identity", "[joint][spherical]")
+{
+    using namespace mbd;
+
+    SphericalCoordJoint joint(Transform3::Identity(), Transform3::Identity(),
+                              kGroundIndex, 1);
+
+    REQUIRE(joint.num_dof() == 3);
+
+    VecX q = VecX::Zero(3);
+    Transform3 X_J = joint.joint_transform(q);
+
+    require_transform_near(X_J, Transform3::Identity(), eps);
+}
+
+TEST_CASE("SphericalCoordJoint rotation about Z matches revolute",
+          "[joint][spherical]")
+{
+    using namespace mbd;
+
+    SphericalCoordJoint sph(Transform3::Identity(), Transform3::Identity(),
+                            kGroundIndex, 1);
+    RevoluteCoordJoint  rev(Transform3::Identity(), Transform3::Identity(),
+                            kGroundIndex, 1);
+
+    // Rotate pi/3 about Z using both joints
+    VecX q_sph(3);
+    q_sph << 0.0, 0.0, pi / 3.0;
+
+    VecX q_rev(1);
+    q_rev << pi / 3.0;
+
+    Transform3 X_sph = sph.joint_transform(q_sph);
+    Transform3 X_rev = rev.joint_transform(q_rev);
+
+    require_transform_near(X_sph, X_rev, eps);
+}
+
+TEST_CASE("SphericalCoordJoint rotation about arbitrary axis",
+          "[joint][spherical]")
+{
+    using namespace mbd;
+
+    SphericalCoordJoint joint(Transform3::Identity(), Transform3::Identity(),
+                              kGroundIndex, 1);
+
+    // Rotate pi/2 about (1,1,0)/sqrt(2)
+    const Real angle = pi / 2.0;
+    const Vec3 axis = Vec3(1.0, 1.0, 0.0).normalized();
+    VecX q(3);
+    q = axis * angle;
+
+    Transform3 X_J = joint.joint_transform(q);
+
+    // Reference
+    Mat3 R_ref = Eigen::AngleAxisd(angle, axis).toRotationMatrix();
+    Transform3 X_ref(R_ref, Vec3::Zero());
+
+    require_transform_near(X_J, X_ref, eps);
+}
+
+TEST_CASE("SphericalCoordJoint motion subspace at q=0 is identity (top 3 rows)",
+          "[joint][spherical]")
+{
+    using namespace mbd;
+
+    SphericalCoordJoint joint(Transform3::Identity(), Transform3::Identity(),
+                              kGroundIndex, 1);
+
+    VecX q = VecX::Zero(3);
+    auto S = joint.motion_subspace(q);
+
+    REQUIRE(S.rows() == 6);
+    REQUIRE(S.cols() == 3);
+
+    // At q=0, E = I, so S = [I; 0]
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            Real expected = (i == j) ? 1.0 : 0.0;
+            REQUIRE_THAT(S(i, j), WithinAbs(expected, eps));
+        }
+    }
+    for (int i = 3; i < 6; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            REQUIRE_THAT(S(i, j), WithinAbs(0.0, eps));
+        }
+    }
+}
+
+TEST_CASE("SphericalCoordJoint in simulator conserves energy",
+          "[joint][spherical][energy]")
+{
+    using namespace mbd;
+
+    MultibodySystem sys;
+    auto inertia = RigidBodyInertia::from_solid_box(1.0, Vec3(0.3, 0.2, 0.1));
+    sys.add_body(inertia, RigidBodyState{}, "ball", kGroundIndex);
+
+    // Spherical joint at origin, child COM offset 0.5m along child X
+    sys.add_joint(std::make_unique<SphericalCoordJoint>(
+        Transform3::Identity(),
+        Transform3::FromTranslation(Vec3(-0.5, 0.0, 0.0)),
+        kGroundIndex, 1));
+
+    Simulator sim(sys);
+    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
+    sim.method = IntegrationMethod::RK4;
+    sim.initialize();
+
+    // Start tilted, with some angular velocity about Y
+    sys.q << 0.0, 0.3, 0.0;
+    sys.q_dot << 0.0, 1.0, 0.0;
+    sys.compute_kinematics();
+
+    auto compute_energy = [&]() -> Real {
+        sys.compute_kinematics();
+        const MatX M = compute_mass_matrix(sys);
+        const Real KE = 0.5 * sys.q_dot.transpose() * M * sys.q_dot;
+        const auto& st = sys.states[1];
+        const Mat3 R = st.q_WB.toRotationMatrix();
+        const Vec3 com_W = st.p_WB + R * inertia.com_B;
+        return KE + inertia.mass * g_accel * com_W.y();
+    };
+
+    const Real E0 = compute_energy();
+    sim.run(2.0, 0.001);
+    const Real E_final = compute_energy();
+
+    const Real rel_error = std::abs(E_final - E0) / std::abs(E0);
+    REQUIRE(rel_error < 1e-4);
+}
+
+// ============================================================================
+// UniversalCoordJoint tests
+// ============================================================================
+
+TEST_CASE("UniversalCoordJoint at q=0 gives identity", "[joint][universal]")
+{
+    using namespace mbd;
+
+    UniversalCoordJoint joint(Transform3::Identity(), Transform3::Identity(),
+                              kGroundIndex, 1);
+
+    REQUIRE(joint.num_dof() == 2);
+
+    VecX q = VecX::Zero(2);
+    Transform3 X_J = joint.joint_transform(q);
+
+    require_transform_near(X_J, Transform3::Identity(), eps);
+}
+
+TEST_CASE("UniversalCoordJoint single-axis rotations match revolute",
+          "[joint][universal]")
+{
+    using namespace mbd;
+
+    UniversalCoordJoint uni(Transform3::Identity(), Transform3::Identity(),
+                            kGroundIndex, 1);
+
+    // q = (theta_z, 0): pure rotation about Z
+    {
+        VecX q(2);
+        q << pi / 4.0, 0.0;
+        Transform3 X_J = uni.joint_transform(q);
+
+        Mat3 R_ref = Eigen::AngleAxisd(pi / 4.0, Vec3::UnitZ()).toRotationMatrix();
+        Transform3 X_ref(R_ref, Vec3::Zero());
+
+        require_transform_near(X_J, X_ref, eps);
+    }
+
+    // q = (0, theta_x): pure rotation about X
+    {
+        VecX q(2);
+        q << 0.0, pi / 3.0;
+        Transform3 X_J = uni.joint_transform(q);
+
+        Mat3 R_ref = Eigen::AngleAxisd(pi / 3.0, Vec3::UnitX()).toRotationMatrix();
+        Transform3 X_ref(R_ref, Vec3::Zero());
+
+        require_transform_near(X_J, X_ref, eps);
+    }
+}
+
+TEST_CASE("UniversalCoordJoint combined rotation is Rz * Rx",
+          "[joint][universal]")
+{
+    using namespace mbd;
+
+    UniversalCoordJoint joint(Transform3::Identity(), Transform3::Identity(),
+                              kGroundIndex, 1);
+
+    VecX q(2);
+    q << 0.5, 0.7;
+
+    Transform3 X_J = joint.joint_transform(q);
+
+    Mat3 Rz = Eigen::AngleAxisd(0.5, Vec3::UnitZ()).toRotationMatrix();
+    Mat3 Rx = Eigen::AngleAxisd(0.7, Vec3::UnitX()).toRotationMatrix();
+    Transform3 X_ref(Rz * Rx, Vec3::Zero());
+
+    require_transform_near(X_J, X_ref, eps);
+}
+
+TEST_CASE("UniversalCoordJoint motion subspace at q=0",
+          "[joint][universal]")
+{
+    using namespace mbd;
+
+    UniversalCoordJoint joint(Transform3::Identity(), Transform3::Identity(),
+                              kGroundIndex, 1);
+
+    VecX q = VecX::Zero(2);
+    auto S = joint.motion_subspace(q);
+
+    REQUIRE(S.rows() == 6);
+    REQUIRE(S.cols() == 2);
+
+    // Column 0: [0,0,1, 0,0,0] (Z rotation)
+    REQUIRE_THAT(S(0, 0), WithinAbs(0.0, eps));
+    REQUIRE_THAT(S(1, 0), WithinAbs(0.0, eps));
+    REQUIRE_THAT(S(2, 0), WithinAbs(1.0, eps));
+
+    // Column 1: [1,0,0, 0,0,0] (X rotation, since Rz(0) = I)
+    REQUIRE_THAT(S(0, 1), WithinAbs(1.0, eps));
+    REQUIRE_THAT(S(1, 1), WithinAbs(0.0, eps));
+    REQUIRE_THAT(S(2, 1), WithinAbs(0.0, eps));
+
+    // Linear rows zero
+    for (int j = 0; j < 2; ++j) {
+        REQUIRE_THAT(S(3, j), WithinAbs(0.0, eps));
+        REQUIRE_THAT(S(4, j), WithinAbs(0.0, eps));
+        REQUIRE_THAT(S(5, j), WithinAbs(0.0, eps));
+    }
+}
+
+// ============================================================================
+// FreeCoordJoint tests
+// ============================================================================
+
+TEST_CASE("FreeCoordJoint at q=0 gives identity", "[joint][free]")
+{
+    using namespace mbd;
+
+    FreeCoordJoint joint(Transform3::Identity(), Transform3::Identity(),
+                         kGroundIndex, 1);
+
+    REQUIRE(joint.num_dof() == 6);
+
+    VecX q = VecX::Zero(6);
+    Transform3 X_J = joint.joint_transform(q);
+
+    require_transform_near(X_J, Transform3::Identity(), eps);
+}
+
+TEST_CASE("FreeCoordJoint pure translation", "[joint][free]")
+{
+    using namespace mbd;
+
+    FreeCoordJoint joint(Transform3::Identity(), Transform3::Identity(),
+                         kGroundIndex, 1);
+
+    VecX q = VecX::Zero(6);
+    q(0) = 1.0;
+    q(1) = 2.0;
+    q(2) = 3.0;
+
+    Transform3 X_J = joint.joint_transform(q);
+
+    Vec3 origin = X_J * Vec3::Zero();
+    require_vec3_near(origin, Vec3(1.0, 2.0, 3.0), eps);
+
+    // No rotation
+    Vec3 x_axis = X_J.rotate(Vec3::UnitX());
+    require_vec3_near(x_axis, Vec3::UnitX(), eps);
+}
+
+TEST_CASE("FreeCoordJoint pure rotation matches spherical", "[joint][free]")
+{
+    using namespace mbd;
+
+    FreeCoordJoint free_j(Transform3::Identity(), Transform3::Identity(),
+                          kGroundIndex, 1);
+    SphericalCoordJoint sph_j(Transform3::Identity(), Transform3::Identity(),
+                              kGroundIndex, 1);
+
+    VecX q_free(6);
+    q_free << 0.0, 0.0, 0.0, 0.3, -0.5, 0.7;
+
+    VecX q_sph(3);
+    q_sph << 0.3, -0.5, 0.7;
+
+    Transform3 X_free = free_j.joint_transform(q_free);
+    Transform3 X_sph  = sph_j.joint_transform(q_sph);
+
+    require_transform_near(X_free, X_sph, eps);
+}
+
+TEST_CASE("FreeCoordJoint motion subspace at q=0 is 6x6 identity-like",
+          "[joint][free]")
+{
+    using namespace mbd;
+
+    FreeCoordJoint joint(Transform3::Identity(), Transform3::Identity(),
+                         kGroundIndex, 1);
+
+    VecX q = VecX::Zero(6);
+    auto S = joint.motion_subspace(q);
+
+    REQUIRE(S.rows() == 6);
+    REQUIRE(S.cols() == 6);
+
+    // At q=0: columns 0-2 map to linear velocity (rows 3-5)
+    //         columns 3-5 map to angular velocity (rows 0-2) via E=I
+    Eigen::Matrix<Real, 6, 6> S_expected;
+    S_expected.setZero();
+    S_expected.block<3,3>(3, 0) = Mat3::Identity(); // linear
+    S_expected.block<3,3>(0, 3) = Mat3::Identity(); // angular
+
+    for (int i = 0; i < 6; ++i) {
+        for (int j = 0; j < 6; ++j) {
+            REQUIRE_THAT(S(i, j), WithinAbs(S_expected(i, j), eps));
+        }
+    }
+}
+
+TEST_CASE("FreeCoordJoint floating body in free fall", "[joint][free][dynamics]")
+{
+    using namespace mbd;
+
+    MultibodySystem sys;
+    auto inertia = RigidBodyInertia::from_solid_box(2.0, Vec3(0.3, 0.2, 0.1));
+    sys.add_body(inertia, RigidBodyState{}, "chassis", kGroundIndex);
+
+    sys.add_joint(std::make_unique<FreeCoordJoint>(
+        Transform3::Identity(), Transform3::Identity(),
+        kGroundIndex, 1));
+
+    Simulator sim(sys);
+    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
+    sim.method = IntegrationMethod::RK4;
+    sim.initialize();
+
+    // Start at (0, 10, 0), no rotation, no velocity
+    sys.q << 0.0, 10.0, 0.0, 0.0, 0.0, 0.0;
+    sys.q_dot.setZero();
+    sys.compute_kinematics();
+
+    const Real T = 1.0;
+    sim.run(T, 0.001);
+
+    // Translation: free fall along Y
+    const Real y_expected = 10.0 - 0.5 * g_accel * T * T;
+    const Real vy_expected = -g_accel * T;
+
+    REQUIRE_THAT(sys.q(0), WithinAbs(0.0, 1e-6));         // x unchanged
+    REQUIRE_THAT(sys.q(1), WithinAbs(y_expected, 1e-5));   // y = free fall
+    REQUIRE_THAT(sys.q(2), WithinAbs(0.0, 1e-6));         // z unchanged
+
+    REQUIRE_THAT(sys.q_dot(1), WithinAbs(vy_expected, 1e-5));
+
+    // No rotation
+    REQUIRE_THAT(sys.q(3), WithinAbs(0.0, 1e-6));
+    REQUIRE_THAT(sys.q(4), WithinAbs(0.0, 1e-6));
+    REQUIRE_THAT(sys.q(5), WithinAbs(0.0, 1e-6));
+
+    // World position matches
+    require_vec3_near(sys.states[1].p_WB, Vec3(0.0, y_expected, 0.0), 1e-5);
+}
+
+TEST_CASE("FreeCoordJoint spinning body conserves angular momentum",
+          "[joint][free][dynamics]")
+{
+    using namespace mbd;
+
+    MultibodySystem sys;
+    auto inertia = RigidBodyInertia::from_solid_box(1.0, Vec3(0.3, 0.2, 0.1));
+    sys.add_body(inertia, RigidBodyState{}, "spinner", kGroundIndex);
+
+    sys.add_joint(std::make_unique<FreeCoordJoint>(
+        Transform3::Identity(), Transform3::Identity(),
+        kGroundIndex, 1));
+
+    Simulator sim(sys);
+    sim.set_gravity(Vec3::Zero()); // No gravity — pure rotation
+    sim.method = IntegrationMethod::RK4;
+    sim.initialize();
+
+    // Start spinning about X at 5 rad/s
+    sys.q.setZero();
+    sys.q_dot << 0.0, 0.0, 0.0, 5.0, 0.0, 0.0;
+    sys.compute_kinematics();
+
+    // Compute initial angular momentum
+    const Mat3 R0 = sys.states[1].q_WB.toRotationMatrix();
+    const Mat3 I_W0 = R0 * inertia.I_com_B * R0.transpose();
+    const Vec3 L0 = I_W0 * sys.states[1].w_WB;
+
+    sim.run(2.0, 0.001);
+
+    // Compute final angular momentum
+    const Mat3 R1 = sys.states[1].q_WB.toRotationMatrix();
+    const Mat3 I_W1 = R1 * inertia.I_com_B * R1.transpose();
+    const Vec3 L1 = I_W1 * sys.states[1].w_WB;
+
+    require_vec3_near(L1, L0, 1e-4);
 }
