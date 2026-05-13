@@ -566,4 +566,114 @@ public:
     }
 };
 
+// ============================================================================
+// Strut line constraint (two-body version): a point on body1 must lie on a
+// line attached to body2.
+// ============================================================================
+//
+// Used for McPherson strut kinematics where the strut top mount is on a
+// moving body (chassis) rather than fixed in world frame.
+//
+// Phi = (T_W - S_W) x u_W = 0  (3 equations, rank 2)
+// where:
+//   T_W = body1_pose * point1_B  (top mount position, typically on chassis)
+//   S_W = body2_pose * point2_B  (strut bottom attachment on upright)
+//   u_W = body2_rotation * u_B   (strut axis direction, in upright frame)
+
+class StrutLineTwoBodyConstraint : public Constraint {
+public:
+    Vec3 point1_B;  ///< Strut top mount in body1 (chassis) frame
+    Vec3 point2_B;  ///< Strut bottom attachment in body2 (upright) frame
+    Vec3 axis_B;    ///< Strut axis direction in body2 frame (normalized)
+
+    StrutLineTwoBodyConstraint(BodyIndex chassis_idx,
+                               BodyIndex upright_idx,
+                               const Vec3& top_mount_chassis,
+                               const Vec3& strut_bottom_upright,
+                               const Vec3& strut_axis_upright)
+        : Constraint(chassis_idx, upright_idx)
+        , point1_B(top_mount_chassis)
+        , point2_B(strut_bottom_upright)
+        , axis_B(strut_axis_upright.normalized())
+    {}
+
+    int equation_count() const override { return 3; }
+
+    void evaluate(const MultibodySystem& system,
+                  Eigen::VectorXd& phi) const override
+    {
+        const auto& s1 = system.states[body1_idx];
+        const auto& s2 = system.states[body2_idx];
+
+        const Vec3 T_W = s1.p_WB + s1.pose_WB().rotate(point1_B);
+        const Vec3 S_W = s2.p_WB + s2.pose_WB().rotate(point2_B);
+        const Vec3 u_W = s2.pose_WB().rotate(axis_B);
+        const Vec3 e   = T_W - S_W;
+
+        phi.resize(3);
+        phi = e.cross(u_W);
+    }
+
+    void jacobian(const MultibodySystem& system,
+                  Eigen::MatrixXd& J1,
+                  Eigen::MatrixXd& J2) const override
+    {
+        J1.resize(3, 6);
+        J2.resize(3, 6);
+
+        const auto& s1 = system.states[body1_idx];
+        const auto& s2 = system.states[body2_idx];
+
+        const Vec3 r1_W = s1.pose_WB().rotate(point1_B);
+        const Vec3 r2_W = s2.pose_WB().rotate(point2_B);
+        const Vec3 u_W  = s2.pose_WB().rotate(axis_B);
+        const Vec3 T_W  = s1.p_WB + r1_W;
+        const Vec3 S_W  = s2.p_WB + r2_W;
+        const Vec3 e    = T_W - S_W;
+
+        // d(Phi)/d(body1): T moves with body1 translation and rotation
+        //   delta_e = delta_T = delta_p1 + skew(r1_W) * delta_theta1_inv...
+        //   Wait: delta(R*point) = skew(omega) * R*point, which in terms of
+        //   small-angle delta_theta is: delta(R*point) = -skew(R*point)*delta_theta
+        //   Standard: for body 1 at pose (p1, R1), perturbation (dp1, dtheta1):
+        //     delta(point_W) = dp1 + dtheta1 x r1_W = dp1 - skew(r1_W) * dtheta1
+        // So delta_T = dp1 - skew(r1_W) * dtheta1
+        // delta(e x u) = (delta_T) x u  (u unchanged by body1)
+        //              = skew(dp1) * u - skew(skew(r1_W)*dtheta1) * u... no
+        // Better: delta(e x u) = -skew(u) * delta_e (since a x b = -b x a and d(a x b) = da x b)
+        //                      = -skew(u_W) * (dp1 - skew(r1_W)*dtheta1)
+        //                      = -skew(u_W) * dp1 + skew(u_W)*skew(r1_W)*dtheta1
+        J1.block<3,3>(0, 0) = -skew(u_W);
+        J1.block<3,3>(0, 3) =  skew(u_W) * skew(r1_W);
+
+        // d(Phi)/d(body2): S and u both depend on body2
+        //   delta_e = -delta_S = -(dp2 - skew(r2_W)*dtheta2) = -dp2 + skew(r2_W)*dtheta2
+        //   delta_u = -skew(u_W) * dtheta2
+        //   delta(e x u) = delta_e x u + e x delta_u
+        //                = -skew(u) * delta_e + skew(e) * (-delta_u)
+        //   Wait, d(a x b) = da x b + a x db, so delta(e x u) = (delta_e) x u + e x (delta_u)
+        //   In matrix form: delta(e x u) = -skew(u) * delta_e + ... no, delta_e x u = skew(delta_e)*u
+        //     but we want it as matrix times delta_e: delta_e x u = -u x delta_e = -skew(u_W) * ... hmm
+        //   Let me redo: a x b = skew(a) * b, so delta(e x u) = skew(delta_e)*u + skew(e)*delta_u
+        //                                                     = -skew(u) * delta_e + skew(e) * delta_u
+        //     (using skew(a)*b = -skew(b)*a)
+        //   So for body2:
+        //   delta_e = -dp2 + skew(r2_W)*dtheta2
+        //   delta_u = -skew(u_W) * dtheta2
+        //   delta(Phi) = -skew(u_W) * (-dp2 + skew(r2_W)*dtheta2) + skew(e) * (-skew(u_W) * dtheta2)
+        //              =  skew(u_W) * dp2 - skew(u_W)*skew(r2_W)*dtheta2 - skew(e)*skew(u_W)*dtheta2
+        J2.block<3,3>(0, 0) = skew(u_W);
+        J2.block<3,3>(0, 3) = -skew(u_W) * skew(r2_W) - skew(e) * skew(u_W);
+    }
+
+    void velocity_bias(const MultibodySystem& system,
+                       Eigen::VectorXd& gamma) const override
+    {
+        (void)system;
+        // Zero bias: sufficient for position-level kinematic analysis.
+        gamma.resize(3);
+        gamma.setZero();
+    }
+};
+
 } // namespace mbd

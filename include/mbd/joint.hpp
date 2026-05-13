@@ -394,13 +394,20 @@ public:
     {
         MBD_ASSERT(q.size() == 6);
         const Vec3 r(q(3), q(4), q(5));
-        const Mat3 E = detail::exp_map_jacobian(r);
+        const Mat3 E   = detail::exp_map_jacobian(r);
+        const Mat3 R_J = detail::exp_map_rotation(r);
 
         Eigen::Matrix<Real, 6, 6> S;
         S.setZero();
 
-        // Columns 0-2: translation (linear velocity in joint frame)
-        S.block<3,3>(3, 0) = Mat3::Identity();
+        // Columns 0-2: translation (linear velocity in PARENT frame).
+        // Algorithms multiply by R_WJ = R_WP * R_PJ * R_J(q), so to get
+        // v_rel_W = R_WP * R_PJ * q_dot(0:3) (parent-frame velocity in world),
+        // we need S_lin = R_J^T * R_PJ^T. For our usage X_PJ = identity, so
+        // R_PJ = I and S_lin = R_J^T.
+        // This convention is consistent with q(0:3) being parent-frame
+        // translation as set in joint_transform().
+        S.block<3,3>(3, 0) = R_J.transpose();
 
         // Columns 3-5: rotation (angular velocity via exponential map Jacobian)
         S.block<3,3>(0, 3) = E;
@@ -413,10 +420,29 @@ public:
         MBD_ASSERT(q.size() == 6 && q_dot.size() == 6);
         const Vec3 r(q(3), q(4), q(5));
         const Vec3 r_dot(q_dot(3), q_dot(4), q_dot(5));
+        const Vec3 t_dot(q_dot(0), q_dot(1), q_dot(2));
 
         Vec6 bias = Vec6::Zero();
-        // Only the rotation part has a bias (translation part is linear)
+
+        // Angular bias: dE/dt * r_dot (exponential map S depends on r)
         bias.head<3>() = detail::exp_map_bias(r, r_dot);
+
+        // Linear bias: dS_lin/dt * q_dot(0:3) where S_lin = R_J^T.
+        // Derivation: we want a_rel_lin_W (joint-frame contribution to body
+        // acceleration in world) to equal q_ddot(0:3) when no external effects.
+        // Algorithm computes a_rel_lin_W = R_WJ * (S_lin * q_ddot(0:3) + c_bias_lin)
+        // and adds w_body × v_rel_W. Working through the math (see derivation
+        // notes), the linear bias must be:
+        //   c_bias_lin = -skew(E*r_dot) * R_J^T * t_dot
+        // This cancels the spurious w × v term that would otherwise appear
+        // when q_dot is constant in the parent frame.
+        const Mat3 E   = detail::exp_map_jacobian(r);
+        const Mat3 R_J = detail::exp_map_rotation(r);
+        const Vec3 omega_J = E * r_dot;
+        const Vec3 v_in_joint = R_J.transpose() * t_dot;
+
+        bias.tail<3>() = -omega_J.cross(v_in_joint);
+
         return bias;
     }
 };

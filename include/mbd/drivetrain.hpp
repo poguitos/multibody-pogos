@@ -1,12 +1,11 @@
 #pragma once
 
 // Drivetrain model: engine, gearbox, differential, brakes, wheel spin dynamics.
-//
-// The drivetrain manages wheel angular velocities and couples to the chassis
-// purely through tire slip forces. It does NOT add forces to the MBS directly.
 
 #include "mbd/core.hpp"
+#include "mbd/drivetrain_params.hpp"
 #include "mbd/vehicle.hpp"
+#include "mbd/vehicle_template.hpp"
 #include "mbd/simulator.hpp"
 
 #include <array>
@@ -14,59 +13,6 @@
 #include <cmath>
 
 namespace mbd {
-
-// ============================================================================
-// Drive layout
-// ============================================================================
-
-enum class DriveLayout { RWD, FWD, AWD };
-
-// ============================================================================
-// Engine parameters
-// ============================================================================
-
-struct EngineParams {
-    Real max_torque{400.0};            ///< Peak torque [Nm]
-    Real idle_rpm{1000.0};
-    Real peak_torque_rpm{4500.0};      ///< RPM at peak torque
-    Real redline_rpm{7000.0};
-    Real idle_torque_fraction{0.4};    ///< Fraction of max_torque at idle
-    Real redline_torque_fraction{0.7}; ///< Fraction of max_torque at redline
-    Real inertia{0.15};               ///< Crankshaft + flywheel [kg*m^2]
-};
-
-// ============================================================================
-// Gearbox parameters
-// ============================================================================
-
-struct GearboxParams {
-    std::vector<Real> ratios{{3.5, 2.3, 1.7, 1.3, 1.0, 0.8}};
-    Real final_drive{3.5};
-    Real efficiency{0.92};
-    Real shift_up_rpm{6500.0};
-    Real shift_down_rpm{2000.0};
-};
-
-// ============================================================================
-// Brake parameters
-// ============================================================================
-
-struct BrakeParams {
-    Real max_torque{3000.0};     ///< Maximum brake torque per wheel [Nm]
-    Real front_bias{0.65};       ///< Front brake proportion (0..1)
-};
-
-// ============================================================================
-// Full drivetrain parameters
-// ============================================================================
-
-struct DrivetrainParams {
-    EngineParams engine;
-    GearboxParams gearbox;
-    BrakeParams brakes;
-    DriveLayout layout{DriveLayout::RWD};
-    Real front_torque_split{0.4}; ///< For AWD: fraction of torque to front (0..1)
-};
 
 // ============================================================================
 // Drivetrain class
@@ -337,6 +283,152 @@ public:
             step(dt, vm);
         };
     }
+
+    /// Initialize from a VehicleHandle (template-built vehicle).
+    void initialize(const MultibodySystem& sys, const VehicleHandle& vh)
+    {
+        const Vec3 fwd_W = sys.states[vh.chassis_body].q_WB * Vec3::UnitX();
+        const Real Vx = sys.states[vh.chassis_body].v_WB.dot(fwd_W);
+        const Real R_eff = vh.tmpl.front_axle.tire_free_radius * Real(0.97);
+        const Real omega_init = std::max(Vx, Real(0.0)) / R_eff;
+
+        for (int c = 0; c < 4; ++c) {
+            wheel_omega[c] = omega_init;
+        }
+
+        if (Vx < Real(0.5)) {
+            current_gear = 1;
+        } else {
+            const Real rpm_target = (params.engine.peak_torque_rpm +
+                                     params.engine.idle_rpm) * Real(0.5);
+            for (int g = num_gears(); g >= 1; --g) {
+                current_gear = g;
+                if (omega_to_rpm(omega_init) >= rpm_target) break;
+            }
+        }
+        engine_rpm = std::max(omega_to_rpm(omega_init), params.engine.idle_rpm);
+    }
+
+    /// Connect to a simulator using a VehicleHandle.
+    void connect(Simulator& sim, const VehicleHandle& vh)
+    {
+        sim.pre_force_callback = [this, &vh](MultibodySystem&, Real) {
+            for (int c = 0; c < 4; ++c) {
+                if (is_driven(c)) {
+                    vh.corners[c].tire->omega_wheel = wheel_omega[c];
+                    vh.corners[c].tire->auto_free_roll = false;
+                } else {
+                    vh.corners[c].tire->auto_free_roll = true;
+                }
+            }
+        };
+
+        sim.post_step_callback = [this, &vh](MultibodySystem&, Real dt) {
+            step_vh(dt, vh);
+        };
+    }
+
+private:
+    /// Step using VehicleHandle.
+    void step_vh(Real dt, const VehicleHandle& vh)
+    {
+        const auto& ep = params.engine;
+        const auto& gp = params.gearbox;
+        const auto& bp = params.brakes;
+
+        Real omega_driven_avg = Real(0.0);
+        int n_driven = 0;
+        for (int c = 0; c < 4; ++c) {
+            if (is_driven(c)) {
+                omega_driven_avg += wheel_omega[c];
+                ++n_driven;
+            }
+        }
+        if (n_driven > 0) omega_driven_avg /= n_driven;
+
+        engine_rpm = std::max(omega_to_rpm(omega_driven_avg), ep.idle_rpm);
+
+        if (engine_rpm > gp.shift_up_rpm && current_gear < num_gears()) {
+            current_gear++;
+            engine_rpm = omega_to_rpm(omega_driven_avg);
+        } else if (engine_rpm < gp.shift_down_rpm && current_gear > 1) {
+            current_gear--;
+            engine_rpm = omega_to_rpm(omega_driven_avg);
+        }
+        engine_rpm = std::max(engine_rpm, ep.idle_rpm);
+
+        engine_torque_out = compute_engine_torque(engine_rpm, throttle, ep);
+
+        const Real T_at_wheels = engine_torque_out * total_ratio() * gp.efficiency;
+
+        drive_torque.fill(0.0);
+        switch (params.layout) {
+            case DriveLayout::RWD:
+                drive_torque[2] = T_at_wheels * Real(0.5);
+                drive_torque[3] = T_at_wheels * Real(0.5);
+                break;
+            case DriveLayout::FWD:
+                drive_torque[0] = T_at_wheels * Real(0.5);
+                drive_torque[1] = T_at_wheels * Real(0.5);
+                break;
+            case DriveLayout::AWD: {
+                const Real T_front = T_at_wheels * params.front_torque_split;
+                const Real T_rear  = T_at_wheels * (Real(1.0) - params.front_torque_split);
+                drive_torque[0] = T_front * Real(0.5);
+                drive_torque[1] = T_front * Real(0.5);
+                drive_torque[2] = T_rear  * Real(0.5);
+                drive_torque[3] = T_rear  * Real(0.5);
+                break;
+            }
+        }
+
+        const Real clamped_brake = std::clamp(brake, Real(0.0), Real(1.0));
+        const Real T_brake_total = clamped_brake * bp.max_torque;
+        const Real T_brake_front = T_brake_total * bp.front_bias;
+        const Real T_brake_rear  = T_brake_total * (Real(1.0) - bp.front_bias);
+
+        brake_torque_out[0] = T_brake_front;
+        brake_torque_out[1] = T_brake_front;
+        brake_torque_out[2] = T_brake_rear;
+        brake_torque_out[3] = T_brake_rear;
+
+        for (int c = 0; c < 4; ++c) {
+            const Real R_eff = vh.tmpl.front_axle.tire_free_radius -
+                               Real(0.5) * vh.tire(c)->get_deflection();
+            const Real Fx = vh.tire(c)->get_Fx();
+
+            const Real I_eff = compute_effective_inertia(c);
+
+            Real T_brake_applied = brake_torque_out[c];
+            if (wheel_omega[c] > Real(0.0)) {
+                T_brake_applied = -T_brake_applied;
+            } else if (wheel_omega[c] < Real(0.0)) {
+                // positive to decelerate
+            } else {
+                T_brake_applied = Real(0.0);
+            }
+
+            const Real T_net = drive_torque[c] + T_brake_applied - Fx * R_eff;
+            Real omega_new = wheel_omega[c] + (T_net / I_eff) * dt;
+
+            if (clamped_brake > Real(0.01)) {
+                if (wheel_omega[c] >= Real(0.0) && omega_new < Real(0.0)) {
+                    omega_new = Real(0.0);
+                } else if (wheel_omega[c] <= Real(0.0) && omega_new > Real(0.0)) {
+                    omega_new = Real(0.0);
+                }
+            }
+
+            if (omega_new < Real(0.0) && drive_torque[c] >= Real(0.0)) {
+                omega_new = Real(0.0);
+            }
+
+            wheel_omega[c] = omega_new;
+        }
+    }
 };
 
-} // namespace mbd
+    
+};
+
+ // namespace mbd

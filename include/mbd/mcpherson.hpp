@@ -121,6 +121,81 @@ inline McPhersonCorner build_mcpherson_corner(
     return mc;
 }
 
+// ============================================================================
+// Dynamic McPherson corner: parent is chassis (not ground)
+// ============================================================================
+
+/// Build a McPherson corner for dynamic simulation, parented to a chassis body.
+///
+/// Topology:
+///   chassis → LCA (revolute) → upright (spherical at LCA outer)
+/// Loop constraints:
+///   StrutLineTwoBodyConstraint: strut top (on chassis) on strut axis (on upright)
+///   DistanceConstraint: tie rod inner (on chassis) to outer (on upright)
+///
+/// Hardpoints are interpreted as coordinates in the chassis body frame at
+/// the reference pose.
+inline McPhersonCorner build_mcpherson_corner_dynamic(
+    MultibodySystem& sys,
+    BodyIndex chassis_body,
+    const McPhersonParams& p)
+{
+    McPhersonCorner mc;
+    mc.params = p;
+
+    const Mat3 R_arm = detail::rotation_align_z_to(p.arm_axis);
+
+    // --- LCA body (origin at lca_pivot in chassis frame) ---
+    auto I_arm = RigidBodyInertia::from_solid_box(
+        p.arm_mass, Vec3(0.02, 0.02, 0.2));
+    mc.lca_body = sys.add_body(I_arm, RigidBodyState{}, "dyn_MC_LCA", chassis_body);
+
+    Transform3 X_PJ_lca(R_arm, p.lca_pivot);
+    Transform3 X_CJ_lca = Transform3::FromRotation(R_arm);
+    mc.lca_joint_idx = sys.add_joint(std::make_unique<RevoluteCoordJoint>(
+        X_PJ_lca, X_CJ_lca, chassis_body, mc.lca_body));
+
+    // --- Upright body (origin at wheel_center in chassis frame) ---
+    auto I_upright = RigidBodyInertia::from_solid_box(
+        p.upright_mass, Vec3(0.05, 0.1, 0.05));
+    mc.upright_body = sys.add_body(I_upright, RigidBodyState{}, "dyn_MC_upright", mc.lca_body);
+
+    // Spherical joint at lca_outer.
+    // LCA body frame has identity orientation at reference (same reasoning as DWB).
+    Transform3 X_PJ_sph = Transform3::FromTranslation(p.lca_outer - p.lca_pivot);
+    Transform3 X_CJ_sph = Transform3::FromTranslation(p.lca_outer - p.wheel_center);
+    mc.spherical_joint_idx = sys.add_joint(std::make_unique<SphericalCoordJoint>(
+        X_PJ_sph, X_CJ_sph, mc.lca_body, mc.upright_body));
+
+    // --- Strut line constraint (two-body) ---
+    // Strut top mount: on chassis, at p.strut_top_mount (chassis frame)
+    // Strut bottom: on upright, at (p.strut_lower - p.wheel_center) (upright frame)
+    // Strut axis: in upright frame, direction from strut_lower toward strut_top_mount.
+    // At reference (upright at identity), the axis in upright frame equals the
+    // axis in chassis frame.
+    const Vec3 strut_bottom_upright = p.strut_lower - p.wheel_center;
+    const Vec3 strut_axis_upright = (p.strut_top_mount - p.strut_lower).normalized();
+
+    mc.strut_constraint_idx = sys.constraints.size();
+    sys.constraints.push_back(std::make_shared<StrutLineTwoBodyConstraint>(
+        chassis_body, mc.upright_body,
+        p.strut_top_mount, strut_bottom_upright, strut_axis_upright));
+
+    // --- Tie rod distance constraint ---
+    const Real tierod_length = (p.tierod_outer - p.tierod_inner).norm();
+    mc.tierod_constraint_idx = sys.constraints.size();
+    sys.constraints.push_back(std::make_shared<DistanceConstraint>(
+        chassis_body, mc.upright_body,
+        p.tierod_inner,
+        p.tierod_outer - p.wheel_center,
+        tierod_length));
+
+    // No bump prescription (that's for kinematic analysis)
+    mc.bump_constraint_idx = 0;
+
+    return mc;
+}
+
 inline void set_mcpherson_reference(MultibodySystem& sys, const McPhersonCorner& /*mc*/)
 {
     sys.q.setZero();

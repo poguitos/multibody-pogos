@@ -170,6 +170,96 @@ inline DoubleWishboneCorner build_double_wishbone_corner(
     return dwb;
 }
 
+// ============================================================================
+// Dynamic DWB corner: parent is chassis (not ground)
+// ============================================================================
+
+/// Build a DWB corner for dynamic simulation, parented to a moving chassis body.
+///
+/// Topology:
+///   chassis → LCA (revolute) → upright (spherical at LCA outer)
+///   chassis → UCA (revolute)
+/// Loop constraints:
+///   CoincidentPoint: UCA outer point ≡ upright's upper ball joint point
+///   DistanceConstraint: tie rod inner (on chassis) to outer (on upright)
+///
+/// The hardpoints in \p p are interpreted as coordinates in the CHASSIS body
+/// frame at the reference pose (chassis at identity, wheel at p.wheel_center).
+///
+/// \param sys              The multibody system (chassis body must already exist).
+/// \param chassis_body     Index of the chassis body.
+/// \param p                Hardpoint parameters in chassis frame.
+inline DoubleWishboneCorner build_double_wishbone_corner_dynamic(
+    MultibodySystem& sys,
+    BodyIndex chassis_body,
+    const DoubleWishboneParams& p)
+{
+    DoubleWishboneCorner dwb;
+    dwb.params = p;
+
+    // Rotation aligning joint Z with the arm pivot axis
+    const Mat3 R_arm = detail::rotation_align_z_to(p.arm_axis);
+
+    // --- LCA body (origin at lca_pivot in chassis frame) ---
+    auto I_arm = RigidBodyInertia::from_solid_box(
+        p.arm_mass, Vec3(0.02, 0.02, 0.2));
+    dwb.lca_body = sys.add_body(I_arm, RigidBodyState{}, "dyn_LCA", chassis_body);
+
+    Transform3 X_PJ_lca(R_arm, p.lca_pivot);
+    Transform3 X_CJ_lca = Transform3::FromRotation(R_arm);
+    dwb.lca_joint_idx = sys.add_joint(std::make_unique<RevoluteCoordJoint>(
+        X_PJ_lca, X_CJ_lca, chassis_body, dwb.lca_body));
+
+    // --- Upright body (origin at wheel_center in chassis frame) ---
+    auto I_upright = RigidBodyInertia::from_solid_box(
+        p.upright_mass, Vec3(0.05, 0.1, 0.05));
+    dwb.upright_body = sys.add_body(I_upright, RigidBodyState{}, "dyn_upright", dwb.lca_body);
+
+    // Spherical joint at lca_outer.
+    // With X_CJ_lca = FromRotation(R_arm), the LCA body frame has identity
+    // orientation at reference (same as chassis), so chassis-frame vectors
+    // equal LCA-body-frame vectors.
+    Transform3 X_PJ_sph = Transform3::FromTranslation(p.lca_outer - p.lca_pivot);
+    Transform3 X_CJ_sph = Transform3::FromTranslation(p.lca_outer - p.wheel_center);
+    dwb.spherical_joint_idx = sys.add_joint(std::make_unique<SphericalCoordJoint>(
+        X_PJ_sph, X_CJ_sph, dwb.lca_body, dwb.upright_body));
+
+    // --- UCA body (origin at uca_pivot in chassis frame) ---
+    dwb.uca_body = sys.add_body(I_arm, RigidBodyState{}, "dyn_UCA", chassis_body);
+
+    Transform3 X_PJ_uca(R_arm, p.uca_pivot);
+    Transform3 X_CJ_uca = Transform3::FromRotation(R_arm);
+    dwb.uca_joint_idx = sys.add_joint(std::make_unique<RevoluteCoordJoint>(
+        X_PJ_uca, X_CJ_uca, chassis_body, dwb.uca_body));
+
+    // --- Loop closure: UCA outer ≡ upright's upper ball joint ---
+    // UCA body frame has identity orientation at reference (same reasoning
+    // as LCA), so chassis-frame vectors equal UCA-body-frame vectors.
+    const Vec3 uca_outer_in_uca = p.uca_outer - p.uca_pivot;
+    const Vec3 uca_outer_in_upright = p.uca_outer - p.wheel_center;
+    
+    dwb.coincident_constraint_idx = sys.constraints.size();
+    sys.constraints.push_back(std::make_shared<CoincidentPointConstraint>(
+        dwb.uca_body, dwb.upright_body,
+        uca_outer_in_uca, uca_outer_in_upright));
+
+    // --- Tie rod distance constraint ---
+    // Inner point on chassis body: p.tierod_inner (already in chassis frame)
+    // Outer point on upright body: p.tierod_outer - p.wheel_center
+    const Real tierod_length = (p.tierod_outer - p.tierod_inner).norm();
+    dwb.tierod_constraint_idx = sys.constraints.size();
+    sys.constraints.push_back(std::make_shared<DistanceConstraint>(
+        chassis_body, dwb.upright_body,
+        p.tierod_inner,
+        p.tierod_outer - p.wheel_center,
+        tierod_length));
+
+    // Note: NO bump prescription constraint (that's for kinematic analysis)
+    dwb.bump_constraint_idx = 0; // unused in dynamic mode
+
+    return dwb;
+}
+
 /// Set the double-wishbone to its reference (zero-bump) configuration.
 inline void set_dwb_reference(MultibodySystem& sys, const DoubleWishboneCorner& /*dwb*/)
 {
