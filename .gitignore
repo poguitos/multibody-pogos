@@ -41,3 +41,8 @@ __pycache__/
 *.sln
 Thumbs.db
 .DS_Store
+
+# Reference textbooks and papers: kept locally, never committed (large, copyrighted).
+# The project's own plan PDF is the one exception.
+documentation/**/*.pdf
+!documentation/Multibody plan.pdf

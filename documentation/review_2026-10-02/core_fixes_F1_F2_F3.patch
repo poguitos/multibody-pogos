@@ -1,0 +1,111 @@
+diff -ruN --strip-trailing-cr a/include/mbd/algorithms/dynamics.hpp b/include/mbd/algorithms/dynamics.hpp
+--- a/include/mbd/algorithms/dynamics.hpp	2026-10-02 16:14:28.143252100 +0200
++++ b/include/mbd/algorithms/dynamics.hpp	2026-10-02 16:14:28.340782600 +0200
+@@ -170,13 +170,14 @@
+ 
+         // Linear velocity and acceleration — two-step propagation
+         // Step 1: joint point (as point rigidly on parent body)
+-        const Vec3 p_joint_W = ps.pose_WB().apply(joint.X_PJ.p);
++        const Vec3 p_joint_W = sys.states[i].pose_WB().apply(joint.X_CJ.p);
+         const Vec3 r_P_to_J  = p_joint_W - sys.states[info.parent_idx].p_WB;
+ 
+         const Vec3 v_J = v[info.parent_idx] + w_p.cross(r_P_to_J);
+         const Vec3 a_J = a[info.parent_idx]
+                        + al_p.cross(r_P_to_J)
+-                       + w_p.cross(w_p.cross(r_P_to_J));
++                       + w_p.cross(w_p.cross(r_P_to_J))
++                       + w_p.cross(v_rel_W);
+ 
+         // Step 2: from moving joint frame to child body origin
+         const Vec3 p_Jmoving_W = sys.states[i].pose_WB().apply(joint.X_CJ.p);
+@@ -433,13 +434,14 @@
+         al[i] = al_p + alpha_rel_W + w_p.cross(omega_rel_W);
+ 
+         // Two-step linear propagation (matches FK velocity propagation)
+-        const Vec3 p_joint_W = ps.pose_WB().apply(joint.X_PJ.p);
++        const Vec3 p_joint_W = sys.states[i].pose_WB().apply(joint.X_CJ.p);
+         const Vec3 r_P_to_J  = p_joint_W - sys.states[info.parent_idx].p_WB;
+ 
+         const Vec3 v_J = v_o[info.parent_idx] + w_p.cross(r_P_to_J);
+         const Vec3 a_J = a_o[info.parent_idx]
+                        + al_p.cross(r_P_to_J)
+-                       + w_p.cross(w_p.cross(r_P_to_J));
++                       + w_p.cross(w_p.cross(r_P_to_J))
++                       + w_p.cross(v_rel_W);
+ 
+         const Vec3 p_Jmoving_W = sys.states[i].pose_WB().apply(joint.X_CJ.p);
+         const Vec3 r_J_to_Oi   = sys.states[i].p_WB - p_Jmoving_W;
+diff -ruN --strip-trailing-cr a/include/mbd/model/constraint.hpp b/include/mbd/model/constraint.hpp
+--- a/include/mbd/model/constraint.hpp	2026-10-02 16:14:28.133893800 +0200
++++ b/include/mbd/model/constraint.hpp	2026-10-02 16:14:28.267760600 +0200
+@@ -162,7 +162,9 @@
+         // Standard formula for distance constraint bias:
+         // gamma = ( |v_rel|^2 - (v_rel . n)^2 ) / distance
+         // This effectively removes the centripetal component from the acceleration requirement.
+-        gamma(0) = (v_sq - v_dot_n * v_dot_n) / dist;
++        gamma(0) = (v_sq - v_dot_n * v_dot_n) / dist
++                 + n.dot(s2.w_WB.cross(s2.w_WB.cross(r2))
++                       - s1.w_WB.cross(s1.w_WB.cross(r1)));
+     }
+ };
+ 
+diff -ruN --strip-trailing-cr a/include/mbd/model/joint.hpp b/include/mbd/model/joint.hpp
+--- a/include/mbd/model/joint.hpp	2026-10-02 16:14:28.130866700 +0200
++++ b/include/mbd/model/joint.hpp	2026-10-02 16:14:28.250830300 +0200
+@@ -372,18 +372,15 @@
+         // omega = [0,0,1] * q_dot(0) + Rz(q0) * [1,0,0] * q_dot(1)
+         // S = [ [0,0,1]^T | Rz(q0)*[1,0,0]^T ]  (angular rows)
+         // Linear rows are zero (pure rotation).
+-        const Real c0 = std::cos(q(0));
+-        const Real s0 = std::sin(q(0));
++        // Child-frame expression: omega_C = Rx(q1)^T * z * q_dot0 + x * q_dot1
++        const Real c1 = std::cos(q(1));
++        const Real s1 = std::sin(q(1));
+ 
+         Eigen::Matrix<Real, 6, 2> S;
+         S.setZero();
+-
+-        // Column 0: rotation about Z
+-        S(2, 0) = Real(1.0);
+-
+-        // Column 1: rotation about the rotated X-axis = Rz(q0) * [1,0,0]
+-        S(0, 1) = c0;
+-        S(1, 1) = s0;
++        S(1, 0) = s1;
++        S(2, 0) = c1;
++        S(0, 1) = Real(1.0);
+ 
+         return S;
+     }
+@@ -396,12 +393,13 @@
+         // d/dt(Rz(q0)*[1,0,0]) = q_dot(0) * [-sin(q0), cos(q0), 0]
+         // bias = dS/dt * q_dot, only column 1 contributes:
+         //   bias_angular = q_dot(0) * [-sin(q0), cos(q0), 0] * q_dot(1)
+-        const Real s0 = std::sin(q(0));
+-        const Real c0 = std::cos(q(0));
++        const Real s1 = std::sin(q(1));
++        const Real c1 = std::cos(q(1));
+ 
++        // dS/dt * q_dot with S(:,0) = (0, s1, c1)
+         Vec6 bias = Vec6::Zero();
+-        bias(0) = -s0 * q_dot(0) * q_dot(1);
+-        bias(1) =  c0 * q_dot(0) * q_dot(1);
++        bias(1) =  c1 * q_dot(0) * q_dot(1);
++        bias(2) = -s1 * q_dot(0) * q_dot(1);
+         return bias;
+     }
+ };
+diff -ruN --strip-trailing-cr a/include/mbd/model/system.hpp b/include/mbd/model/system.hpp
+--- a/include/mbd/model/system.hpp	2026-10-02 16:14:28.130866700 +0200
++++ b/include/mbd/model/system.hpp	2026-10-02 16:14:28.280113300 +0200
+@@ -234,7 +234,9 @@
+             const Vec3 v_rel_W     = q_WJ * v_rel_J;
+ 
+             // --- Step 1: velocity of parent-side joint attachment ---
+-            const Vec3 p_J_parent_W = X_WP.apply(joint.X_PJ.p);
++            // Arm from the parent origin to the MOVING (child-side) joint origin,
++            // so the parent's rotation also carries the joint's own translation.
++            const Vec3 p_J_parent_W = states[i].pose_WB().apply(joint.X_CJ.p);
+             const Vec3 r_parent_to_J = p_J_parent_W - states[info.parent_idx].p_WB;
+             const Vec3 v_J_W = v_parent + w_parent.cross(r_parent_to_J);
+ 

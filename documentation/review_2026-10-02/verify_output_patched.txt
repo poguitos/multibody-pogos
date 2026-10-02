@@ -1,0 +1,65 @@
+﻿[A] bead on rotating rod (revolute -> prismatic), theta_dot=2, d=0.5, d_dot=0.3
+    body 1 (rod): |v_fk-v_num|=0.000e+00 |w_fk-w_num|=2.576e-11 |v_jac-v_num|=0.000e+00 |w_jac-w_num|=2.576e-11  (|v_num|=0.000 |w_num|=2.000)
+    body 2 (bead): |v_fk-v_num|=1.203e-11 |w_fk-w_num|=2.576e-11 |v_jac-v_num|=1.203e-11 |w_jac-w_num|=2.576e-11  (|v_num|=1.044 |w_num|=2.000)
+[B] bead on rotating rod; analytic h = [2*m*d*d_dot*w, -m*d*w^2] = [0.6, -2.0]
+    |(RNEA(qdd)-RNEA(0)) - M*qdd| = 1.963e-16   (|M*qdd| = 1.438e-01)
+    |h_RNEA - h_Lagrange|         = 8.699e-11   (|h_Lagrange| = 2.088e+00)
+    h_RNEA     = [ 0.60000 -2.00000 ]
+    h_Lagrange = [ 0.60000 -2.00000 ]
+[E] bead on rod after 1 s (no gravity, theta_dot0 = 2 rad/s, d0 = 0.5 m):
+    engine:    d = 1.22427 m, theta_dot = 0.50209 rad/s, kinetic energy 0.83720 -> 0.83720 J
+    reference: d = 1.22427 m, theta_dot = 0.50209 rad/s (energy conserved)
+[A] universal joint at q = (0.7, 0.5)
+    body 1 (universal_bob): |v_fk-v_num|=3.575e-11 |w_fk-w_num|=3.964e-11 |v_jac-v_num|=3.575e-11 |w_jac-w_num|=3.964e-11  (|v_num|=1.187 |w_num|=1.281)
+[A] universal joint at q = (0.2, 0.3)  [angles used by the existing energy test]
+    body 1 (universal_bob): |v_fk-v_num|=2.204e-11 |w_fk-w_num|=1.434e-11 |v_jac-v_num|=2.204e-11 |w_jac-w_num|=1.434e-11  (|v_num|=1.246 |w_num|=1.281)
+[A] spherical joint
+    body 1 (spherical_bob): |v_fk-v_num|=5.207e-11 |w_fk-w_num|=6.257e-11 |v_jac-v_num|=5.207e-11 |w_jac-w_num|=6.257e-11  (|v_num|=1.119 |w_num|=1.294)
+[B] spherical joint
+    |(RNEA(qdd)-RNEA(0)) - M*qdd| = 4.475e-16   (|M*qdd| = 1.098e+00)
+    |h_RNEA - h_Lagrange|         = 1.387e-09   (|h_Lagrange| = 5.246e-01)
+    h_RNEA     = [ -0.36189 -0.06174 -0.37475 ]
+    h_Lagrange = [ -0.36189 -0.06174 -0.37475 ]
+[A] free chassis -> prismatic wheel, susp travel 0.25 m, chassis rates (0.3,0.6,-0.4) rad/s
+    body 1 (chassis): |v_fk-v_num|=8.225e-11 |w_fk-w_num|=4.322e-11 |v_jac-v_num|=8.225e-11 |w_jac-w_num|=4.322e-11  (|v_num|=20.006 |w_num|=0.780)
+    body 2 (wheel): |v_fk-v_num|=1.895e-10 |w_fk-w_num|=4.322e-11 |v_jac-v_num|=1.895e-10 |w_jac-w_num|=4.322e-11  (|v_num|=20.654 |w_num|=0.780)
+[B] free chassis -> prismatic wheel
+    |(RNEA(qdd)-RNEA(0)) - M*qdd| = 1.650e-12   (|M*qdd| = 3.428e+03)
+    |h_RNEA - h_Lagrange|         = 1.153e-04   (|h_Lagrange| = 1.643e+02)
+    h_RNEA     = [ -34.70608 0.74678 -31.21095 55.39191 57.27804 135.92925 -1.01971 ]
+    h_Lagrange = [ -34.70608 0.74678 -31.21095 55.39180 57.27805 135.92924 -1.01975 ]
+[A] free joint with rotated X_PJ / X_CJ -> revolute child
+    body 1 (free_rotated_frames): |v_fk-v_num|=1.976e-10 |w_fk-w_num|=2.014e-10 |v_jac-v_num|=1.976e-10 |w_jac-w_num|=2.014e-10  (|v_num|=0.598 |w_num|=1.042)
+    body 2 (revolute_child): |v_fk-v_num|=7.009e-11 |w_fk-w_num|=1.525e-10 |v_jac-v_num|=7.009e-11 |w_jac-w_num|=1.525e-10  (|v_num|=1.017 |w_num|=1.626)
+[B] free joint with rotated X_PJ / X_CJ -> revolute child
+    |(RNEA(qdd)-RNEA(0)) - M*qdd| = 1.444e-15   (|M*qdd| = 7.306e+00)
+    |h_RNEA - h_Lagrange|         = 1.933e-09   (|h_Lagrange| = 1.159e+00)
+    h_RNEA     = [ -1.04944 -0.08183 -0.25788 0.07409 -0.38588 -0.09869 0.06969 ]
+    h_Lagrange = [ -1.04944 -0.08183 -0.25788 0.07409 -0.38588 -0.09869 0.06969 ]
+[C] constraint velocity/acceleration consistency (two free bodies, q_ddot = 0)
+    Distance (off-origin anchors)      |J*qd - dPhi/dt|=2.739e-09   |c_bias - d2Phi/dt2|=3.339e-08   (|d2Phi/dt2|=4.540e-01)
+    Distance (anchors at origins)      |J*qd - dPhi/dt|=1.662e-09   |c_bias - d2Phi/dt2|=1.353e-09   (|d2Phi/dt2|=6.587e-01)
+    CoincidentPoint                    |J*qd - dPhi/dt|=1.062e-09   |c_bias - d2Phi/dt2|=2.328e-08   (|d2Phi/dt2|=3.180e-01)
+    RevoluteJoint (5 eq)               |J*qd - dPhi/dt|=1.388e-08   |c_bias - d2Phi/dt2|=3.085e-08   (|d2Phi/dt2|=3.035e+00)
+    PointCoordinate                    |J*qd - dPhi/dt|=3.510e-10   |c_bias - d2Phi/dt2|=1.647e-08   (|d2Phi/dt2|=2.518e-01)
+    StrutLineTwoBody (McPherson)       |J*qd - dPhi/dt|=5.490e-09   |c_bias - d2Phi/dt2|=2.068e+00   (|d2Phi/dt2|=2.064e+00)
+    StrutLine (ground)                 |J*qd - dPhi/dt|=3.184e-09   |c_bias - d2Phi/dt2|=1.241e+00   (|d2Phi/dt2|=1.232e+00)
+[D] McPherson corner on a free chassis: 4 constraint equations, singular values of J*M^-1*J^T:
+    4.261e+00 1.164e+00 3.929e-02 0.000e+00 
+    LDLT solve used by constrained_forward_dynamics: |A*lambda - rhs| = 1.110e-16, |lambda| = 3.249e+00 (true |x| = 3.091e+00)
+[I] RWD simple vehicle, full brake, 1 s after application (V = 16.33 m/s):
+    FL: Fx =       0.0 N  Fz =   4445.3 N  kappa =   0.000  wheel_omega =    0.00 rad/s  brake torque =  1950.0 Nm  free-roll forced: yes
+    FR: Fx =       0.0 N  Fz =   4445.3 N  kappa =   0.000  wheel_omega =    0.00 rad/s  brake torque =  1950.0 Nm  free-roll forced: yes
+    RL: Fx =   -2917.3 N  Fz =   3213.5 N  kappa =  -0.062  wheel_omega =   44.81 rad/s  brake torque =  1050.0 Nm  free-roll forced: no
+    RR: Fx =   -2917.3 N  Fz =   3213.5 N  kappa =  -0.062  wheel_omega =   44.81 rad/s  brake torque =  1050.0 Nm  free-roll forced: no
+    V before = 20.00 m/s, after 2 s of full braking = 12.59 m/s (mean decel 3.71 m/s^2; test expects < 6.00 m/s)
+[M] default tyre:  Fz=2000 N: mu_y=1.0005, C_alpha=45000 N/rad;  Fz=4000 N: mu_y=1.0000, C_alpha=45000 N/rad;  Fz=8000 N: mu_y=0.9990, C_alpha=45000 N/rad;
+[J] timings (this machine, /O2, single thread)
+[J] simple sedan, 10 DOF, RK4          avg    117.8 us/step, worst   1102.1 us, real-time factor at dt=1e-03 s: 8.49x
+[J] simple sedan, 10 DOF, semi-impl. Euler avg     31.8 us/step, worst    782.0 us, real-time factor at dt=1e-03 s: 31.45x
+[L] all-DWB sedan: 13 bodies, 26 DOF, 16 constraint equations; mass in model 1500.0 kg vs template total_mass() 1560.0 kg
+[K] all-DWB sedan at set_vehicle_equilibrium(): chassis vertical accel 1.08 m/s^2, max |q_ddot| = 73.41
+[O] set_steering(0.10 rad): tie-rod inner displacement FL = 0.01024 m, FR = 0.00965 m (one rigid rack would give equal values)
+[J] all-DWB sedan, 26 DOF, RK4         avg    827.6 us/step, worst   2056.6 us, real-time factor at dt=1e-03 s: 1.21x
+    breakdown per call [us]: kinematics 6.7 | mass matrix 54.3 | RNEA 13.9 | constraint Jacobian 33.8 | force elements+projection 16.1 | constraint projection 126.8
+[L] SportsCar preset: mass in model 1300.0 kg vs template total_mass() 1340.0 kg

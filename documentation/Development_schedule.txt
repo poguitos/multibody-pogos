@@ -1,0 +1,399 @@
+## Block 0 – Groundwork & Setup
+
+**Duration:** ~4–6 weeks (≈ 40–60 hours)
+
+### Phase 0.1 – Environment & Tools
+
+**C0.1.1 – Dev environment ready (C++/Python)**
+
+- **Objective:** Have a clean, reproducible C++20 + Python environment.
+- **How:**
+    - Install: recent compiler (gcc/clang/MSVC), CMake, Python (e.g. 3.11), venv/conda.
+    - Choose IDE (CLion/VSCode) and set basic configuration.
+    - Create a mono-repo structure: `core/`, `python/`, `examples/`, `cmake/`, `docs/`.
+- **Test:**
+    - Build and run a trivial `hello_sim` C++ binary via CMake.
+    - Import Python package stub (`import multibody`) that just prints a message.
+
+**C0.1.2 – Core dependencies installed and wired**
+
+- **Objective:** Have Eigen, pybind11, unit test framework, and logging in place.
+- **How:**
+    - Add Eigen, pybind11 as CMake `FetchContent` or submodules.
+    - Pick test framework (Catch2 / GoogleTest) and logging (spdlog or similar).
+    - Set up basic `core` library target and `tests` target.
+- **Test:**
+    - Unit test that multiplies two Eigen matrices and checks result.
+    - Example Python binding exposing a `add(a,b)` C++ function.
+
+**C0.1.3 – Version control + CI skeleton**
+
+- **Objective:** Basic CI to avoid regressions later.
+- **How:**
+    - Initialize git repo, `.gitignore`, basic branching strategy.
+    - Set up CI (GitHub Actions or similar) running: configure + build + tests on pushes.
+- **Test:**
+    - Push a commit that intentionally breaks one test and see CI fail, then fix.
+
+---
+
+## Block 1 – Core Multibody Engine (offline, rigid, no vehicle yet)
+
+**Duration:** ~6–8 months (≈ 200–300 hours)
+
+### Phase 1.1 – Minimal Rigid-Body Core
+
+**C1.1.1 – Rigid body state + basic integrator**
+
+- **Objective:** Integrate free rigid body motion with gravity only.
+- **How:**
+    - Implement a `RigidBody` struct (mass, inertia, pose, velocity).
+    - Implement a simple explicit/semi-implicit Euler integrator for a single body.
+- **Test:**
+    - Drop test: body falls under gravity – compare height vs analytic solution.
+    - Static test: zero forces ⇒ no motion.
+
+**C1.1.2 – Force elements (springs, dampers, external forces)**
+
+- **Objective:** Add modular force elements and global force accumulation.
+- **How:**
+    - Design `ForceElement` interface (e.g. `apply(const State&, Forces&)`).
+    - Implement linear spring-damper, gravity, constant force.
+- **Test:**
+    - Mass–spring–damper response vs analytic solution (or SciPy reference).
+    - Unit tests on sign conventions (spring restoring forces, etc.).
+
+### Phase 1.2 – Constrained DAE Formulation
+
+**C1.2.1 – Holonomic constraints + Lagrange multipliers for 2 bodies**
+
+- **Objective:** Solve a simple 2-body constraint (e.g. distance constraint).
+- **How:**
+    - Implement constraint data structure with: Φ(q), Φ_q, constraint index, etc.
+    - Assemble DAE: `M qdd + Φ_qᵀ λ = Q`, `Φ(q)=0` with an acceleration-level solve.
+    - For now, use simple time integration: explicit step + acceleration-level constraint solve.
+- **Test:**
+    - Two masses linked by a rigid rod: distance between masses constant to tolerance.
+    - Energy reasonably conserved in frictionless case.
+
+**C1.2.2 – Basic joint types (revolute, prismatic)**
+
+- **Objective:** Express common joints as holonomic constraints.
+- **How:**
+    - Implement constraint templates for revolute and prismatic joints between bodies.
+    - Build a simple planar pendulum using a revolute joint to ground.
+- **Test:**
+    - Pendulum period vs analytic small-angle formula.
+    - Constraint violation norms (||Φ||, ||Φ̇||) remain small over long simulation.
+
+**C1.2.3 – Constraint stabilization (Baumgarte & projection)**
+
+- **Objective:** Avoid constraint drift over long runs.
+- **How:**
+    - Implement Baumgarte stabilization terms (α, β) at velocity/acceleration level.
+    - Implement post-step position projection onto Φ(q)=0 using a Newton loop.
+- **Test:**
+    - Long-run pendulum (e.g. 1000 s): monitor max drift vs non-stabilized run.
+    - Compare energy drift between pure Baumgarte and projection.
+
+### Phase 1.3 – Integrator Abstraction & Implicit Solver
+
+**C1.3.1 – TimeIntegrator interface**
+
+- **Objective:** Make integrator pluggable.
+- **How:**
+    - Define abstract `TimeIntegrator` with methods: `step(system, state, dt)`.
+    - Move existing explicit integrator behind this interface.
+- **Test:**
+    - Same pendulum test runs identically via the interface vs direct call.
+    - Swap integrator implementation at runtime with no API changes.
+
+**C1.3.2 – Simple implicit integrator (Backward Euler/Newmark)**
+
+- **Objective:** Gain a robust option for stiff cases (offline only for now).
+- **How:**
+    - Implement Backward Euler or Newmark for constrained systems: Newton–Raphson loop solving for q_{n+1}, λ_{n+1}.
+    - Use finite-difference Jacobian initially (later analytic).
+- **Test:**
+    - Very stiff spring–mass: explicit blows up for larger dt, implicit remains stable.
+    - Convergence diagnostics: typical Newton iterations < threshold for typical problems.
+
+**C1.3.3 – Sparse linear solve path**
+
+- **Objective:** Prepare for larger models.
+- **How:**
+    - Switch linear system solves to Eigen sparse or a factorization library.
+    - Abstract linear solver behind an interface to allow future iterative solvers.
+- **Test:**
+    - Compare results of sparse vs dense solve on same test models.
+    - Measure runtime vs number of bodies to confirm non-crazy scaling.
+
+---
+
+## Block 2 – Vehicle Modeling & Maneuvers (offline)
+
+**Duration:** ~4–6 months (≈ 150–220 hours)
+
+### Phase 2.1 – Vehicle Skeleton & Subsystems
+
+**C2.1.1 – Multi-body “chassis + 4 wheels” topology**
+
+- **Objective:** Build a rigid car skeleton with body + 4 wheel bodies, simple joints.
+- **How:**
+    - Define a `VehicleModel` class that uses core bodies/joints to instantiate a generic 4-wheel layout (no detailed suspension yet).
+    - Represent wheels with revolute joint for rotation and simple vertical DOF (LM suspension).
+- **Test:**
+    - Static equilibrium: weights on each wheel sum to vehicle mass * g.
+    - Pure roll test: apply lateral acceleration and check wheel normal forces make sense.
+
+**C2.1.2 – LM suspension model per corner**
+
+- **Objective:** Represent vertical compliance via 1 DOF per wheel (spring + damper).
+- **How:**
+    - Implement vertical prismatic joint between chassis and unsprung mass per wheel.
+    - Add spring and damper elements; allow different rates per corner.
+- **Test:**
+    - Quarter-car bounce test vs analytic or reference (natural frequency close to design).
+    - Step road input: vertical response shape and timing reasonable.
+
+**C2.1.3 – Simple powertrain + brakes + steering inputs**
+
+- **Objective:** Provide basic longitudinal and yaw control inputs.
+- **How:**
+    - Implement wheel torque from a simple engine map: T = f(throttle, wheel speed, gear).
+    - Apply brake torques proportional to brake command.
+    - Implement steer angle directly on front wheel revolute joints.
+- **Test:**
+    - Straight-line acceleration from rest: speed vs time close to hand calculation.
+    - Constant-steer circle test: steady-state yaw rate ≈ v/R.
+
+### Phase 2.2 – Tire Model & Basic Maneuvers
+
+**C2.2.1 – Simple tire model (linear + saturation)**
+
+- **Objective:** Introduce realistic lateral and longitudinal forces.
+- **How:**
+    - Implement small-angle linear tire: Fy = Cα * α, Fx = Cκ * κ with saturation at μ Fz.
+    - Compute slip angle & slip ratio from wheel and vehicle kinematics.
+- **Test:**
+    - Single-wheel test: lateral force vs slip angle curve matches configured slope and saturation.
+    - Combined slip: ensure no pathological sign errors.
+
+**C2.2.2 – Steady-state cornering (understeer gradient)**
+
+- **Objective:** Validate handling baseline.
+- **How:**
+    - Implement a steady-state cornering script (sweep lateral acceleration, hold constant speed).
+    - Compute understeer gradient Ku from simulation outputs.
+- **Test:**
+    - Qualitative: stable understeer behavior (Ku > 0) for front-heavy cars.
+    - Quantitative: check Ku vs simple 2-DOF linear reference model.
+
+**C2.2.3 – Standard maneuvers (step steer, sine with dwell, braking)**
+
+- **Objective:** Have a minimal library of scenarios.
+- **How:**
+    - Build a `ScenarioManager` (in Python or C++) to define input vs time (steer, throttle, brake).
+    - Implement: step steer at fixed speed, sine with dwell, split-μ straight braking.
+- **Test:**
+    - Plots: yaw rate, lateral acceleration, wheel loads look qualitatively reasonable.
+    - Check no obvious numerical issues (blow-ups, unrealistic oscillations).
+
+---
+
+## Block 3 – Real-Time Engine & Performance Work
+
+**Duration:** ~6–8 months (≈ 200–300 hours)
+
+### Phase 3.1 – Real-Time Loop & Profiling
+
+**C3.1.1 – Fixed-step real-time loop wrapper**
+
+- **Objective:** Run the sim at a fixed dt (e.g. 1 ms) with wall-clock pacing.
+- **How:**
+    - Implement a `RealtimeRunner` that calls `integrator.step()` and uses OS timers to sync to real time.
+    - Separate “simulation thread” from UI/CLI thread.
+- **Test:**
+    - Run a simple car-in-straight-line scenario; log actual step durations.
+    - Confirm missed deadlines are rare or non-existent at target complexity.
+
+**C3.1.2 – Performance profiling + hotspots identified**
+
+- **Objective:** Know exactly where time goes per step.
+- **How:**
+    - Use profiler (Instruments, VTune, perf, etc.) or timing macros around major operations (assembly, linear solve, tires).
+    - Log per-step breakdown for a typical vehicle scenario.
+- **Test:**
+    - Produce a “performance report” for one scenario (percentage per subsystem).
+    - Identify if constraints, tire model, or linear solves dominate.
+
+### Phase 3.2 – Real-Time-friendly Model Simplifications
+
+**C3.2.1 – Lightweight integrator path for RT**
+
+- **Objective:** Guarantee bounded cost per step.
+- **How:**
+    - Implement a simple semi-implicit Euler or fixed-iteration linear implicit integrator.
+    - Cap iterations for Newton/solve; ensure no dynamic allocations in RT path.
+- **Test:**
+    - Run at 1 kHz for >10 minutes; log jitter and worst-case step time.
+    - Confirm stability for typical maneuvers with slight model damping.
+
+**C3.2.2 – Configurable model fidelity (flags)**
+
+- **Objective:** Ability to toggle heavy features off for RT mode.
+- **How:**
+    - Add global config (e.g. `SimConfig`) that can disable: detailed tire model, some compliance, advanced aero, etc.
+    - Ensure code path branches cleanly based on config.
+- **Test:**
+    - Run the same scenario in “high-fidelity” and “real-time” configs; compare key signals.
+    - Measure per-step time difference; confirm RT config fits budget.
+
+**C3.2.3 – Minimal visualization / telemetry output**
+
+- **Objective:** Real-time feedback for debugging & demos.
+- **How:**
+    - Implement a UDP/ZeroMQ or simple REST output of vehicle state at, say, 50–100 Hz.
+    - Write a small Python or simple GUI client that plots speed, yaw rate, steering, etc.
+- **Test:**
+    - Connect to RT simulation and confirm real-time update with acceptable lag.
+    - Ensure output streaming doesn’t break real-time deadlines (profiling).
+
+---
+
+## Block 4 – AI & Optimization Layer
+
+**Duration:** ~8–12 months (≈ 300–400 hours)
+
+### Phase 4.1 – Python API & Gym-style Environment
+
+**C4.1.1 – Clean Python bindings for core features**
+
+- **Objective:** Control the vehicle simulation from Python.
+- **How:**
+    - Use pybind11 to expose: create vehicle, reset state, step(dt, control), get observation.
+    - Package as `multibody_vehicle` Python module.
+- **Test:**
+    - Simple Python script that does: reset → apply constant throttle → run for N steps → plot speed.
+    - Confirm results match equivalent C++ setup.
+
+**C4.1.2 – RL-style environment (OpenAI Gym compatible)**
+
+- **Objective:** Use standard RL tooling.
+- **How:**
+    - Implement a Python class `VehicleEnv` with `reset()` and `step(action)` returning (obs, reward, done, info).
+    - Define a simple reward (e.g. speed tracking along a lane).
+- **Test:**
+    - Random policy: run few episodes, environment behaves and terminates sensibly.
+    - Plug into a basic RL algorithm (e.g. Stable Baselines DQN or PPO) for a few training iterations to confirm integration.
+
+### Phase 4.2 – Surrogate Model / PINN for a Subsystem
+
+**C4.2.1 – Data generation pipeline from high-fidelity model**
+
+- **Objective:** Generate training data for one surrogate (e.g. tire or quarter-car).
+- **How:**
+    - Write Python scripts that sweep through inputs and states, recording outputs from the high-fidelity subsystem (e.g. F_y vs α, F_z vs sinkage).
+    - Store data with metadata about conditions.
+- **Test:**
+    - Check dataset size, coverage plots, and no missing/NaN values.
+
+**C4.2.2 – Train simple NN surrogate & validate offline**
+
+- **Objective:** Have a neural network that approximates that subsystem.
+- **How:**
+    - Use PyTorch to define a small MLP or GRU (depending on static vs dynamic mapping).
+    - Train, split train/val/test, and compute errors vs high-fidelity model.
+- **Test:**
+    - Achieve target error (e.g. <5–10% in range of interest).
+    - Plot surrogate vs original curves to visually inspect behavior.
+
+**C4.2.3 – Integrate surrogate into C++/Python sim (switchable)**
+
+- **Objective:** Swap physics model ↔ surrogate via config.
+- **How:**
+    - Export trained model to ONNX; integrate ONNX Runtime in C++.
+    - Add configuration to select “physics tire” or “surrogate tire”.
+- **Test:**
+    - Run a scenario with both options and compare key outputs (forces, yaw rate).
+    - Measure runtime improvement with surrogate active.
+
+### Phase 4.3 – Optimization & Auto-tuning
+
+**C4.3.1 – Parameter sweep framework**
+
+- **Objective:** Easily run batches of simulations with varying parameters.
+- **How:**
+    - Create Python API: `run_batch(param_grid, scenario)` that loops simulations and stores metrics.
+    - Define metrics: max lateral accel, RMS vertical accel, etc.
+- **Test:**
+    - Example: sweep front/rear spring stiffness and plot understeer gradient vs comfort.
+    - Ensure each batch run is reproducible and logged.
+
+**C4.3.2 – Single-objective optimizer loop**
+
+- **Objective:** Automatically find a “good” setup for one metric (e.g. max lateral accel).
+- **How:**
+    - Wrap `run_batch` with a simple optimizer: random search, CMA-ES, or Bayesian optimization.
+    - Define constraints (bounds on parameters) and termination criteria.
+- **Test:**
+    - Start from naive setup, run optimizer; confirm final design improves objective vs baseline.
+    - Check solutions are physically reasonable (no absurd spring rates).
+
+**C4.3.3 – Multi-objective optimization (Pareto)**
+
+- **Objective:** Explore trade-offs (e.g. handling vs comfort).
+- **How:**
+    - Use NSGA-II or similar algorithm (via DEAP / pygmo) with two objectives.
+    - Generate Pareto front from simulation results.
+- **Test:**
+    - Plot Pareto front; verify non-dominated solutions make physical sense (e.g. better comfort implies some handling loss).
+    - Spot-check several Pareto points by manual simulation.
+
+---
+
+## Block 5 – Polishing, Validation & Documentation
+
+**Duration:** ~2–3 months (≈ 60–100 hours)
+
+### Phase 5.1 – Validation & Regression Suite
+
+**C5.1.1 – Formalize validation scenarios**
+
+- **Objective:** Have a standard set of tests you can run after any change.
+- **How:**
+    - Turn key maneuvers (step steer, sine with dwell, braking, straight-line accel) into automated scripts.
+    - Define numeric pass/fail criteria (ranges for metrics).
+- **Test:**
+    - CI job that runs these scenarios and checks metrics; fail if outside tolerance.
+
+**C5.1.2 – Compare against simple reference models**
+
+- **Objective:** Ensure you’re not drifting away from theory.
+- **How:**
+    - Implement simple 2-DOF linear vehicle model and quarter-car model as references.
+    - Create comparison scripts: full model vs reference for small-signal cases.
+- **Test:**
+    - For small inputs, full model responses match linear model within expected tolerance.
+
+### Phase 5.2 – Documentation & Roadmap v2
+
+**C5.2.1 – Developer & user docs**
+
+- **Objective:** Write clear docs so future-you doesn’t hate past-you.
+- **How:**
+    - Document architecture, key classes, how to add a new force element, how to run scenarios.
+    - Provide a couple of end-to-end tutorials (e.g. “Build and run a car cornering test”).
+- **Test:**
+    - Follow the docs from a clean checkout and see if you can reproduce examples without special knowledge.
+
+**C5.2.2 – Plan next-gen features**
+
+- **Objective:** Define what v2+ looks like (flexible bodies, more AI, graphics, etc.).
+- **How:**
+    - Based on what worked / didn’t, draft a short roadmap:
+        - Flexible bodies & bushings.
+        - More advanced AI agents (scenario generation, LLM integration).
+        - Better UI / graphics / HIL integration.
+- **Test:**
+    - Sanity check roadmap against current architecture: no fundamental blockers.
