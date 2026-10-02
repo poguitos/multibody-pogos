@@ -3,9 +3,9 @@
 #include <Eigen/Geometry>
 #include <cmath>
 
-#include "mbd/system.hpp"
-#include "mbd/simulator.hpp"
-#include "mbd/joint.hpp"
+#include "mbd/model/system.hpp"
+#include "mbd/integrators/simulator.hpp"
+#include "mbd/model/joint.hpp"
 
 using Catch::Matchers::WithinAbs;
 

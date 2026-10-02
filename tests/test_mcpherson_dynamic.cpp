@@ -3,8 +3,8 @@
 #include <Eigen/Geometry>
 #include <cmath>
 
-#include "mbd/mcpherson.hpp"
-#include "mbd/simulator.hpp"
+#include "mbd/vehicle/suspension/mcpherson.hpp"
+#include "mbd/integrators/simulator.hpp"
 
 using Catch::Matchers::WithinAbs;
 

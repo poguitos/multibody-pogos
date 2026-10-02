@@ -3,7 +3,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <Eigen/Geometry>
 
-#include "mbd/algorithms.hpp"
+#include "mbd/algorithms/dynamics.hpp"
 
 using Catch::Matchers::WithinAbs;
 

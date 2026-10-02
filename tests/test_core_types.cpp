@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include <mbd/core.hpp>
+#include <mbd/core/core.hpp>
 
 using Catch::Matchers::WithinAbs;
 

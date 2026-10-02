@@ -1,8 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include <mbd/constraint.hpp>
-#include <mbd/solver.hpp>
+#include <mbd/model/constraint.hpp>
+#include <mbd/solvers/solver.hpp>
 
 using Catch::Matchers::WithinAbs;
 

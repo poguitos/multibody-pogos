@@ -2,7 +2,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <Eigen/Geometry>
 
-#include "mbd/system.hpp"
+#include "mbd/model/system.hpp"
 
 using Catch::Matchers::WithinAbs;
 

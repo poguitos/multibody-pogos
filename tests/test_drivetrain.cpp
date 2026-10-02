@@ -3,8 +3,8 @@
 #include <Eigen/Geometry>
 #include <cmath>
 
-#include "mbd/drivetrain.hpp"
-#include "mbd/simulator.hpp"
+#include "mbd/vehicle/drivetrain.hpp"
+#include "mbd/integrators/simulator.hpp"
 
 using Catch::Matchers::WithinAbs;
 

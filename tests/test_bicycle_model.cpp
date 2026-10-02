@@ -2,7 +2,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <cmath>
 
-#include "mbd/bicycle_model.hpp"
+#include "mbd/analysis/bicycle_model.hpp"
 
 using Catch::Matchers::WithinAbs;
 

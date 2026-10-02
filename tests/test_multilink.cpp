@@ -2,7 +2,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <cmath>
 
-#include "mbd/multilink.hpp"
+#include "mbd/vehicle/suspension/multilink.hpp"
 
 using Catch::Matchers::WithinAbs;
 

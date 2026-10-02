@@ -3,7 +3,7 @@
 #include <Eigen/Geometry>
 #include <cmath>
 
-#include "mbd/simulator.hpp"
+#include "mbd/integrators/simulator.hpp"
 
 using Catch::Matchers::WithinAbs;
 

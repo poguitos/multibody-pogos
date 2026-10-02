@@ -3,9 +3,9 @@
 #include <Eigen/Geometry>
 #include <cmath>
 
-#include "mbd/vehicle_template.hpp"
-#include "mbd/simulator.hpp"
-#include "mbd/drivetrain.hpp"
+#include "mbd/vehicle/vehicle_template.hpp"
+#include "mbd/integrators/simulator.hpp"
+#include "mbd/vehicle/drivetrain.hpp"
 
 using Catch::Matchers::WithinAbs;
 

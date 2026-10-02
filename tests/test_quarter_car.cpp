@@ -5,8 +5,8 @@
 #include <cmath>
 #include <algorithm>
 
-#include "mbd/simulator.hpp"
-#include "mbd/tire.hpp"
+#include "mbd/integrators/simulator.hpp"
+#include "mbd/forces/tire.hpp"
 
 using Catch::Matchers::WithinAbs;
 

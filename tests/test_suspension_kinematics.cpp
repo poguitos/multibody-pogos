@@ -3,7 +3,7 @@
 #include <Eigen/Geometry>
 #include <cmath>
 
-#include "mbd/double_wishbone.hpp"
+#include "mbd/vehicle/suspension/double_wishbone.hpp"
 
 using Catch::Matchers::WithinAbs;
 

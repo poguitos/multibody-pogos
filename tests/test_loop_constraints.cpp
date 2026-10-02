@@ -3,11 +3,11 @@
 #include <Eigen/Geometry>
 #include <cmath>
 
-#include "mbd/system.hpp"
-#include "mbd/simulator.hpp"
-#include "mbd/joint.hpp"
-#include "mbd/constraint.hpp"
-#include "mbd/algorithms.hpp"
+#include "mbd/model/system.hpp"
+#include "mbd/integrators/simulator.hpp"
+#include "mbd/model/joint.hpp"
+#include "mbd/model/constraint.hpp"
+#include "mbd/algorithms/dynamics.hpp"
 
 using Catch::Matchers::WithinAbs;
 
@@ -447,39 +447,25 @@ TEST_CASE("Constraint: PointCoordinate fixes body point's Y to target",
 }
 
 // ============================================================================
-// KNOWN LIMITATION: sustained external force on free-floating constrained
-// bodies can cause numerical instability after some time.
+// Previously a KNOWN LIMITATION (see git history): two free-floating bodies
+// joined by a coincident-point constraint under sustained opposing load used to
+// blow up — the coincident points drifted apart by ~2 m and the free-body
+// rotation vector eventually hit the exp-map singularity at ||r|| = 2*pi,
+// throwing "mass matrix not SPD".
 //
-// Setup: two FreeCoord bodies + CoincidentPointConstraint + sustained applied
-// forces causing the constraint to take significant load.
+// Two foundational fixes resolved it:
+//   (1) Rotation-vector canonicalization keeps free/spherical-joint ||r|| <= pi,
+//       so the exp-map Jacobian never degenerates.
+//   (2) Post-step projection (Simulator::project_constraints) removes the drift
+//       that acceleration-level Baumgarte leaves behind, holding the constraint
+//       to tolerance regardless of load.
 //
-// Failure mode: rotation grows rapidly due to torques applied at offset
-// anchors via Lagrange multipliers. With c_w=100 angular damping and
-// dt=0.001, rotation reaches ~10^6 rad within 16ms before mass matrix
-// becomes non-SPD.
-//
-// Root cause: a combination of:
-//  (1) Baumgarte stabilization is index-1, not index-3 — can't perfectly
-//      enforce holonomic constraints under load
-//  (2) RK4 is non-symplectic; constraint forces get integrated explicitly
-//  (3) Free body + offset anchor produces torque-translation coupling that
-//      is poorly damped
-//
-// This case does NOT arise in typical vehicle simulation (where bodies
-// are connected by joints, not free + constraint). Marking as TODO; revisit
-// if/when we need to support general multibody loops.
-//
-// Possible fixes (each substantial work):
-//  - Use semi-implicit integration for stiffness handling
-//  - Use Gear-Gupta-Leimkuhler stabilization (index-2)
-//  - Use coordinate partitioning / Lagrange multipliers without stabilization
+// This test now asserts the constraint is held tightly throughout.
 // ============================================================================
 
-TEST_CASE("Constraint: KNOWN LIMITATION - free bodies + sustained load",
-          "[constraint][known_limitation][!shouldfail]")
+TEST_CASE("Constraint: free bodies + sustained load stay coincident",
+          "[constraint][projection][singularity]")
 {
-    // Currently fails with mass-matrix-not-SPD. Documented for future work.
-    // The [!shouldfail] tag means Catch2 expects this to fail; not a regression.
     using namespace mbd;
     MultibodySystem sys;
     auto inertia = RigidBodyInertia::from_solid_box(1.0, Vec3(0.3, 0.3, 0.3));
@@ -506,7 +492,22 @@ TEST_CASE("Constraint: KNOWN LIMITATION - free bodies + sustained load",
         tau(1) +=  1.0;
         tau(7) += -1.0;
     };
-    sim.run(2.0, 0.001);
+
+    Real max_phi = 0.0;
+    Real max_r1  = 0.0;
+    for (int i = 0; i < 2000; ++i) {
+        sim.step(0.001);  // must not throw
+        Eigen::VectorXd phi;
+        sys.constraints[0]->evaluate(sys, phi);
+        max_phi = std::max(max_phi, phi.norm());
+        max_r1  = std::max(max_r1, sys.q.segment<3>(3).norm());
+    }
+
+    INFO("max |phi| = " << max_phi << "   max |r1| = " << max_r1);
+    // Constraint held to projection tolerance (was ~2 m before the fix).
+    REQUIRE(max_phi < 1e-6);
+    // Rotation-vector coordinate stayed in the canonical range (was > 2*pi).
+    REQUIRE(max_r1 <= pi + 1e-9);
 }
 
 TEST_CASE("Constraint: coincident point - diagnose when mass matrix fails",

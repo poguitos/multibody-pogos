@@ -2,7 +2,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <cmath>
 
-#include "mbd/optimization.hpp"
+#include "mbd/analysis/optimization.hpp"
 
 using Catch::Matchers::WithinAbs;
 

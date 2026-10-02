@@ -3,8 +3,8 @@
 #include <Eigen/Geometry>
 #include <cmath>
 
-#include "mbd/simulator.hpp"
-#include "mbd/constraint.hpp"
+#include "mbd/integrators/simulator.hpp"
+#include "mbd/model/constraint.hpp"
 
 using Catch::Matchers::WithinAbs;
 
