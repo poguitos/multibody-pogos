@@ -99,6 +99,7 @@ endif()
 
 #  Library + Python bindings
 add_subdirectory(src)
+add_subdirectory(bench)
 if (MBD_BUILD_PYTHON)
     add_subdirectory(python)
 endif()

@@ -30,6 +30,8 @@
 #include "mbd/algorithms/dynamics.hpp"
 #include "mbd/integrators/simulator.hpp"
 
+#include "support/rng.hpp"
+
 namespace mbd_test {
 
 using mbd::BodyIndex;
@@ -41,52 +43,6 @@ using mbd::Transform3;
 using mbd::Vec3;
 using mbd::Vec6;
 using mbd::VecX;
-
-// ============================================================================
-// Deterministic random numbers (same sequence on every platform)
-// ============================================================================
-
-class Rng {
-public:
-    explicit Rng(std::uint64_t seed) : s_(seed * 0x9E3779B97F4A7C15ull + 0x1234567ull) {}
-
-    /// Uniform in [0, 1).
-    Real unit()
-    {
-        s_ ^= s_ >> 12;
-        s_ ^= s_ << 25;
-        s_ ^= s_ >> 27;
-        return Real((s_ * 0x2545F4914F6CDD1Dull) >> 11) / Real(9007199254740992.0);
-    }
-
-    Real range(Real lo, Real hi) { return lo + (hi - lo) * unit(); }
-
-    Vec3 vec(Real magnitude)
-    {
-        const Real x = range(-magnitude, magnitude);
-        const Real y = range(-magnitude, magnitude);
-        const Real z = range(-magnitude, magnitude);
-        return Vec3(x, y, z);
-    }
-
-    Vec3 direction()
-    {
-        Vec3 d = vec(1.0);
-        if (d.norm() < Real(1e-3)) d = Vec3::UnitX();
-        return d.normalized();
-    }
-
-    /// A frame with a generic orientation and an offset of the given size.
-    Transform3 frame(Real offset)
-    {
-        const Vec3 axis = direction();
-        const Real angle = range(-1.2, 1.2);
-        return Transform3(Quat(Eigen::AngleAxisd(angle, axis)), vec(offset));
-    }
-
-private:
-    std::uint64_t s_;
-};
 
 // ============================================================================
 // Model construction

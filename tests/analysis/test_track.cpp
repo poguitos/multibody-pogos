@@ -317,11 +317,16 @@ TEST_CASE("Track: zero-length segments are rejected", "[track][validation]")
 {
     using namespace mbd;
 
+    // Read through volatile so that MSVC cannot fold the zeros into the
+    // guarded divisions and warn (C4723) about code the guard never reaches.
+    volatile double zero_value = 0.0;
+    const double zero = zero_value;
+
     Track t;
-    REQUIRE_THROWS_AS(t.add_straight(0.0), MbdError);
+    REQUIRE_THROWS_AS(t.add_straight(zero), MbdError);
     REQUIRE_THROWS_AS(t.add_straight(-1.0), MbdError);
-    REQUIRE_THROWS_AS(t.add_arc(0.0, 10.0), MbdError);
-    REQUIRE_THROWS_AS(t.add_arc(10.0, 0.0), MbdError);
+    REQUIRE_THROWS_AS(t.add_arc(zero, 10.0), MbdError);
+    REQUIRE_THROWS_AS(t.add_arc(10.0, zero), MbdError);
 }
 
 // ============================================================================

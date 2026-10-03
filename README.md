@@ -2,7 +2,7 @@
 
 A C++20 multibody dynamics engine aimed at vehicle and suspension simulation: joint-coordinate rigid-body dynamics with loop-closing constraints, tyre and suspension models, and the analyses built on them.
 
-The project is in active development and its core is being revised. The roadmap, the findings of the October 2026 review, and the status of each task are in [documentation/Master_plan.md](documentation/Master_plan.md). Frames, units and sign conventions are in [docs/conventions.md](docs/conventions.md).
+The project is in active development and its core is being revised. The roadmap, the findings of the October 2026 review, and the status of each task are in [documentation/Master_plan.md](documentation/Master_plan.md). Frames, units and sign conventions are in [docs/conventions.md](docs/conventions.md). The new kinematics kernel (spatial algebra, joint models, recursive algorithms) is described in [docs/kernel.md](docs/kernel.md), and timings in [docs/performance.md](docs/performance.md).
 
 ## Layout
 

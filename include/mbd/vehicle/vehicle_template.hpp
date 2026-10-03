@@ -877,7 +877,6 @@ inline void set_vehicle_equilibrium(MultibodySystem& sys,
     // Set per-corner DOFs
     int q_idx = 6;
     for (int c = 0; c < 4; ++c) {
-        const auto& ax = (c < 2) ? t.front_axle : t.rear_axle;
         const Real wheel_y = (c < 2) ? wheel_y_front_world : wheel_y_rear_world;
 
         switch (vh.corners[c].type) {

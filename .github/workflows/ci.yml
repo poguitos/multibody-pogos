@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, core-revision ]
+    branches: [ '**' ]
   pull_request:
     branches: [ main ]
 
@@ -48,7 +48,8 @@ jobs:
           "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer"
 
       - name: Build the core test executables
-        run: cmake --build build-linux --target test_core test_model test_algorithms test_invariants
+        run: cmake --build build-linux --target test_core test_model test_algorithms test_invariants test_kernel
 
       - name: Run tests
         run: ctest --test-dir build-linux --output-on-failure -E "_NOT_BUILT"
+

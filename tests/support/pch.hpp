@@ -28,6 +28,11 @@
 #include "mbd/core/logging.hpp"
 #include "mbd/core/math.hpp"
 
+#include "mbd/spatial/spatial.hpp"
+#include "mbd/kernel/joint_model.hpp"
+#include "mbd/kernel/model.hpp"
+#include "mbd/kernel/algorithms.hpp"
+
 #include "mbd/model/rigid_body.hpp"
 #include "mbd/model/joint.hpp"
 #include "mbd/model/system.hpp"
