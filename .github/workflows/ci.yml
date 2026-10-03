@@ -2,12 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, core-revision ]
   pull_request:
     branches: [ main ]
 
 jobs:
-  build-and-test:
+  # The reference build: same generator, build type and precompiled header as
+  # a developer machine, through the same script.
+  windows:
     runs-on: windows-latest
 
     steps:
@@ -19,14 +21,38 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Configure CMake
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=20
+      - name: Configure, build and test
+        shell: pwsh
+        run: ./scripts/build.ps1 -Preset ci -Test
 
-      - name: Build
-        run: |
-          cmake --build build --config Debug --parallel
+  # Portability and memory-safety check: GCC with the address and
+  # undefined-behaviour sanitizers, on the fast part of the suite, without the
+  # precompiled header so that missing includes are caught.
+  #
+  # continue-on-error stays until this job has been green once: the code has
+  # only ever been compiled with MSVC.
+  linux-sanitizers:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-linux -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DMBD_COMPILE_JOBS=3
+          -DMBD_TEST_PCH=OFF
+          -DMBD_BUILD_PYTHON=OFF
+          "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer"
+
+      - name: Build the core test executables
+        run: cmake --build build-linux --target test_core test_model test_algorithms test_invariants
 
       - name: Run tests
-        run: |
-          ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build-linux --output-on-failure -E "_NOT_BUILT"

@@ -2,6 +2,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <mbd/core/core.hpp>
+#include <mbd/core/logging.hpp>
 
 using Catch::Matchers::WithinAbs;
 

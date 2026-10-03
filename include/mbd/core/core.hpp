@@ -1,13 +1,14 @@
 #pragma once
 
-// Core types, units, logging and error utilities for the multibody solver.
+// Core types, units and error utilities for the multibody solver.
+//
+// Logging lives in mbd/core/logging.hpp, so that this header (included by
+// everything) does not pull in the logging library.
 
+#include <cassert>
+#include <cstdio>
 #include <stdexcept>
 #include <string>
-#include <memory>
-
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
 
 #include "mbd/core/math.hpp"
 
@@ -61,51 +62,26 @@ struct MbdError : public std::runtime_error
 };
 
 //------------------------------------------------------------------------------
-// Logging utilities (thin wrapper around spdlog)
+// Diagnostics
 //------------------------------------------------------------------------------
+//
+// Warnings raised by the solver (a redundant constraint set, a projection that
+// did not converge) go through one replaceable sink. The default writes to
+// stderr; init_logging() in mbd/core/logging.hpp redirects it to the logger.
 
-enum class LogLevel {
-    trace,
-    debug,
-    info,
-    warn,
-    err,
-    critical,
-    off
-};
+using DiagnosticSink = void (*)(const std::string& message);
 
-inline spdlog::level::level_enum to_spdlog_level(LogLevel lvl)
+inline DiagnosticSink& diagnostic_sink()
 {
-    using L = spdlog::level::level_enum;
-    switch (lvl) {
-        case LogLevel::trace:    return L::trace;
-        case LogLevel::debug:    return L::debug;
-        case LogLevel::info:     return L::info;
-        case LogLevel::warn:     return L::warn;
-        case LogLevel::err:      return L::err;
-        case LogLevel::critical: return L::critical;
-        case LogLevel::off:      return L::off;
-    }
-    return L::info;
+    static DiagnosticSink sink = [](const std::string& message) {
+        std::fprintf(stderr, "[mbd warning] %s\n", message.c_str());
+    };
+    return sink;
 }
 
-// Get or create the project-wide logger named "mbd".
-inline std::shared_ptr<spdlog::logger> get_logger()
+inline void report_warning(const std::string& message)
 {
-    auto logger = spdlog::get("mbd");
-    if (!logger) {
-        logger = spdlog::stdout_color_mt("mbd");
-    }
-    return logger;
-}
-
-// Initialize logging: call once at program / test start.
-inline void init_logging(LogLevel level = LogLevel::info)
-{
-    auto logger = get_logger();
-    spdlog::set_default_logger(logger);
-    spdlog::set_level(to_spdlog_level(level));
-    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
+    diagnostic_sink()(message);
 }
 
 //------------------------------------------------------------------------------
@@ -113,7 +89,6 @@ inline void init_logging(LogLevel level = LogLevel::info)
 //------------------------------------------------------------------------------
 
 #ifndef NDEBUG
-  #include <cassert>
   #define MBD_ASSERT(expr) assert(expr)
 #else
   #define MBD_ASSERT(expr) ((void)0)

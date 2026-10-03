@@ -88,7 +88,6 @@ TEST_CASE("ARB: produces restoring force under asymmetric wheel displacement",
     sys.compute_kinematics();
     arb->capture_reference(sys.states);
 
-    AntiRollBar* arb_ptr = arb.get();
     sys.force_elements.push_back(std::move(arb));
 
     // Displace left up by 0.01m (positive q for prismatic-Y down means wheel moves down)

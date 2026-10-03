@@ -174,17 +174,11 @@ TEST_CASE("Bicycle: characteristic speed exists for understeer vehicle",
     REQUIRE(std::isfinite(V_char));
     REQUIRE(V_char > 0.0);
 
-    // At characteristic speed, yaw rate gain = V / (2*L)
-    Real gain_at_Vchar = bm.yaw_rate_gain(V_char);
-    Real gain_low_speed = Real(1.0) / p.wheelbase(); // V→0 limit: V/(L + K*V²) → 1/L per unit V? No.
-
-    // Actually yaw_rate_gain = V/(L + K*V²). At V_char: K*V² = L, so gain = V/(2L)
-    // At very low V: gain ≈ V/L
-    // So gain at V_char = V_char / (2*L), and gain at small V = V_small/L
-    // The ratio is V_char / (2 * V_small)... this depends on V_small.
-    // Better test: at V_char, gain should be half of what it would be without understeer
-    Real gain_no_understeer = V_char / p.wheelbase(); // If K_us were 0
-    REQUIRE_THAT(gain_at_Vchar, WithinAbs(gain_no_understeer * 0.5, 1e-4));
+    // The yaw rate gain is V / (L + K * V^2). At the characteristic speed
+    // K * V^2 = L, so the gain is half the neutral-steer value V / L.
+    const Real gain_at_Vchar = bm.yaw_rate_gain(V_char);
+    const Real gain_neutral  = V_char / p.wheelbase();
+    REQUIRE_THAT(gain_at_Vchar, WithinAbs(0.5 * gain_neutral, 1e-4));
 }
 
 TEST_CASE("Bicycle: characteristic speed is infinite for neutral steer",

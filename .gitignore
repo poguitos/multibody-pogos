@@ -46,3 +46,6 @@ Thumbs.db
 # The project's own plan PDF is the one exception.
 documentation/**/*.pdf
 !documentation/Multibody plan.pdf
+
+# Other build trees
+build-*/

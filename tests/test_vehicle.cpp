@@ -287,7 +287,7 @@ TEST_CASE("Vehicle: forward force accelerates vehicle in X",
     // Apply a constant forward force on the chassis via the force callback.
     // This simulates a simplified drive force (not through tires yet).
     const Real F_drive = 5000.0; // 5 kN forward
-    sim.force_callback = [&](MultibodySystem& s, Real /*t*/, VecX& tau) {
+    sim.force_callback = [&](MultibodySystem& /*s*/, Real /*t*/, VecX& tau) {
         // Chassis tx is q(0). The generalized force for translation in the
         // FreeCoordJoint frame is just the force projected onto the joint axes.
         // At small rotations, joint X ≈ world X, so tau(0) ≈ Fx.

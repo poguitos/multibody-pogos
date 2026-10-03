@@ -164,9 +164,10 @@ TEST_CASE("Quarter-car: undamped natural frequencies match analytical",
     // Simulate 3 seconds
     sim.run(3.0, 0.001);
 
-    auto [omega1, omega2] = analytical_frequencies();
-    const Real f1_theory = omega1 / (2.0 * pi); // body bounce ~1.4 Hz
-    const Real f2_theory = omega2 / (2.0 * pi); // wheel hop ~11.8 Hz
+    // Only the body bounce mode is measured here (~1.4 Hz); the wheel-hop
+    // frequency (the second element, ~11.8 Hz) is not.
+    const Real omega1 = analytical_frequencies().first;
+    const Real f1_theory = omega1 / (2.0 * pi);
 
     // Measure body bounce frequency from chassis displacement history.
     // Count zero crossings of (y_c - y_c_eq).

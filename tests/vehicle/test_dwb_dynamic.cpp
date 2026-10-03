@@ -185,7 +185,6 @@ TEST_CASE("DWB dynamic: prescribed wheel Y triggers consistent motion",
 
     // Bump prescription on wheel center Y
     const Real bump = 0.02;
-    const size_t bump_idx = fx.sys.constraints.size();
     fx.sys.constraints.push_back(std::make_shared<PointCoordinateConstraint>(
         fx.dwb.upright_body, Vec3::Zero(), 1, p.wheel_center.y() + bump));
 
