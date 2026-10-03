@@ -44,7 +44,18 @@ The plan aims at eight capabilities. Each has a test that says when it is done.
 
 ## 3. Findings
 
-Each finding has an identifier (F1 to F21) that the tasks in section 6 refer to.
+Each finding has an identifier (F1 to F21) that the tasks in section 6 refer to. The findings below are the review as written on 2 October 2026; their status since then is in this table.
+
+| Finding | Status (3 October 2026) |
+|---|---|
+| F1 to F4 | Fixed in Phase 1 (tasks 1.2 to 1.5). The invariant tests failed on exactly these cases before the fixes and pass after. |
+| F5 | Fixed (task 1.7). All four wheels have a spin state and brake through their tyre. |
+| F6 | Partly: brake torque has one definition and each corner uses its own radius and inertia. Wheel spin is still outside the multibody model (task 7.3). |
+| F16 | Partly: the stray brace and the misplaced include are fixed. The rest is Phase 2. |
+| F19 | Fixed: everything is committed on branch `core-revision` and pushed. |
+| F20 | Mostly: build limit in the build system, shared precompiled header, pinned dependencies, warning level, README. The engine is still header-only (task 2.8). |
+| F21 | Partly: invariant tests added; the drivetrain and universal joint tests now assert derived values. The other tests have not yet been audited for tuned thresholds. |
+| Others | Open, as planned. |
 
 ### 3.1 Solver defects (wrong physics)
 
@@ -154,15 +165,15 @@ Each has a recommendation. Where the choice is yours, it says so.
 
 **D2. Quaternions for free and spherical joints.** Store orientation as a unit quaternion and use the body-frame angular velocity as the velocity coordinate. The rotation-vector singularity, the canonicalisation step and the finite-difference velocity term all disappear, and the motion subspace becomes constant. The cost is that position and velocity vectors have different lengths, which the integrators must handle. Recommended, as part of D1.
 
-**D3. ISO 8855 axes.** X forward, Y left, Z up, gravity along -Z. The core takes gravity and the road normal as inputs and assumes nothing. Recommended before any more vehicle code is written.
+**D3. ISO 8855 axes.** X forward, Y left, Z up, gravity along -Z. The core takes gravity and the road normal as inputs and assumes nothing. *Decided on 2 October 2026: yes.* The migration is task 7.1, and no new vehicle code is written in the old frame.
 
 **D4. Wheels as real rotating bodies.** A revolute spin joint between upright and wheel. Spin becomes part of the multibody state, gyroscopic effects appear, and torque reactions go to the right bodies.
 
 **D5. A compiled library.** Move non-template code into `.cpp` files. Tests then compile only themselves, and builds stop being a hazard.
 
-**D6. CFD by coupling, not by writing a solver.** *Your decision.* Use OpenFOAM for the flow and connect it to the vehicle model. Writing a three-dimensional Navier-Stokes solver is a project of the same size as this one. If you want in-house aerodynamics as well, a vortex-lattice code for wings is a realistic addition (task 11.9).
+**D6. CFD by coupling first.** Use OpenFOAM for the flow and connect it to the vehicle model. *Decided on 2 October 2026: OpenFOAM for Phase 11.* **Flagged: a CFD solver written from scratch is a stated goal of yours for later.** It is tracked as task 11.12, staged so that it never blocks the vehicle work, and validated against the OpenFOAM results that Phase 11 produces. It is a project of roughly the same size as the multibody solver.
 
-**D7. Real-time target.** *Your decision.* A Windows desktop gives soft real time, which is enough for a driving simulator at your desk. Hardware-in-the-loop needs Linux with the real-time kernel. The plan delivers the first and keeps the second as an option.
+**D7. Real-time target.** *Decided on 2 October 2026: both.* Soft real time on Windows first (tasks 12.5 to 12.8), then hard real time on Linux with the real-time kernel (task 12.10).
 
 **D8. Files and tools.** JSON for model files, Python for scripting and post-processing, Rerun or Meshcat for three-dimensional playback, CasADi with IPOPT for optimal control.
 
@@ -207,33 +218,33 @@ Tick the boxes as tasks are completed. Each task says what to do and how to know
 
 Goal: nothing can be lost, and a build cannot overload the PC.
 
-- [ ] **0.1 Commit and push.** Add `documentation/**/*.pdf`, `Testing/` and `tests/Testing/` to `.gitignore`. Commit the restructure, the solver fixes and the tests as separate commits on a branch named `core-revision`, and push. Keep `main` at the May state until Phase 1 passes. *Done when `git status` is clean and the branch is on GitHub.*
-- [ ] **0.2 Put the build limit in the build system.** Add `CMakePresets.json` with a `dev` preset (Ninja, RelWithDebInfo) and Ninja job pools so that a plain `cmake --build --preset dev` runs one compiler at a time. Add `scripts/build.ps1` that loads the MSVC environment. *Done when a bare build cannot start more than one compiler.*
-- [ ] **0.3 Measure, then relax.** Record the peak memory of the heaviest test file while it compiles. Set the pool size to what 16 GB allows with 4 GB spare. *Done when the number is written in the README with its justification.*
-- [ ] **0.4 Cut compile cost.** Add a precompiled header (Eigen, Catch2, standard library) for the test targets. Move the logging helpers that need spdlog out of `core.hpp` into their own header, included only by files that log. *Done when a clean build of `test_vehicle` takes less than half of today's time.*
-- [ ] **0.5 Make CI meaningful.** Build RelWithDebInfo with the same preset. Pin every fetched dependency with a hash. Turn on `/W4`. Add a Linux job with GCC and the address and undefined-behaviour sanitisers on a fast subset. *Done when CI is green on the branch with the two known failures labelled.*
-- [ ] **0.6 Tidy.** Write a README (purpose, build, test, layout). Fix the stray `};` and the `<cassert>` include (F16). Delete `C:\dev\null`. *Done when a new checkout builds by following the README alone.*
-- [ ] **0.7 Write the conventions page.** Frames, units, signs, naming of transforms, wheel and tyre axes. Record decisions D1 to D8. *Done when `docs/conventions.md` exists and you have signed off D3, D6 and D7.*
+- [x] **0.1 Commit and push.** Add `documentation/**/*.pdf`, `Testing/` and `tests/Testing/` to `.gitignore`. Commit the restructure, the solver fixes and the tests as separate commits on a branch named `core-revision`, and push. Keep `main` at the May state until Phase 1 passes. *Done when `git status` is clean and the branch is on GitHub.* *Result, 2 Oct 2026: branch `core-revision` pushed. The code went in as one commit rather than three, because the intermediate states could not have been rebuilt and checked.*
+- [x] **0.2 Put the build limit in the build system.** Add `CMakePresets.json` with a `dev` preset (Ninja, RelWithDebInfo) and Ninja job pools so that a plain `cmake --build --preset dev` runs one compiler at a time. Add `scripts/build.ps1` that loads the MSVC environment. *Done when a bare build cannot start more than one compiler.* *Result: a plain build was observed running one compiler at a time.*
+- [x] **0.3 Measure, then relax.** Record the peak memory of the heaviest test file while it compiles. Set the pool size to what 16 GB allows with 4 GB spare. *Done when the number is written in the README with its justification.* *Result: measured and written in the README. One compiler needs 1.6 GB without the shared header, 1.1 GB with it, 1.7 GB for the header itself. Memory alone would allow about six; the default stays at one until the cause of the two restarts is known. Raising it is your call.*
+- [x] **0.4 Cut compile cost.** Add a precompiled header (Eigen, Catch2, standard library) for the test targets. Move the logging helpers that need spdlog out of `core.hpp` into their own header, included only by files that log. *Done when a clean build of `test_vehicle` takes less than half of today's time.* *Result: one test file 92 s to 23 s typical, the vehicle tests 16 to 7.5 minutes, a full rebuild roughly an hour to about 21 minutes. spdlog is now included only through `core/logging.hpp`.*
+- [x] **0.5 Make CI meaningful.** Build RelWithDebInfo with the same preset. Pin every fetched dependency with a hash. Turn on `/W4`. Add a Linux job with GCC and the address and undefined-behaviour sanitisers on a fast subset. *Done when CI is green on the branch with the two known failures labelled.* *Result: Windows job builds and tests through `scripts/build.ps1`; a Linux job with GCC and the sanitizers runs without blocking until it has been green once.*
+- [x] **0.6 Tidy.** Write a README (purpose, build, test, layout). Fix the stray `};` and the `<cassert>` include (F16). Delete `C:\dev\null`. *Done when a new checkout builds by following the README alone.* *Result: done. The new warning level found seven unused variables in tests; the build is now warning-free.*
+- [x] **0.7 Write the conventions page.** Frames, units, signs, naming of transforms, wheel and tyre axes. Record decisions D1 to D8. *Done when `docs/conventions.md` exists and you have signed off D3, D6 and D7.* *Result: `docs/conventions.md`. D3, D6 and D7 decided on 2 October 2026.*
 
 ### Phase 1. Fix the core defects and prove it
 
 Goal: F1 to F5 fixed, and a permanent test suite that would have caught them.
 
-- [ ] **1.1 Build the invariant tests first.** Turn the checks in `review_2026-10-02/verify.cpp` into Catch2 tests under `tests/invariants/`. For every joint type, as a root and as the child of a rotating parent, at seeded random states:
+- [x] **1.1 Build the invariant tests first.** Turn the checks in `review_2026-10-02/verify.cpp` into Catch2 tests under `tests/invariants/`. For every joint type, as a root and as the child of a rotating parent, at seeded random states: *Result: before the fixes, 315 of 845 assertions failed, all in the cases F1 to F4 predict and nowhere else. One lesson: the drift check needed a 0.25 ms step to separate RK4 truncation from real defects.*
   - velocities from finite differences of the pose equal the velocity pass and the Jacobian;
   - inverse dynamics with and without acceleration differ by exactly mass matrix times acceleration;
   - the velocity-dependent force equals the one derived from the mass matrix by Lagrange's equations;
   - kinetic plus potential energy and total momentum are conserved over a simulated second.
 
   For every constraint type: the Jacobian and the acceleration term equal first and second finite differences of the constraint. *Done when the suite fails on today's code in exactly the places F1 to F4 predict.*
-- [ ] **1.2 Fix F1.** Apply the verified patch from the repository root: `git apply --ignore-whitespace documentation/review_2026-10-02/core_fixes_F1_F2_F3.patch`. *Done when the bead on the rotating rod reaches 1.22427 m after one second and the invariants pass for prismatic and free joints on rotating parents.*
-- [ ] **1.3 Fix F2.** Same patch. *Done when the universal joint passes the invariants, and its energy test uses a relative tolerance of 1e-6 including rotational energy.*
-- [ ] **1.4 Fix F3.** Same patch. *Done when the distance constraint passes the invariants with off-origin anchors.*
-- [ ] **1.5 Fix F4.** Rewrite both strut-line constraints with two independent equations: the top mount projected on two unit vectors perpendicular to the strut axis and fixed in the upright. Derive and implement the velocity-dependent term. *Done when the invariants pass and the constraint matrix of a McPherson corner has full rank.*
-- [ ] **1.6 Make the constraint solve safe.** Replace the unchecked `ldlt()` in `constrained_forward_dynamics` with a factorisation that detects rank deficiency and falls back to a rank-revealing solve, with a logged warning. Make `project_onto_constraints` return iterations and residual, and report failure. *Done when a deliberately redundant model runs and reports its redundancy.*
-- [ ] **1.7 Fix the brakes (F5) so the suite is honest.** Every wheel gets a spin state that feeds its tyre, brakes act on all four, each corner uses its own radius and inertia, and `max_torque` has one written definition. Advance wheel spin with a step that treats the slip stiffness implicitly, so it is stable at 1 ms down to standstill. *Done when braking deceleration matches a hand calculation written in the test.*
-- [ ] **1.8 Re-derive every threshold that moves.** After 1.2 to 1.7 some tests will shift. Replace each tuned threshold with a value derived by hand and stated in a comment. *Done when all tests pass and no threshold is unexplained.*
-- [ ] **1.9 Gate.** Merge `core-revision` into `main` and tag `v0.2.0`. *Done when CI is green on `main`.*
+- [x] **1.2 Fix F1.** Apply the verified patch from the repository root: `git apply --ignore-whitespace documentation/review_2026-10-02/core_fixes_F1_F2_F3.patch`. *Done when the bead on the rotating rod reaches 1.22427 m after one second and the invariants pass for prismatic and free joints on rotating parents.* *Result: done; the passes were rewritten with clear names rather than left as patched.*
+- [x] **1.3 Fix F2.** Same patch. *Done when the universal joint passes the invariants, and its energy test uses a relative tolerance of 1e-6 including rotational energy.* *Result: done.*
+- [x] **1.4 Fix F3.** Same patch. *Done when the distance constraint passes the invariants with off-origin anchors.* *Result: done.*
+- [x] **1.5 Fix F4.** Rewrite both strut-line constraints with two independent equations: the top mount projected on two unit vectors perpendicular to the strut axis and fixed in the upright. Derive and implement the velocity-dependent term. *Done when the invariants pass and the constraint matrix of a McPherson corner has full rank.* *Result: `PointOnLineConstraint`, with an analytic acceleration term. A McPherson corner now has 3 independent equations for its 4 tree coordinates.*
+- [x] **1.6 Make the constraint solve safe.** Replace the unchecked `ldlt()` in `constrained_forward_dynamics` with a factorisation that detects rank deficiency and falls back to a rank-revealing solve, with a logged warning. Make `project_onto_constraints` return iterations and residual, and report failure. *Done when a deliberately redundant model runs and reports its redundancy.* *Result: the multipliers are now returned (`ConstraintSolveInfo`), and a redundant set or a failed projection is reported once each. Tests cover a duplicated constraint, a pendulum's rod force, and contradictory constraints.*
+- [x] **1.7 Fix the brakes (F5) so the suite is honest.** Every wheel gets a spin state that feeds its tyre, brakes act on all four, each corner uses its own radius and inertia, and `max_torque` has one written definition. Advance wheel spin with a step that treats the slip stiffness implicitly, so it is stable at 1 ms down to standstill. *Done when braking deceleration matches a hand calculation written in the test.* *Result: the half-pedal test measures 5.357 m/s^2 against 5.369 by hand. What remains is about 0.2 % from advancing wheel spin outside the integrator; task 7.3 removes it.*
+- [x] **1.8 Re-derive every threshold that moves.** After 1.2 to 1.7 some tests will shift. Replace each tuned threshold with a value derived by hand and stated in a comment. *Done when all tests pass and no threshold is unexplained.* *Result: rewritten with their derivations: two braking tests, the gear-shift test, the coasting and front-drive checks, and the universal joint energy test. All 479 tests pass.*
+- [ ] **1.9 Gate.** Merge `core-revision` into `main` and tag `v0.2.0`. *Done when CI is green on `main`.* *Waiting for your go-ahead: all tests pass on `core-revision`.*
 
 ### Phase 2. One kinematics kernel and a compiled library
 
@@ -368,7 +379,13 @@ A note on terms: the flow is solved by CFD (finite volumes). Finite elements app
 - [ ] **11.8 Coupling level 3: transient co-simulation.** Moving-body unsteady CFD exchanging forces and pose each step, for short events only. A stretch goal that needs a workstation or cluster.
 - [ ] **11.9 In-house fast aerodynamics (optional, D6).** A vortex-lattice code for wings in ground effect.
 - [ ] **11.10 Validation.** Ahmed body and the public DrivAer geometry against published coefficients.
-- [ ] **11.11 Compute plan.** This laptop has 16 GB, which limits a case to roughly 3 to 4 million cells. That is enough for simplified shapes and method development. Full-car maps need a workstation or cloud time, with the cost per point estimated before committing.
+- [ ] **11.11 Compute plan.** This laptop has 16 GB, which limits a case to roughly 3 to 4 million cells. That is enough for simplified shapes and method development. Full-car maps need a workstation or cloud time, with the cost per point estimated before committing. WSL is not installed on this machine yet; task 11.2 starts with that.
+- [ ] **11.12 A CFD solver of our own (flagged goal).** Written from scratch, in stages, each validated before the next. It can start any time after 11.2, runs alongside the rest of the plan, and plugs into the case automation of 11.3 as a second backend, so the vehicle never waits for it. Rough size: several hundred hours.
+  - **(a) Two-dimensional incompressible finite-volume solver** on structured grids, with SIMPLE or PISO pressure-velocity coupling. *Done when the lid-driven cavity matches the Ghia benchmark and the backward-facing step matches published reattachment lengths.*
+  - **(b) Three-dimensional unstructured core.** Reads the OpenFOAM mesh format so both solvers run the same meshes. Second-order schemes, and library linear solvers (conjugate gradient, algebraic multigrid). *Done when laminar flow past a sphere matches the drag curve.*
+  - **(c) Turbulence.** k-omega SST with wall functions. *Done when the Ahmed body drag is within 5 % of the OpenFOAM result on the same mesh.*
+  - **(d) Vehicle features.** Moving ground, rotating wheels, and force and moment integration. *Done when it produces an aero map point that agrees with OpenFOAM to within the mesh-refinement uncertainty.*
+  - Reference: White and Majdalani, *Viscous Fluid Flow*, in `documentation/`.
 
 ### Phase 12. Real-time simulation
 
@@ -378,11 +395,12 @@ Goal: a 1 kHz vehicle model with measured timing.
 - [ ] **12.2 Kernel speed.** Fixed-size joint blocks, contiguous body arrays, analytic derivative terms, block elimination that exploits the four independent corners, reuse of factorisations, AVX2 and link-time optimisation. *Target: the detailed sedan under 0.25 ms worst case.*
 - [ ] **12.3 Real-time model variants from one specification.** (a) Lumped corners on prismatic joints. (b) Lookup-table corners generated automatically by running the suspension rig of 9.1 on the multibody model, with exact velocity and acceleration terms. (c) The full multibody car with softened bushings. *Done when variant (b) is within 5 % of the full car on the standard manoeuvres up to 5 Hz.*
 - [ ] **12.4 Real-time integrator.** 1 ms linearly implicit step (4.5) with multirate tyre and wheel states (4.6). *Done when a stability map against step and stiffness is recorded.*
-- [ ] **12.5 Real-time runner.** A dedicated thread paced by a high-resolution timer, with deadline monitoring, overrun and jitter statistics, pre-touched memory, and priority and core affinity. Soft real time on Windows, and hard real time on Linux with the real-time kernel as an option (D7).
+- [ ] **12.5 Real-time runner.** A dedicated thread paced by a high-resolution timer, with deadline monitoring, overrun and jitter statistics, pre-touched memory, and priority and core affinity. Soft real time on Windows first; the Linux hard real-time target follows in 12.10 (D7), so the runner is written against a small platform layer from the start.
 - [ ] **12.6 Inputs and outputs.** Steering, throttle, brake and gear from a wheel or gamepad or over UDP. Vehicle state out over UDP or shared memory at 100 to 1,000 Hz, with the protocol documented.
 - [ ] **12.7 Viewer and telemetry.** Live plots and a simple three-dimensional view, or a bridge sending pose to a game engine.
 - [ ] **12.8 Proof.** Ten minutes at 1 kHz with overruns below 0.1 %, worst step under half the period for variant (b), and results matching the offline run. *Done when recorded in `docs/realtime.md`.*
 - [ ] **12.9 Hooks for controller testing.** A C interface and the FMI export of 14.5.
+- [ ] **12.10 Linux hard real-time target (D7).** The same runner on Linux with the PREEMPT_RT kernel: locked memory, a real-time scheduling class, an isolated core, and cyclic timing measured with the standard latency tools. *Done when the model of 12.8 runs for an hour with zero missed deadlines and a recorded worst-case latency.*
 
 ### Phase 13. Optimisation and AI layer
 
