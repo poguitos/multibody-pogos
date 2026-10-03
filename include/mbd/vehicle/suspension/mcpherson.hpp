@@ -7,7 +7,8 @@
 // rigidly attached to the upright, must pass through the fixed top mount.
 //
 // Tree: ground → LCA (revolute) → upright (spherical at lower ball joint)
-// Constraints: StrutLineConstraint + tie rod distance + bump prescription
+// Constraints: StrutLineConstraint (2 equations) + tie rod distance (1)
+//              + bump prescription (1). 4 tree DOFs - 4 equations = 0.
 
 #include "mbd/model/system.hpp"
 #include "mbd/analysis/position_kinematics.hpp"

@@ -372,18 +372,15 @@ public:
         // omega = [0,0,1] * q_dot(0) + Rz(q0) * [1,0,0] * q_dot(1)
         // S = [ [0,0,1]^T | Rz(q0)*[1,0,0]^T ]  (angular rows)
         // Linear rows are zero (pure rotation).
-        const Real c0 = std::cos(q(0));
-        const Real s0 = std::sin(q(0));
+        // Child-frame expression: omega_C = Rx(q1)^T * z * q_dot0 + x * q_dot1
+        const Real c1 = std::cos(q(1));
+        const Real s1 = std::sin(q(1));
 
         Eigen::Matrix<Real, 6, 2> S;
         S.setZero();
-
-        // Column 0: rotation about Z
-        S(2, 0) = Real(1.0);
-
-        // Column 1: rotation about the rotated X-axis = Rz(q0) * [1,0,0]
-        S(0, 1) = c0;
-        S(1, 1) = s0;
+        S(1, 0) = s1;
+        S(2, 0) = c1;
+        S(0, 1) = Real(1.0);
 
         return S;
     }
@@ -396,12 +393,13 @@ public:
         // d/dt(Rz(q0)*[1,0,0]) = q_dot(0) * [-sin(q0), cos(q0), 0]
         // bias = dS/dt * q_dot, only column 1 contributes:
         //   bias_angular = q_dot(0) * [-sin(q0), cos(q0), 0] * q_dot(1)
-        const Real s0 = std::sin(q(0));
-        const Real c0 = std::cos(q(0));
+        const Real s1 = std::sin(q(1));
+        const Real c1 = std::cos(q(1));
 
+        // dS/dt * q_dot with S(:,0) = (0, s1, c1)
         Vec6 bias = Vec6::Zero();
-        bias(0) = -s0 * q_dot(0) * q_dot(1);
-        bias(1) =  c0 * q_dot(0) * q_dot(1);
+        bias(1) =  c1 * q_dot(0) * q_dot(1);
+        bias(2) = -s1 * q_dot(0) * q_dot(1);
         return bias;
     }
 };

@@ -192,15 +192,17 @@ public:
     /// Must be called after compute_forward_kinematics().
     /// Updates states[i].v_WB and states[i].w_WB for all bodies.
     ///
-    /// Algorithm (for each body i with parent p, connected by joint j):
-    ///   1. Compute velocity of the parent-side joint attachment point
-    ///      (as a point rigidly attached to the parent body).
-    ///   2. Add joint-relative linear velocity to get the moving joint
-    ///      frame velocity.
-    ///   3. Compute child angular velocity = parent angular velocity +
-    ///      joint relative angular velocity.
-    ///   4. Propagate from moving joint frame origin to child body origin
-    ///      using the child's angular velocity.
+    /// Algorithm (for each body i with parent p, connected by joint j). Jm is
+    /// the origin of the child-side ("moving") joint frame:
+    ///   1. Velocity of Jm = velocity of the parent material point that is
+    ///      currently at Jm, plus the joint's own sliding velocity. The arm is
+    ///      taken to Jm, not to the parent-side joint frame: for a joint that
+    ///      translates (prismatic, free) the two differ by the joint
+    ///      displacement, and the parent's rotation acts on that too.
+    ///   2. Child angular velocity = parent angular velocity + joint relative
+    ///      angular velocity.
+    ///   3. Propagate from Jm to the child body origin using the child's
+    ///      angular velocity.
     void compute_forward_velocities()
     {
         states[kGroundIndex].v_WB = Vec3::Zero();
@@ -233,25 +235,21 @@ public:
             const Vec3 omega_rel_W = q_WJ * omega_rel_J;
             const Vec3 v_rel_W     = q_WJ * v_rel_J;
 
-            // --- Step 1: velocity of parent-side joint attachment ---
-            const Vec3 p_J_parent_W = X_WP.apply(joint.X_PJ.p);
-            const Vec3 r_parent_to_J = p_J_parent_W - states[info.parent_idx].p_WB;
-            const Vec3 v_J_W = v_parent + w_parent.cross(r_parent_to_J);
+            // Origin of the moving (child-side) joint frame in world:
+            //   X_W_Jm = X_WC * X_CJ, so p_Jm = X_WC.apply(X_CJ.p)
+            const Vec3 p_Jm_W = states[i].pose_WB().apply(joint.X_CJ.p);
 
-            // --- Step 2: velocity of moving joint frame origin ---
-            // (adds joint-relative linear velocity, e.g. prismatic sliding)
-            const Vec3 v_Jmoving_W = v_J_W + v_rel_W;
+            // --- Step 1: velocity of the moving joint frame origin ---
+            const Vec3 r_parent_to_Jm = p_Jm_W - states[info.parent_idx].p_WB;
+            const Vec3 v_Jm_W = v_parent + w_parent.cross(r_parent_to_Jm) + v_rel_W;
 
-            // --- Step 3: child angular velocity ---
+            // --- Step 2: child angular velocity ---
             states[i].w_WB = w_parent + omega_rel_W;
 
-            // --- Step 4: propagate from joint to child body origin ---
-            // Moving joint frame origin in world (computed from child side):
-            //   X_W_Jmoving = X_WC * X_CJ, so p_Jmoving = X_WC.apply(X_CJ.p)
-            const Vec3 p_Jmoving_W = states[i].pose_WB().apply(joint.X_CJ.p);
-            const Vec3 r_J_to_child = states[i].p_WB - p_Jmoving_W;
+            // --- Step 3: propagate from the joint to the child body origin ---
+            const Vec3 r_Jm_to_child = states[i].p_WB - p_Jm_W;
 
-            states[i].v_WB = v_Jmoving_W + states[i].w_WB.cross(r_J_to_child);
+            states[i].v_WB = v_Jm_W + states[i].w_WB.cross(r_Jm_to_child);
         }
     }
 

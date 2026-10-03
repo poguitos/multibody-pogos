@@ -492,16 +492,19 @@ TEST_CASE("UniversalJoint: energy conserved during compound swing",
     fx.sys.q_dot.setZero();
     fx.sys.compute_kinematics();
 
+    // Total mechanical energy: translation of the centre of mass, rotation
+    // about it, and gravity.
     auto compute_energy = [&]() -> Real {
-        const Vec3 w = fx.sys.states[fx.body_idx].w_WB;
-        const Vec3 v_com = fx.sys.states[fx.body_idx].v_WB
-            + w.cross(fx.sys.states[fx.body_idx].q_WB *
-                      fx.sys.inertias[fx.body_idx].com_B);
-        const Real KE = 0.5 * m * v_com.squaredNorm();
+        const auto& state   = fx.sys.states[fx.body_idx];
+        const auto& inertia = fx.sys.inertias[fx.body_idx];
 
-        const Vec3 com_W = fx.sys.states[fx.body_idx].p_WB +
-                           fx.sys.states[fx.body_idx].q_WB *
-                           fx.sys.inertias[fx.body_idx].com_B;
+        const Mat3 R = state.q_WB.toRotationMatrix();
+        const Vec3 w = state.w_WB;
+        const Vec3 v_com = state.v_WB + w.cross(R * inertia.com_B);
+        const Mat3 I_W = R * inertia.I_com_B * R.transpose();
+        const Real KE = 0.5 * m * v_com.squaredNorm() + 0.5 * w.dot(I_W * w);
+
+        const Vec3 com_W = state.p_WB + R * inertia.com_B;
         const Real PE = m * g_accel * com_W.y();
         return KE + PE;
     };
@@ -513,7 +516,11 @@ TEST_CASE("UniversalJoint: energy conserved during compound swing",
     INFO("E0 = " << E0 << ", E1 = " << E1);
     INFO("Drift: " << std::abs(E1 - E0) / std::abs(E0) * 100.0 << "%");
 
-    REQUIRE_THAT(E1, WithinAbs(E0, std::abs(E0) * 0.01));
+    // Nothing dissipates energy, and RK4 at 0.1 ms is accurate to better than
+    // 1e-9 here, so the total must be conserved to 1e-6 relative. (The earlier
+    // 1 % tolerance on the translational part alone could not see an error in
+    // the joint's angular velocity.)
+    REQUIRE_THAT(E1, WithinAbs(E0, std::abs(E0) * 1e-6));
 }
 
 TEST_CASE("UniversalJoint: torque about Z gives angular acceleration tau/I",

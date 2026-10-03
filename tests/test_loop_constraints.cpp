@@ -570,7 +570,7 @@ TEST_CASE("Constraint: coincident point - diagnose when mass matrix fails",
             sim.run(step_dt, step_dt);
             t_acc += step_dt;
         }
-    } catch (const MbdError& e) {
+    } catch (const MbdError&) {
         succeeded = false;
         INFO("FAILED at t = " << t_acc
              << "  body1.r_norm = " << sys.q.segment<3>(3).norm()
@@ -581,4 +581,167 @@ TEST_CASE("Constraint: coincident point - diagnose when mass matrix fails",
     REQUIRE(t_acc > 0.5);  // should at least run for half a second
 
     // Don't require full completion — let the failure data tell us when it broke
+}
+
+// ============================================================================
+// Redundant constraints and failed projections are handled and reported
+// ============================================================================
+
+namespace
+{
+    int g_warning_count = 0;
+
+    void count_warning(const std::string& /*message*/)
+    {
+        ++g_warning_count;
+    }
+
+    /// A box hanging from the world origin by one point: a spherical pendulum
+    /// built from a free body and a coincident-point constraint. With
+    /// `copies` > 1 the same constraint is added again, which removes no
+    /// further freedom.
+    void build_point_pendulum(mbd::MultibodySystem& sys, int copies)
+    {
+        using namespace mbd;
+        const BodyIndex body = sys.add_body(
+            RigidBodyInertia::from_solid_box(2.0, Vec3(0.1, 0.2, 0.1)),
+            RigidBodyState{}, "pendulum", kGroundIndex);
+        sys.add_joint(std::make_unique<FreeCoordJoint>(
+            Transform3::Identity(), Transform3::Identity(), kGroundIndex, body));
+
+        for (int k = 0; k < copies; ++k) {
+            sys.constraints.push_back(std::make_shared<CoincidentPointConstraint>(
+                kGroundIndex, body, Vec3::Zero(), Vec3(0.0, 1.0, 0.0)));
+        }
+
+        // Swung out by theta0 about Z; the body point (0, 1, 0) sits at the origin.
+        const Real theta0 = 0.4;
+        sys.q << std::sin(theta0), -std::cos(theta0), 0.0, 0.0, 0.0, theta0;
+        sys.q_dot.setZero();
+        sys.compute_kinematics();
+    }
+}
+
+TEST_CASE("Constraint: a duplicated constraint is solved and reported as redundant",
+          "[constraint][redundant]")
+{
+    using namespace mbd;
+
+    MultibodySystem single, doubled;
+    build_point_pendulum(single, 1);
+    build_point_pendulum(doubled, 2);
+
+    Simulator sim_single(single), sim_doubled(doubled);
+    for (Simulator* sim : {&sim_single, &sim_doubled}) {
+        sim->set_gravity(Vec3(0.0, -g_accel, 0.0));
+        sim->method = IntegrationMethod::RK4;
+        sim->initialize();
+    }
+
+    const DiagnosticSink previous_sink = diagnostic_sink();
+    diagnostic_sink() = &count_warning;
+    g_warning_count = 0;
+
+    sim_single.run(1.0, 0.001);
+    REQUIRE(g_warning_count == 0);               // nothing to report
+
+    sim_doubled.run(1.0, 0.001);
+    diagnostic_sink() = previous_sink;
+
+    // Six equations, but the second three repeat the first three.
+    REQUIRE(sim_doubled.last_constraint_solve.equations == 6);
+    REQUIRE(sim_doubled.last_constraint_solve.rank == 3);
+    REQUIRE(sim_doubled.last_constraint_solve.redundant());
+    REQUIRE(g_warning_count == 1);               // reported once, not every step
+
+    REQUIRE(sim_single.last_constraint_solve.equations == 3);
+    REQUIRE(sim_single.last_constraint_solve.rank == 3);
+    REQUIRE_FALSE(sim_single.last_constraint_solve.redundant());
+
+    // The motion is the same: a repeated constraint adds no physics.
+    for (int i = 0; i < single.total_dof; ++i) {
+        INFO("coordinate " << i);
+        REQUIRE_THAT(doubled.q(i), WithinAbs(single.q(i), 1e-9));
+        REQUIRE_THAT(doubled.q_dot(i), WithinAbs(single.q_dot(i), 1e-8));
+    }
+
+    // The constraint force is shared equally between the two copies
+    // (minimum-norm multipliers), and their sum is the force of the single one.
+    const VecX& lam1 = sim_single.last_constraint_solve.lambda;
+    const VecX& lam2 = sim_doubled.last_constraint_solve.lambda;
+    REQUIRE(lam1.size() == 3);
+    REQUIRE(lam2.size() == 6);
+    for (int k = 0; k < 3; ++k) {
+        INFO("multiplier " << k);
+        REQUIRE_THAT(lam2(k), WithinAbs(0.5 * lam1(k), 1e-6));
+        REQUIRE_THAT(lam2(k + 3), WithinAbs(0.5 * lam1(k), 1e-6));
+    }
+}
+
+TEST_CASE("Constraint: the multiplier of a pendulum rod is the rod force",
+          "[constraint][reaction]")
+{
+    using namespace mbd;
+
+    // Point pendulum at rest, hanging straight down: the constraint carries
+    // the weight. Phi = p_body_point - p_ground_point, so the multiplier is
+    // the force on the body along +Phi, here m * g upward.
+    MultibodySystem sys;
+    build_point_pendulum(sys, 1);
+    sys.q << 0.0, -1.0, 0.0, 0.0, 0.0, 0.0;
+    sys.compute_kinematics();
+
+    ConstraintSolveInfo info;
+    const Vec3 gravity(0.0, -g_accel, 0.0);
+    const VecX q_ddot = constrained_forward_dynamics(
+        sys, VecX::Zero(sys.total_dof), gravity, 0.0, 0.0, &info);
+
+    REQUIRE_THAT(q_ddot.norm(), WithinAbs(0.0, 1e-9));           // stays at rest
+    REQUIRE_THAT(info.lambda(0), WithinAbs(0.0, 1e-9));
+    REQUIRE_THAT(std::abs(info.lambda(1)), WithinAbs(2.0 * g_accel, 1e-9));
+    REQUIRE_THAT(info.lambda(2), WithinAbs(0.0, 1e-9));
+}
+
+TEST_CASE("Constraint: a projection that cannot converge is counted and reported",
+          "[constraint][projection]")
+{
+    using namespace mbd;
+
+    // Two constraints that contradict each other: the same body point must be
+    // at height 0 and at height 0.5. No configuration satisfies both.
+    MultibodySystem sys;
+    const BodyIndex body = sys.add_body(
+        RigidBodyInertia::from_solid_box(1.0, Vec3(0.1, 0.1, 0.1)),
+        RigidBodyState{}, "body", kGroundIndex);
+    sys.add_joint(std::make_unique<FreeCoordJoint>(
+        Transform3::Identity(), Transform3::Identity(), kGroundIndex, body));
+    sys.constraints.push_back(std::make_shared<PointCoordinateConstraint>(
+        body, Vec3::Zero(), 1, 0.0));
+    sys.constraints.push_back(std::make_shared<PointCoordinateConstraint>(
+        body, Vec3::Zero(), 1, 0.5));
+
+    Simulator sim(sys);
+    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
+    sim.method = IntegrationMethod::RK4;
+    sim.initialize();
+
+    const DiagnosticSink previous_sink = diagnostic_sink();
+    diagnostic_sink() = &count_warning;
+    g_warning_count = 0;
+
+    sim.run(0.05, 0.001);
+    diagnostic_sink() = previous_sink;
+
+    REQUIRE_FALSE(sim.last_projection.converged);
+    REQUIRE(sim.projection_failures == 50);        // every step
+    // One report for the redundancy, one for the first failed projection.
+    REQUIRE(g_warning_count == 2);
+
+    // The best compromise is halfway, 0.25 m from each target, and the state
+    // stays finite.
+    REQUIRE_THAT(sys.q(1), WithinAbs(0.25, 1e-6));
+    REQUIRE_THAT(sim.last_projection.position_residual,
+                 WithinAbs(std::sqrt(2.0) * 0.25, 1e-6));
+    REQUIRE(sys.q.allFinite());
+    REQUIRE(sys.q_dot.allFinite());
 }

@@ -17,6 +17,7 @@
 
 #include <vector>
 #include <functional>
+#include <string>
 
 namespace mbd {
 
@@ -68,6 +69,18 @@ public:
     /// exposed mainly so tests can bisect its interaction with other features.
     bool canonicalize_orientation{true};
 
+    // --- Diagnostics of the most recent step --------------------------------
+
+    /// Multipliers and rank from the last dynamics evaluation of the step.
+    /// With RK4 that is the fourth stage, evaluated at the predicted end state.
+    ConstraintSolveInfo last_constraint_solve;
+
+    /// Outcome of the last post-step projection.
+    ProjectionResult last_projection;
+
+    /// Number of steps whose projection did not reach projection_tol.
+    int projection_failures{0};
+
     /// Optional callback invoked before each dynamics evaluation.
     /// Use this to apply time-dependent or state-dependent forces.
     /// Signature: void(MultibodySystem& sys, Real time, VecX& tau)
@@ -118,7 +131,20 @@ public:
 
         // Remove constraint drift left by acceleration-level Baumgarte.
         if (project_constraints) {
-            project_onto_constraints(system, projection_tol);
+            last_projection = project_onto_constraints(system, projection_tol);
+            if (!last_projection.converged) {
+                ++projection_failures;
+                if (!projection_failure_reported_) {
+                    projection_failure_reported_ = true;
+                    report_warning(
+                        "Constraint projection did not converge at t = "
+                        + std::to_string(time) + " s: residual "
+                        + std::to_string(last_projection.position_residual)
+                        + " after " + std::to_string(last_projection.iterations)
+                        + " iterations. Further failures are counted in "
+                          "Simulator::projection_failures but not reported.");
+                }
+            }
         }
 
         // Keep rotation-vector coordinates (free/spherical joints) away from the
@@ -156,10 +182,35 @@ public:
     }
 
 private:
+    bool redundancy_reported_{false};
+    bool projection_failure_reported_{false};
+
     /// Record current state to history.
     void record_state()
     {
         history.push_back({time, system.q, system.q_dot});
+    }
+
+    /// Constrained forward dynamics, keeping the solve diagnostics. A
+    /// redundant constraint set is legal but worth knowing about, so it is
+    /// reported once per simulator.
+    VecX solve_dynamics(const VecX& tau)
+    {
+        VecX q_ddot = constrained_forward_dynamics(
+            system, tau, gravity, constraint_alpha, constraint_beta,
+            &last_constraint_solve);
+
+        if (last_constraint_solve.redundant() && !redundancy_reported_) {
+            redundancy_reported_ = true;
+            report_warning(
+                "Redundant constraints: "
+                + std::to_string(last_constraint_solve.equations)
+                + " equations of rank "
+                + std::to_string(last_constraint_solve.rank)
+                + ". The motion is unaffected, but the constraint forces are "
+                  "not unique (the minimum-norm set is used).");
+        }
+        return q_ddot;
     }
 
     /// Evaluate the derivative: returns [q_dot, q_ddot].
@@ -186,8 +237,7 @@ private:
             force_callback(system, t, tau);
         }
 
-        VecX q_ddot = constrained_forward_dynamics(
-            system, tau, gravity, constraint_alpha, constraint_beta);
+        VecX q_ddot = solve_dynamics(tau);
 
         VecX dstate(2 * n);
         dstate.head(n) = qd_in;
@@ -213,8 +263,7 @@ private:
             force_callback(system, time, tau);
         }
 
-        VecX q_ddot = constrained_forward_dynamics(
-            system, tau, gravity, constraint_alpha, constraint_beta);
+        VecX q_ddot = solve_dynamics(tau);
 
         // Update velocities first (semi-implicit)
         system.q_dot += q_ddot * dt;

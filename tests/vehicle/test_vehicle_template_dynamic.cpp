@@ -67,8 +67,11 @@ TEST_CASE("Dynamic template: all-McPherson vehicle has correct topology",
     // Joints: 1 + 4 * 2 = 9
     REQUIRE(sys.joint_count() == 9);
 
-    // Constraints: 4 * 2 = 8 objects, 4 * 4 = 16 equations
+    // Constraints: 4 * 2 = 8 objects, 4 * (2 strut line + 1 tie rod) = 12 equations
     REQUIRE(sys.constraints.size() == 8);
+    int total_eqs = 0;
+    for (const auto& c : sys.constraints) total_eqs += c->equation_count();
+    REQUIRE(total_eqs == 12);
 }
 
 TEST_CASE("Dynamic template: mixed suspension (DWB front, simple rear)",

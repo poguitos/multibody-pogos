@@ -143,13 +143,19 @@ TEST_CASE("McPherson dynamic: correct DOF counts",
     // Tree DOFs: 0 (fixed chassis) + 1 (LCA rev) + 3 (spherical) = 4
     REQUIRE(fx.sys.total_dof == 4);
 
-    // Constraints: 3 (strut line) + 1 (tie rod) = 4 equations (rank 3)
+    // Constraints: 2 (top mount on the strut line) + 1 (tie rod) = 3 equations.
+    // A point held on a line loses its two translations across the line.
     REQUIRE(fx.sys.constraints.size() == 2);
     int total_eqs = 0;
     for (const auto& c : fx.sys.constraints) total_eqs += c->equation_count();
-    REQUIRE(total_eqs == 4);
+    REQUIRE(total_eqs == 3);
 
-    // Net DOF = 4 - 3 = 1 (strut line is rank 2, so effectively 3 eqs + 1 tie rod)
+    // The equations are independent, so net DOF = 4 - 3 = 1: suspension travel.
+    fx.sys.q.setZero();
+    fx.sys.compute_kinematics();
+    const MatX J = build_constraint_jacobian(fx.sys);
+    Eigen::JacobiSVD<MatX> svd(J);
+    REQUIRE(svd.rank() == 3);
 }
 
 // ============================================================================
@@ -165,7 +171,6 @@ TEST_CASE("McPherson dynamic: prescribed wheel Y triggers consistent motion",
     auto fx = make_fixed_chassis_mcpherson(p);
 
     const Real bump = 0.02;
-    const size_t bump_idx = fx.sys.constraints.size();
     fx.sys.constraints.push_back(std::make_shared<PointCoordinateConstraint>(
         fx.mc.upright_body, Vec3::Zero(), 1, p.wheel_center.y() + bump));
 

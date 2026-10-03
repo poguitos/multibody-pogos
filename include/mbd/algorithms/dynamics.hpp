@@ -168,28 +168,36 @@ inline VecX inverse_dynamics(const MultibodySystem& sys,
         w[i]  = w_p + omega_rel_W;
         al[i] = al_p + alpha_rel_W + w_p.cross(omega_rel_W);
 
-        // Linear velocity and acceleration — two-step propagation
-        // Step 1: joint point (as point rigidly on parent body)
-        const Vec3 p_joint_W = ps.pose_WB().apply(joint.X_PJ.p);
-        const Vec3 r_P_to_J  = p_joint_W - sys.states[info.parent_idx].p_WB;
+        // Linear velocity and acceleration.
+        //
+        // Jm is the origin of the child-side ("moving") joint frame. It moves
+        // with the parent material point currently at Jm, plus the joint's own
+        // sliding. The arm is taken to Jm, not to the parent-side joint frame:
+        // for a joint that translates (prismatic, free) the two differ by the
+        // joint displacement, and the parent's rotation acts on that too.
+        const Vec3 p_Jm_W     = sys.states[i].pose_WB().apply(joint.X_CJ.p);
+        const Vec3 r_P_to_Jm  = p_Jm_W - sys.states[info.parent_idx].p_WB;
+        const Vec3 r_Jm_to_Oi = sys.states[i].p_WB - p_Jm_W;
 
-        const Vec3 v_J = v[info.parent_idx] + w_p.cross(r_P_to_J);
-        const Vec3 a_J = a[info.parent_idx]
-                       + al_p.cross(r_P_to_J)
-                       + w_p.cross(w_p.cross(r_P_to_J));
+        const Vec3 v_Jm = v[info.parent_idx] + w_p.cross(r_P_to_Jm) + v_rel_W;
+        v[i] = v_Jm + w[i].cross(r_Jm_to_Oi);
 
-        // Step 2: from moving joint frame to child body origin
-        const Vec3 p_Jmoving_W = sys.states[i].pose_WB().apply(joint.X_CJ.p);
-        const Vec3 r_J_to_Oi   = sys.states[i].p_WB - p_Jmoving_W;
+        // Acceleration of Jm: transport by the parent (Euler and centripetal
+        // terms), the sliding acceleration, and the Coriolis term
+        // 2 * w_p x v_rel. The Coriolis term is written as
+        // w_p x v_rel + w[i] x v_rel because the sliding direction turns with
+        // the child frame; the part of w[i] x v_rel that comes from the joint's
+        // own rotation is cancelled by the joint's bias acceleration.
+        const Vec3 a_Jm = a[info.parent_idx]
+                        + al_p.cross(r_P_to_Jm)
+                        + w_p.cross(w_p.cross(r_P_to_Jm))
+                        + w_p.cross(v_rel_W)
+                        + a_rel_lin_W
+                        + w[i].cross(v_rel_W);
 
-        const Vec3 v_Jmoving = v_J + v_rel_W;
-        v[i] = v_Jmoving + w[i].cross(r_J_to_Oi);
-
-        a[i] = a_J
-             + a_rel_lin_W
-             + w[i].cross(v_rel_W)
-             + al[i].cross(r_J_to_Oi)
-             + w[i].cross(w[i].cross(r_J_to_Oi));
+        a[i] = a_Jm
+             + al[i].cross(r_Jm_to_Oi)
+             + w[i].cross(w[i].cross(r_Jm_to_Oi));
     }
 
     // === Backward pass: Newton-Euler forces and generalized forces ===
@@ -231,8 +239,8 @@ inline VecX inverse_dynamics(const MultibodySystem& sys,
             // the CHILD-side (moving) joint frame, so the wrench must be
             // transported there before projecting onto S. Using the parent-side
             // X_PJ frame instead adds a spurious skew(translation) x force torque
-            // for free joints with nonzero translation (parent and child frames
-            // coincide for revolute/prismatic/fixed, so this is a no-op there).
+            // for joints that translate (free, prismatic). For revolute,
+            // spherical and fixed joints the two frames have the same origin.
             const auto& parent_state = sys.states[joint.parent_body_idx];
             const Vec3 p_joint_W = state.pose_WB().apply(joint.X_CJ.p);
 
@@ -432,26 +440,25 @@ inline std::vector<BodyAcceleration> compute_body_accelerations(
         w[i]  = w_p + omega_rel_W;
         al[i] = al_p + alpha_rel_W + w_p.cross(omega_rel_W);
 
-        // Two-step linear propagation (matches FK velocity propagation)
-        const Vec3 p_joint_W = ps.pose_WB().apply(joint.X_PJ.p);
-        const Vec3 r_P_to_J  = p_joint_W - sys.states[info.parent_idx].p_WB;
+        // Linear propagation through Jm, the origin of the moving joint frame
+        // (same scheme as inverse_dynamics; see the notes there).
+        const Vec3 p_Jm_W     = sys.states[i].pose_WB().apply(joint.X_CJ.p);
+        const Vec3 r_P_to_Jm  = p_Jm_W - sys.states[info.parent_idx].p_WB;
+        const Vec3 r_Jm_to_Oi = sys.states[i].p_WB - p_Jm_W;
 
-        const Vec3 v_J = v_o[info.parent_idx] + w_p.cross(r_P_to_J);
-        const Vec3 a_J = a_o[info.parent_idx]
-                       + al_p.cross(r_P_to_J)
-                       + w_p.cross(w_p.cross(r_P_to_J));
+        const Vec3 v_Jm = v_o[info.parent_idx] + w_p.cross(r_P_to_Jm) + v_rel_W;
+        v_o[i] = v_Jm + w[i].cross(r_Jm_to_Oi);
 
-        const Vec3 p_Jmoving_W = sys.states[i].pose_WB().apply(joint.X_CJ.p);
-        const Vec3 r_J_to_Oi   = sys.states[i].p_WB - p_Jmoving_W;
+        const Vec3 a_Jm = a_o[info.parent_idx]
+                        + al_p.cross(r_P_to_Jm)
+                        + w_p.cross(w_p.cross(r_P_to_Jm))
+                        + w_p.cross(v_rel_W)
+                        + a_rel_lin_W
+                        + w[i].cross(v_rel_W);
 
-        const Vec3 v_Jmoving = v_J + v_rel_W;
-        v_o[i] = v_Jmoving + w[i].cross(r_J_to_Oi);
-
-        a_o[i] = a_J
-               + a_rel_lin_W
-               + w[i].cross(v_rel_W)
-               + al[i].cross(r_J_to_Oi)
-               + w[i].cross(w[i].cross(r_J_to_Oi));
+        a_o[i] = a_Jm
+               + al[i].cross(r_Jm_to_Oi)
+               + w[i].cross(w[i].cross(r_Jm_to_Oi));
     }
 
     std::vector<BodyAcceleration> result(n_bodies);
@@ -524,6 +531,24 @@ inline MatX build_constraint_jacobian(const MultibodySystem& sys)
 // Constrained forward dynamics (tree + loop-closing constraints)
 // ============================================================================
 
+/// What the constraint solve found: the multipliers, and whether the
+/// constraint equations were independent.
+struct ConstraintSolveInfo {
+    int equations{0};   ///< Number of scalar constraint equations
+    int rank{0};        ///< Numerical rank of J M^-1 J^T
+    VecX lambda;        ///< Lagrange multipliers, one per equation, in the
+                        ///< order of sys.constraints. The generalized
+                        ///< constraint force is J^T * lambda. Minimum-norm
+                        ///< when the equations are redundant.
+
+    /// True when some equations repeat what others already impose.
+    bool redundant() const { return rank < equations; }
+};
+
+/// Pivots of J M^-1 J^T smaller than this, relative to the largest, mark a
+/// redundant constraint equation.
+inline constexpr Real kConstraintRankTolerance = 1e-10;
+
 /// Compute joint accelerations for a system with both tree joints and
 /// loop-closing constraints (hybrid formulation).
 ///
@@ -534,14 +559,21 @@ inline MatX build_constraint_jacobian(const MultibodySystem& sys)
 ///   alpha: velocity-level damping (critical damping ~ 5-20)
 ///   beta:  position-level stiffness (same range)
 ///
+/// If `info` is given it receives the multipliers and the rank found.
+///
 /// Requires: FK already called.
 inline VecX constrained_forward_dynamics(
     const MultibodySystem& sys,
     const VecX& tau_applied,
     const Vec3& gravity,
     Real alpha = 5.0,
-    Real beta  = 5.0)
+    Real beta  = 5.0,
+    ConstraintSolveInfo* info = nullptr)
 {
+    if (info) {
+        *info = ConstraintSolveInfo{};
+    }
+
     // Fall through to unconstrained dynamics when no constraints
     if (sys.constraints.empty()) {
         return forward_dynamics(sys, tau_applied, gravity);
@@ -617,11 +649,40 @@ inline VecX constrained_forward_dynamics(
     // --- Step 6: Solve for Lagrange multipliers ---
     //
     // J_q * M^-1 * J_q^T * lambda = -(phi_ddot_free + stab)
+    //
+    // A = J M^-1 J^T is symmetric positive definite when the constraint
+    // equations are independent. Redundant equations (two constraints removing
+    // the same freedom) make it singular: the accelerations are still
+    // determined, but the multipliers are not unique. That case is recognised
+    // from the pivots of the factorization and solved with a rank-revealing
+    // decomposition, which returns the minimum-norm multipliers.
     const MatX M_inv_JqT = M_llt.solve(J_q.transpose());
     const MatX A = J_q * M_inv_JqT;
     const VecX rhs = -(phi_ddot_free + stab);
 
-    const VecX lambda = A.ldlt().solve(rhs);
+    VecX lambda;
+    int rank = total_eqs;
+
+    const Eigen::LDLT<MatX> A_ldlt(A);
+    const auto pivots = A_ldlt.vectorD();
+    const Real pivot_max = pivots.cwiseAbs().maxCoeff();
+    const bool independent = A_ldlt.info() == Eigen::Success
+                          && pivot_max > Real(0.0)
+                          && pivots.minCoeff() > kConstraintRankTolerance * pivot_max;
+
+    if (independent) {
+        lambda = A_ldlt.solve(rhs);
+    } else {
+        const Eigen::CompleteOrthogonalDecomposition<MatX> cod(A);
+        rank   = static_cast<int>(cod.rank());
+        lambda = cod.solve(rhs);
+    }
+
+    if (info) {
+        info->equations = total_eqs;
+        info->rank      = rank;
+        info->lambda    = lambda;
+    }
 
     // --- Step 7: Corrected accelerations ---
     return q_ddot_free + M_inv_JqT * lambda;
@@ -630,6 +691,14 @@ inline VecX constrained_forward_dynamics(
 // ============================================================================
 // Constraint projection (drift removal at position and velocity level)
 // ============================================================================
+
+/// What project_onto_constraints did.
+struct ProjectionResult {
+    int  iterations{0};            ///< Newton iterations used at position level
+    Real position_residual{0.0};   ///< ||Phi|| after the position projection
+    Real velocity_residual{0.0};   ///< ||J q_dot|| after the velocity projection
+    bool converged{true};          ///< Position residual below the tolerance
+};
 
 /// Project the configuration and velocity back onto the constraint manifold.
 ///
@@ -645,17 +714,22 @@ inline VecX constrained_forward_dynamics(
 /// uses a rank-revealing solve, so redundant/degenerate constraint sets do not
 /// blow up. No-op when there are no constraints.
 ///
+/// Returns what it did. `converged` is false when the position residual is
+/// still above `pos_tol` after `max_iters` iterations, or when the mass matrix
+/// could not be factorized; the state is then left at the best iterate.
+///
 /// Requires: FK already called. Leaves FK consistent with the corrected state.
-inline void project_onto_constraints(MultibodySystem& sys,
-                                     Real pos_tol = 1e-10,
-                                     int  max_iters = 20)
+inline ProjectionResult project_onto_constraints(MultibodySystem& sys,
+                                                 Real pos_tol = 1e-10,
+                                                 int  max_iters = 20)
 {
-    if (sys.constraints.empty()) return;
+    ProjectionResult result;
+    if (sys.constraints.empty()) return result;
 
     // --- Position projection (Newton) ---
-    for (int iter = 0; iter < max_iters; ++iter) {
+    result.position_residual = evaluate_all_constraints(sys).norm();
+    while (result.position_residual >= pos_tol && result.iterations < max_iters) {
         const VecX phi = evaluate_all_constraints(sys);
-        if (phi.norm() < pos_tol) break;
 
         const MatX M = compute_mass_matrix(sys);
         Eigen::LLT<MatX> M_llt(M);
@@ -668,7 +742,11 @@ inline void project_onto_constraints(MultibodySystem& sys,
 
         sys.q -= Minv_JT * y;
         sys.compute_forward_kinematics();   // refresh poses for next residual
+
+        ++result.iterations;
+        result.position_residual = evaluate_all_constraints(sys).norm();
     }
+    result.converged = result.position_residual < pos_tol;
 
     // Poses changed: refresh velocities before the velocity-level projection.
     sys.compute_kinematics();
@@ -684,7 +762,12 @@ inline void project_onto_constraints(MultibodySystem& sys,
         const VecX y       = A.completeOrthogonalDecomposition().solve(nu);
         sys.q_dot -= Minv_JT * y;
         sys.compute_kinematics();
+        result.velocity_residual = (J * sys.q_dot).norm();
+    } else {
+        result.converged = false;
     }
+
+    return result;
 }
 // ============================================================================
 // Force element projection: body-frame forces → joint-space generalized forces

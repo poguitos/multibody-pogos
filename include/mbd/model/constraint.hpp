@@ -159,10 +159,16 @@ public:
         Real v_dot_n = v_rel.dot(n);
         Real v_sq = v_rel.squaredNorm();
         
-        // Standard formula for distance constraint bias:
-        // gamma = ( |v_rel|^2 - (v_rel . n)^2 ) / distance
-        // This effectively removes the centripetal component from the acceleration requirement.
-        gamma(0) = (v_sq - v_dot_n * v_dot_n) / dist;
+        // ddot(Phi) = dot(n) . v_rel + n . (acc_point2 - acc_point1), with
+        //   dot(n) . v_rel = ( |v_rel|^2 - (v_rel . n)^2 ) / distance
+        //   acc_point      = a + alpha x r + w x (w x r)
+        // The terms in a and alpha are J * [a; alpha]. Gamma is the rest: the
+        // turning of the line of action, plus the centripetal acceleration of
+        // each anchor about its body origin (zero only for anchors at the
+        // origins).
+        gamma(0) = (v_sq - v_dot_n * v_dot_n) / dist
+                 + n.dot(s2.w_WB.cross(s2.w_WB.cross(r2))
+                       - s1.w_WB.cross(s1.w_WB.cross(r1)));
     }
 };
 
@@ -481,199 +487,184 @@ public:
     }
 };
 // ============================================================================
-// Strut line constraint: a fixed point must lie on a line attached to a body.
+// Point-on-line constraint: a point of body 1 lies on a line fixed in body 2
 // ============================================================================
 //
-// Used for McPherson strut kinematics. The strut top mount (fixed on ground)
-// must lie on the strut axis (rigidly attached to the upright body).
+// Used for McPherson struts: the strut top mount (on the chassis, or on
+// ground) must lie on the strut axis, which is rigidly attached to the upright.
 //
-// Formulation: Phi = (T_W - S_W) x u_W = 0  (3 equations, rank 2)
-// where T_W is the fixed point, S_W is a point on the line (body frame),
-// and u_W is the line direction (body frame), both on body2.
+// T is the point carried by body 1. S is a point of the line and u its
+// direction, both carried by body 2. With a and b two unit vectors, fixed in
+// body 2, that complete u to an orthonormal basis:
 //
-// The QR solver in position kinematics handles the rank deficiency gracefully.
-// Velocity bias is zero (sufficient for kinematic analysis).
+//     Phi = [ a . (T - S) ]  = 0          2 independent equations
+//           [ b . (T - S) ]
+//
+// The constraint removes the two translations of T across the line and
+// leaves the sliding along it and all relative rotations free.
+//
+// (An earlier formulation, (T - S) x u = 0, wrote this as three equations of
+// rank two. That made J M^-1 J^T singular, and its acceleration term was left
+// at zero, so it was only valid for position-level kinematics.)
 
-class StrutLineConstraint : public Constraint {
+class PointOnLineConstraint : public Constraint {
 public:
-    Vec3 T_W;   ///< Fixed world point (strut top mount)
-    Vec3 S_B;   ///< Point on line in body2 frame (strut bottom attachment)
-    Vec3 u_B;   ///< Line direction in body2 frame (strut axis, normalized)
+    Vec3 point1_B;  ///< The point T, in body1 frame
+    Vec3 point2_B;  ///< A point S of the line, in body2 frame
+    Vec3 axis_B;    ///< Line direction u, in body2 frame (normalized)
+    Vec3 a_B;       ///< First unit vector across the line, in body2 frame
+    Vec3 b_B;       ///< Second unit vector across the line, in body2 frame
 
-    /// \param upright_idx Body index of the upright.
-    /// \param top_mount   Strut top mount position in world frame.
-    /// \param strut_bottom Strut lower attachment in upright body frame.
-    /// \param strut_axis  Strut axis direction in upright body frame (will be normalized).
-    StrutLineConstraint(BodyIndex upright_idx,
-                        const Vec3& top_mount,
-                        const Vec3& strut_bottom,
-                        const Vec3& strut_axis)
-        : Constraint(kGroundIndex, upright_idx)
-        , T_W(top_mount)
-        , S_B(strut_bottom)
-        , u_B(strut_axis.normalized())
-    {}
+    PointOnLineConstraint(BodyIndex b1, BodyIndex b2,
+                          const Vec3& point_on_body1,
+                          const Vec3& line_point_on_body2,
+                          const Vec3& line_axis_on_body2)
+        : Constraint(b1, b2)
+        , point1_B(point_on_body1)
+        , point2_B(line_point_on_body2)
+        , axis_B(line_axis_on_body2.normalized())
+    {
+        // Orthonormal basis (axis_B, a_B, b_B): start from a vector that is
+        // not parallel to the axis.
+        Vec3 temp = Vec3::UnitX();
+        if (std::abs(axis_B.dot(temp)) > 0.9) {
+            temp = Vec3::UnitY();
+        }
+        a_B = axis_B.cross(temp).normalized();
+        b_B = axis_B.cross(a_B).normalized();
+    }
 
-    int equation_count() const override { return 3; }
+    int equation_count() const override { return 2; }
 
     void evaluate(const MultibodySystem& system,
                   Eigen::VectorXd& phi) const override
     {
-        const auto& s = system.states[body2_idx];
-        const Vec3 S_W = s.p_WB + s.pose_WB().rotate(S_B);
-        const Vec3 u_W = s.pose_WB().rotate(u_B);
-        const Vec3 e   = T_W - S_W;
+        const Geometry g = geometry(system);
 
-        phi.resize(3);
-        phi = e.cross(u_W);
+        phi.resize(2);
+        phi(0) = g.a_W.dot(g.e);
+        phi(1) = g.b_W.dot(g.e);
     }
 
     void jacobian(const MultibodySystem& system,
                   Eigen::MatrixXd& J1,
                   Eigen::MatrixXd& J2) const override
     {
-        J1.resize(3, 6);
-        J1.setZero();
+        const Geometry g = geometry(system);
 
-        J2.resize(3, 6);
+        J1.resize(2, 6);
+        J2.resize(2, 6);
 
-        const auto& s = system.states[body2_idx];
-        const Vec3 r_s = s.pose_WB().rotate(S_B);
-        const Vec3 u_W = s.pose_WB().rotate(u_B);
-        const Vec3 S_W = s.p_WB + r_s;
-        const Vec3 e   = T_W - S_W;
+        // For one equation Phi = n . e, with n fixed in body 2 and e = T - S:
+        //   dot(Phi) = dot(n) . e + n . dot(e)
+        //            = (w2 x n) . e + n . (v1 + w1 x r1 - v2 - w2 x r2)
+        //            = n . v1 + (r1 x n) . w1 - n . v2 + (n x (e + r2)) . w2
+        // and e + r2 = T - p2, the top mount seen from the origin of body 2.
+        const Vec3 T_from_origin2 = g.e + g.r2;
+        const Vec3 n[2] = {g.a_W, g.b_W};
+        for (int k = 0; k < 2; ++k) {
+            J1.block<1,3>(k, 0) = n[k].transpose();
+            J1.block<1,3>(k, 3) = g.r1.cross(n[k]).transpose();
 
-        // Phi = e x u_W
-        // d(Phi)/d(p2): delta_e = -delta_p, u_W fixed w.r.t. p2
-        //   delta(e x u) = (-delta_p) x u = skew(u) * delta_p
-        J2.block<3,3>(0, 0) = skew(u_W);
-
-        // d(Phi)/d(theta2): two contributions
-        //   delta_e from rotating S: delta_e_theta = skew(r_s) * delta_theta
-        //   delta_u from rotating u: delta_u_theta = -skew(u_W) * delta_theta
-        //   delta(Phi) = delta_e_theta x u_W + e x delta_u_theta
-        //              = (-skew(u_W)*skew(r_s) - skew(e)*skew(u_W)) * delta_theta
-        J2.block<3,3>(0, 3) = -skew(u_W) * skew(r_s) - skew(e) * skew(u_W);
+            J2.block<1,3>(k, 0) = -n[k].transpose();
+            J2.block<1,3>(k, 3) = n[k].cross(T_from_origin2).transpose();
+        }
     }
 
     void velocity_bias(const MultibodySystem& system,
                        Eigen::VectorXd& gamma) const override
     {
-        (void)system;
-        // Zero bias: sufficient for position-level kinematic analysis.
-        gamma.resize(3);
-        gamma.setZero();
+        const Geometry g = geometry(system);
+        const auto& s1 = system.states[body1_idx];
+        const auto& s2 = system.states[body2_idx];
+        const Vec3& w1 = s1.w_WB;
+        const Vec3& w2 = s2.w_WB;
+
+        // ddot(Phi) = ddot(n) . e + 2 dot(n) . dot(e) + n . ddot(e), with
+        //   ddot(n) = alpha2 x n + w2 x (w2 x n)
+        //   ddot(e) = a1 + alpha1 x r1 + w1 x (w1 x r1)
+        //           - a2 - alpha2 x r2 - w2 x (w2 x r2)
+        // The terms in a and alpha are J * [a; alpha]. What is left is gamma.
+        const Vec3 e_dot = (s1.v_WB + w1.cross(g.r1)) - (s2.v_WB + w2.cross(g.r2));
+        const Vec3 centripetal = w1.cross(w1.cross(g.r1)) - w2.cross(w2.cross(g.r2));
+
+        gamma.resize(2);
+        const Vec3 n[2] = {g.a_W, g.b_W};
+        for (int k = 0; k < 2; ++k) {
+            gamma(k) = w2.cross(w2.cross(n[k])).dot(g.e)
+                     + 2.0 * w2.cross(n[k]).dot(e_dot)
+                     + n[k].dot(centripetal);
+        }
+    }
+
+private:
+    /// World-frame quantities shared by evaluate, jacobian and velocity_bias.
+    struct Geometry {
+        Vec3 r1;   ///< body1 origin -> T
+        Vec3 r2;   ///< body2 origin -> S
+        Vec3 e;    ///< T - S
+        Vec3 a_W;  ///< a_B in world
+        Vec3 b_W;  ///< b_B in world
+    };
+
+    Geometry geometry(const MultibodySystem& system) const
+    {
+        const auto& s1 = system.states[body1_idx];
+        const auto& s2 = system.states[body2_idx];
+
+        Geometry g;
+        g.r1  = s1.pose_WB().rotate(point1_B);
+        g.r2  = s2.pose_WB().rotate(point2_B);
+        g.e   = (s1.p_WB + g.r1) - (s2.p_WB + g.r2);
+        g.a_W = s2.pose_WB().rotate(a_B);
+        g.b_W = s2.pose_WB().rotate(b_B);
+        return g;
     }
 };
 
 // ============================================================================
-// Strut line constraint (two-body version): a point on body1 must lie on a
-// line attached to body2.
+// McPherson strut line, top mount on a moving body (the chassis)
 // ============================================================================
-//
-// Used for McPherson strut kinematics where the strut top mount is on a
-// moving body (chassis) rather than fixed in world frame.
-//
-// Phi = (T_W - S_W) x u_W = 0  (3 equations, rank 2)
-// where:
-//   T_W = body1_pose * point1_B  (top mount position, typically on chassis)
-//   S_W = body2_pose * point2_B  (strut bottom attachment on upright)
-//   u_W = body2_rotation * u_B   (strut axis direction, in upright frame)
 
-class StrutLineTwoBodyConstraint : public Constraint {
+class StrutLineTwoBodyConstraint : public PointOnLineConstraint {
 public:
-    Vec3 point1_B;  ///< Strut top mount in body1 (chassis) frame
-    Vec3 point2_B;  ///< Strut bottom attachment in body2 (upright) frame
-    Vec3 axis_B;    ///< Strut axis direction in body2 frame (normalized)
-
+    /// \param chassis_idx           Body carrying the strut top mount.
+    /// \param upright_idx           Body carrying the strut axis.
+    /// \param top_mount_chassis     Top mount position in the chassis frame.
+    /// \param strut_bottom_upright  Strut lower attachment in the upright frame.
+    /// \param strut_axis_upright    Strut axis in the upright frame (will be normalized).
     StrutLineTwoBodyConstraint(BodyIndex chassis_idx,
                                BodyIndex upright_idx,
                                const Vec3& top_mount_chassis,
                                const Vec3& strut_bottom_upright,
                                const Vec3& strut_axis_upright)
-        : Constraint(chassis_idx, upright_idx)
-        , point1_B(top_mount_chassis)
-        , point2_B(strut_bottom_upright)
-        , axis_B(strut_axis_upright.normalized())
+        : PointOnLineConstraint(chassis_idx, upright_idx,
+                                top_mount_chassis,
+                                strut_bottom_upright,
+                                strut_axis_upright)
     {}
+};
 
-    int equation_count() const override { return 3; }
+// ============================================================================
+// McPherson strut line, top mount fixed in the world
+// ============================================================================
+//
+// Used by the ground-mounted corner for kinematic analysis. Ground has the
+// identity pose, so a point given in world coordinates is a point of body 0.
 
-    void evaluate(const MultibodySystem& system,
-                  Eigen::VectorXd& phi) const override
-    {
-        const auto& s1 = system.states[body1_idx];
-        const auto& s2 = system.states[body2_idx];
-
-        const Vec3 T_W = s1.p_WB + s1.pose_WB().rotate(point1_B);
-        const Vec3 S_W = s2.p_WB + s2.pose_WB().rotate(point2_B);
-        const Vec3 u_W = s2.pose_WB().rotate(axis_B);
-        const Vec3 e   = T_W - S_W;
-
-        phi.resize(3);
-        phi = e.cross(u_W);
-    }
-
-    void jacobian(const MultibodySystem& system,
-                  Eigen::MatrixXd& J1,
-                  Eigen::MatrixXd& J2) const override
-    {
-        J1.resize(3, 6);
-        J2.resize(3, 6);
-
-        const auto& s1 = system.states[body1_idx];
-        const auto& s2 = system.states[body2_idx];
-
-        const Vec3 r1_W = s1.pose_WB().rotate(point1_B);
-        const Vec3 r2_W = s2.pose_WB().rotate(point2_B);
-        const Vec3 u_W  = s2.pose_WB().rotate(axis_B);
-        const Vec3 T_W  = s1.p_WB + r1_W;
-        const Vec3 S_W  = s2.p_WB + r2_W;
-        const Vec3 e    = T_W - S_W;
-
-        // d(Phi)/d(body1): T moves with body1 translation and rotation
-        //   delta_e = delta_T = delta_p1 + skew(r1_W) * delta_theta1_inv...
-        //   Wait: delta(R*point) = skew(omega) * R*point, which in terms of
-        //   small-angle delta_theta is: delta(R*point) = -skew(R*point)*delta_theta
-        //   Standard: for body 1 at pose (p1, R1), perturbation (dp1, dtheta1):
-        //     delta(point_W) = dp1 + dtheta1 x r1_W = dp1 - skew(r1_W) * dtheta1
-        // So delta_T = dp1 - skew(r1_W) * dtheta1
-        // delta(e x u) = (delta_T) x u  (u unchanged by body1)
-        //              = skew(dp1) * u - skew(skew(r1_W)*dtheta1) * u... no
-        // Better: delta(e x u) = -skew(u) * delta_e (since a x b = -b x a and d(a x b) = da x b)
-        //                      = -skew(u_W) * (dp1 - skew(r1_W)*dtheta1)
-        //                      = -skew(u_W) * dp1 + skew(u_W)*skew(r1_W)*dtheta1
-        J1.block<3,3>(0, 0) = -skew(u_W);
-        J1.block<3,3>(0, 3) =  skew(u_W) * skew(r1_W);
-
-        // d(Phi)/d(body2): S and u both depend on body2
-        //   delta_e = -delta_S = -(dp2 - skew(r2_W)*dtheta2) = -dp2 + skew(r2_W)*dtheta2
-        //   delta_u = -skew(u_W) * dtheta2
-        //   delta(e x u) = delta_e x u + e x delta_u
-        //                = -skew(u) * delta_e + skew(e) * (-delta_u)
-        //   Wait, d(a x b) = da x b + a x db, so delta(e x u) = (delta_e) x u + e x (delta_u)
-        //   In matrix form: delta(e x u) = -skew(u) * delta_e + ... no, delta_e x u = skew(delta_e)*u
-        //     but we want it as matrix times delta_e: delta_e x u = -u x delta_e = -skew(u_W) * ... hmm
-        //   Let me redo: a x b = skew(a) * b, so delta(e x u) = skew(delta_e)*u + skew(e)*delta_u
-        //                                                     = -skew(u) * delta_e + skew(e) * delta_u
-        //     (using skew(a)*b = -skew(b)*a)
-        //   So for body2:
-        //   delta_e = -dp2 + skew(r2_W)*dtheta2
-        //   delta_u = -skew(u_W) * dtheta2
-        //   delta(Phi) = -skew(u_W) * (-dp2 + skew(r2_W)*dtheta2) + skew(e) * (-skew(u_W) * dtheta2)
-        //              =  skew(u_W) * dp2 - skew(u_W)*skew(r2_W)*dtheta2 - skew(e)*skew(u_W)*dtheta2
-        J2.block<3,3>(0, 0) = skew(u_W);
-        J2.block<3,3>(0, 3) = -skew(u_W) * skew(r2_W) - skew(e) * skew(u_W);
-    }
-
-    void velocity_bias(const MultibodySystem& system,
-                       Eigen::VectorXd& gamma) const override
-    {
-        (void)system;
-        // Zero bias: sufficient for position-level kinematic analysis.
-        gamma.resize(3);
-        gamma.setZero();
-    }
+class StrutLineConstraint : public PointOnLineConstraint {
+public:
+    /// \param upright_idx  Body index of the upright.
+    /// \param top_mount    Strut top mount position in world frame.
+    /// \param strut_bottom Strut lower attachment in upright body frame.
+    /// \param strut_axis   Strut axis direction in upright body frame (will be normalized).
+    StrutLineConstraint(BodyIndex upright_idx,
+                        const Vec3& top_mount,
+                        const Vec3& strut_bottom,
+                        const Vec3& strut_axis)
+        : PointOnLineConstraint(kGroundIndex, upright_idx,
+                                top_mount, strut_bottom, strut_axis)
+    {}
 };
 
 } // namespace mbd
