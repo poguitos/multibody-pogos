@@ -28,12 +28,8 @@ jobs:
   # Portability and memory-safety check: GCC with the address and
   # undefined-behaviour sanitizers, on the fast part of the suite, without the
   # precompiled header so that missing includes are caught.
-  #
-  # continue-on-error stays until this job has been green once: the code has
-  # only ever been compiled with MSVC.
   linux-sanitizers:
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
