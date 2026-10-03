@@ -46,7 +46,12 @@ struct GearboxParams {
 // ============================================================================
 
 struct BrakeParams {
-    Real max_torque{3000.0};
+    /// Sum of the brake torques of all four wheels at full pedal [Nm].
+    /// Each front wheel receives front_bias / 2 of it and each rear wheel
+    /// (1 - front_bias) / 2.
+    Real max_torque{6000.0};
+
+    /// Fraction of the total brake torque that goes to the front axle.
     Real front_bias{0.65};
 };
 

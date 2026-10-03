@@ -7,6 +7,7 @@
 #include "mbd/integrators/simulator.hpp"
 
 using Catch::Matchers::WithinAbs;
+using Catch::Matchers::WithinRel;
 
 // ============================================================================
 // Engine torque curve
@@ -223,7 +224,8 @@ TEST_CASE("Drivetrain: standing start accelerates the vehicle", "[drivetrain][dy
 // Braking from speed
 // ============================================================================
 
-TEST_CASE("Drivetrain: braking decelerates the vehicle", "[drivetrain][braking]")
+TEST_CASE("Drivetrain: braking deceleration matches the hand calculation",
+          "[drivetrain][braking]")
 {
     using namespace mbd;
 
@@ -242,6 +244,7 @@ TEST_CASE("Drivetrain: braking decelerates the vehicle", "[drivetrain][braking]"
 
     Drivetrain dt;
     dt.params.layout = DriveLayout::RWD;
+    dt.params.engine.inertia = 0.0; // keep the engine out of the inertia that is braked
     dt.initialize(sys, vm);
     dt.throttle = 0.0;
     dt.brake = 0.0;
@@ -249,20 +252,107 @@ TEST_CASE("Drivetrain: braking decelerates the vehicle", "[drivetrain][braking]"
 
     // Let it settle at speed for 0.3s
     sim.run(0.3, 0.001);
+
+    // Half pedal: 3000 Nm over the four wheels, 65 % of it at the front.
+    // That asks each front tyre for about 2.9 kN on 4.6 kN of load and each
+    // rear tyre for 1.5 kN on 3.0 kN (friction used: 0.62 and 0.51), well
+    // inside the tyre's peak friction of 1.1. No wheel is near its limit.
+    dt.brake = 0.5;
+    sim.run(0.5, 0.001);               // pitch and tyre deflection settle
+    const Real V1 = sys.q_dot(0);
+    sim.run(1.0, 0.001);
+    const Real V2 = sys.q_dot(0);
+    const Real decel = (V1 - V2) / 1.0;
+
+    // Hand calculation, for wheels that roll without locking:
+    //   wheel c:  I * (a / R_c) = T_c - F_c * R_c     (it slows with the car)
+    //   car:      m * a = sum(F_c)
+    //   =>        a = sum(T_c / R_c) / (m + sum(I / R_c^2))
+    // with T_c the brake torque, F_c the braking force of the tyre, R_c the
+    // rolling radius and I the spin inertia of one wheel.
+    Real force_from_torque = 0.0;
+    Real inertia_as_mass   = 0.0;
+    for (int c = 0; c < 4; ++c) {
+        const Real R = vm.tires[c]->get_rolling_radius();
+        force_from_torque += dt.brake_torque_out[c] / R;
+        inertia_as_mass   += dt.wheel_inertia[c] / (R * R);
+    }
+    const Real a_expected = force_from_torque / (vp.total_mass() + inertia_as_mass);
+
+    INFO("measured " << decel << " m/s^2, expected " << a_expected << " m/s^2");
+    REQUIRE_THAT(decel, WithinRel(a_expected, 0.02));
+
+    // Brake torque per wheel: bias times the total, split left/right.
+    REQUIRE_THAT(dt.brake_torque_out[0], WithinAbs(0.5 * 6000.0 * 0.65 / 2.0, 1e-9));
+    REQUIRE_THAT(dt.brake_torque_out[2], WithinAbs(0.5 * 6000.0 * 0.35 / 2.0, 1e-9));
+
+    // Every tyre brakes, driven or not, with the force its brake asks for
+    // (less the small part that slows the wheel itself).
+    for (int c = 0; c < 4; ++c) {
+        const Real R = vm.tires[c]->get_rolling_radius();
+        const Real F_expected =
+            (dt.brake_torque_out[c] - dt.wheel_inertia[c] * a_expected / R) / R;
+        INFO("corner " << c);
+        REQUIRE_THAT(-vm.tires[c]->get_Fx(), WithinRel(F_expected, 0.03));
+        REQUIRE(dt.wheel_omega[c] > 0.0); // still rolling
+    }
+}
+
+TEST_CASE("Drivetrain: full braking decelerates at the grip limit",
+          "[drivetrain][braking]")
+{
+    using namespace mbd;
+
+    MultibodySystem sys;
+    VehicleParams vp;
+    auto vm = build_simple_vehicle(sys, vp);
+
+    Simulator sim(sys);
+    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
+    sim.method = IntegrationMethod::RK4;
+    sim.initialize();
+
+    set_vehicle_equilibrium(sys, vm);
+    sys.q_dot(0) = 20.0;
+    sys.compute_kinematics();
+
+    Drivetrain dt;
+    dt.params.layout = DriveLayout::RWD;
+    dt.initialize(sys, vm);
+    dt.throttle = 0.0;
+    dt.brake = 0.0;
+    dt.connect(sim, vm);
+
+    sim.run(0.3, 0.001);
     const Real V_before = sys.q_dot(0);
 
-    // Apply full brakes
+    // Full pedal asks for 6000 Nm, about 17.6 kN at the contact patches. The
+    // tyres can transmit at most 1.1 * m * g = 16.8 kN, so the brakes are no
+    // longer the limit: the deceleration is set by the tyres. It cannot
+    // exceed peak friction, and it cannot fall below the friction of a locked,
+    // sliding tyre (slip ratio -1).
     dt.brake = 1.0;
-    sim.run(2.0, 0.001);
-
+    const Real t_brake = 1.0;
+    sim.run(t_brake, 0.001);
     const Real V_after = sys.q_dot(0);
+    const Real decel = (V_before - V_after) / t_brake;
 
-    // Vehicle should have slowed down significantly
-    REQUIRE(V_after < V_before * 0.3);
+    const PacejkaTire tyre(vp.tire_params);
+    const Real Fz_static = vp.weight_per_wheel();
+    const Real mu_peak   = tyre.peak_mu_longitudinal(Fz_static);
+    const Real mu_slide  = -tyre.compute(-1.0, 0.0, Fz_static).Fx / Fz_static;
 
-    // Wheel omegas should have decreased
+    INFO("decel " << decel << " m/s^2, sliding mu " << mu_slide << ", peak mu " << mu_peak);
+    // 10 % margin below sliding friction: it falls slightly on the unloaded
+    // rear tyres, and the first tenths of a second are spent building force.
+    REQUIRE(decel > 0.90 * mu_slide * g_accel);
+    REQUIRE(decel < mu_peak * g_accel);
+
+    // All four tyres brake; no wheel turns backwards.
     for (int c = 0; c < 4; ++c) {
-        REQUIRE(dt.wheel_omega[c] >= 0.0); // Not negative
+        INFO("corner " << c);
+        REQUIRE(vm.tires[c]->get_Fx() < 0.0);
+        REQUIRE(dt.wheel_omega[c] >= 0.0);
     }
 }
 
@@ -300,18 +390,18 @@ TEST_CASE("Drivetrain: coasting approximately maintains speed", "[drivetrain][co
     sim.run(2.0, 0.001);
     const Real V_end = sys.q_dot(0);
 
-    // Without aero drag, coasting should maintain speed within ~10%
-    // (small losses from tire rolling resistance are expected)
+    // Nothing in this model takes energy out of a coasting car: there is no
+    // aerodynamic drag, no rolling resistance and no engine braking. The
+    // speed must stay where it is.
     const Real speed_loss_fraction = (V_start - V_end) / V_start;
-    REQUIRE(speed_loss_fraction < 0.10);
-    REQUIRE(speed_loss_fraction > -0.01); // Shouldn't gain speed
+    REQUIRE(std::abs(speed_loss_fraction) < 1e-3);
 }
 
 // ============================================================================
 // Auto-shift logic
 // ============================================================================
 
-TEST_CASE("Drivetrain: auto-shift selects appropriate gear for speed",
+TEST_CASE("Drivetrain: auto-shift changes up at the shift speed of each gear",
           "[drivetrain][shift]")
 {
     using namespace mbd;
@@ -332,12 +422,52 @@ TEST_CASE("Drivetrain: auto-shift selects appropriate gear for speed",
     dt.initialize(sys, vm);
     dt.connect(sim, vm);
 
-    // Accelerate with full throttle for 5 seconds
-    dt.throttle = 1.0;
-    sim.run(5.0, 0.001);
+    const auto& gp = dt.params.gearbox;
 
-    // Should have reached a higher gear
+    // Wheel speed at which the engine reaches the up-shift speed in gear g.
+    auto shift_speed = [&](int gear) {
+        return gp.shift_up_rpm * 2.0 * pi / 60.0 / (gp.ratios[gear - 1] * gp.final_drive);
+    };
+
+    // Accelerate with full throttle and watch every gear change.
+    dt.throttle = 1.0;
+    Real omega_max = 0.0;
+    int upshifts = 0;
+    for (int i = 0; i < 10500; ++i) {
+        const int gear_before = dt.current_gear;
+        const Real omega_before = 0.5 * (dt.wheel_omega[2] + dt.wheel_omega[3]);
+        sim.step(0.001);
+        omega_max = std::max(omega_max, omega_before);
+
+        if (dt.current_gear != gear_before) {
+            // Only upward, one gear at a time, and only once the driven wheels
+            // have passed the shift speed of the gear that is left.
+            REQUIRE(dt.current_gear == gear_before + 1);
+            REQUIRE(omega_before > shift_speed(gear_before));
+            ++upshifts;
+        }
+    }
+
+    // The gear is the number of shift speeds the driven wheels have passed.
+    int expected_gear = 1;
+    while (expected_gear < dt.num_gears() && omega_max > shift_speed(expected_gear)) {
+        ++expected_gear;
+    }
+    REQUIRE(dt.current_gear == expected_gear);
+    REQUIRE(upshifts == expected_gear - 1);
+
+    // Lower bound on how far it must have got. Up to the change into third the
+    // car accelerates at 2.88 m/s^2 or more:
+    //   - engine-limited at the bottom of first gear: 400 Nm * 0.4 (idle
+    //     fraction) * 12.25 * 0.92 / 0.34 m = 5.3 kN on 1840 kg (car, wheels
+    //     and the engine inertia seen through first gear) = 2.88 m/s^2;
+    //   - with the driven wheels spinning: sliding friction 0.65 on at least
+    //     the static rear axle load of 7.65 kN = 4.9 kN, or 3.0 m/s^2;
+    //   - at the top of second gear: 6.6 kN on 1730 kg = 3.8 m/s^2.
+    // Third gear is taken at 84.6 rad/s, about 28.8 m/s, so no later than
+    // 28.8 / 2.88 = 10.0 s after the start.
     REQUIRE(dt.current_gear >= 3);
+    REQUIRE(sys.q_dot(0) > 2.88 * 10.0);
 
     // RPM should be within the shift band
     REQUIRE(dt.engine_rpm >= dt.params.gearbox.shift_down_rpm - 100.0);
@@ -375,13 +505,14 @@ TEST_CASE("Drivetrain: FWD drives front wheels and accelerates",
     // Vehicle should be moving
     REQUIRE(sys.q_dot(0) > 3.0);
 
-    // Front wheel omegas should be higher than rear (driven vs free-rolling)
-    // Actually both should track vehicle speed approximately,
-    // but front may have slightly higher omega due to drive slip
+    // The rear wheels are not driven: they roll freely at the speed of the
+    // car. The front wheels pull the car, so they turn slightly faster than
+    // free rolling (positive slip).
     const Real omega_front_avg = 0.5 * (dt.wheel_omega[0] + dt.wheel_omega[1]);
     const Real omega_rear_avg  = 0.5 * (dt.wheel_omega[2] + dt.wheel_omega[3]);
-    REQUIRE(omega_front_avg > 0.0);
-    REQUIRE(omega_rear_avg > 0.0);
+    const Real R_rear = vm.tires[2]->get_rolling_radius();
+    REQUIRE_THAT(omega_rear_avg * R_rear, WithinRel(sys.q_dot(0), 0.01));
+    REQUIRE(omega_front_avg > omega_rear_avg);
 }
 
 // ============================================================================

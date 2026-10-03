@@ -80,7 +80,7 @@ struct LapVehicle {
 /// - mu: mean of Pacejka peak mu_x and mu_y
 /// - CdA, ClA: from chassis aero config
 /// - max_power: from drivetrain max engine torque × max engine speed
-/// - max_brake_force: estimated from peak brake torque / tire_radius × 4 wheels
+/// - max_brake_force: total brake torque of the four wheels / tire_radius
 inline LapVehicle make_lap_vehicle(const VehicleTemplate& tmpl)
 {
     LapVehicle lv;
@@ -120,9 +120,9 @@ inline LapVehicle make_lap_vehicle(const VehicleTemplate& tmpl)
     const Real omega_redline = tmpl.drivetrain.engine.redline_rpm * 2.0 * pi / 60.0;
     lv.max_power = tmpl.drivetrain.engine.max_torque * omega_redline * 0.7;
 
-    // --- Max brake force: 4 wheels × per-wheel max brake torque / tire radius ---
-    // BrakeParams uses max_torque (per wheel).
-    lv.max_brake_force = tmpl.drivetrain.brakes.max_torque * 4.0
+    // --- Max brake force: total brake torque / tire radius ---
+    // BrakeParams::max_torque is the sum over the four wheels at full pedal.
+    lv.max_brake_force = tmpl.drivetrain.brakes.max_torque
                        / tmpl.front_axle.tire_free_radius;
 
     // --- Traction-limited speed threshold ---

@@ -159,6 +159,8 @@ public:
     mutable Vec3 last_contact_pos_W{Vec3::Zero()};
     mutable Vec3 last_forward_W{Vec3::UnitX()};
     mutable Vec3 last_lateral_W{Vec3::UnitZ()};
+    mutable Real last_V_abs{1.0};   ///< Speed used to normalize slip [m/s]
+    mutable Real last_R_eff{0.0};   ///< Rolling radius used for slip [m]
 
     FullTireForce(BodyIndex wheel_idx,
                   Real free_radius,
@@ -244,6 +246,9 @@ public:
         // Effective rolling radius
         const Real R_eff = R_free - last_deflection * 0.5;
 
+        last_V_abs = V_abs;
+        last_R_eff = R_eff;
+
         // Slip ratio: kappa = (omega*R_eff - Vx) / V_abs
         const Real actual_omega = auto_free_roll ? (Vx / R_eff) : omega_wheel;
         const Real kappa = (actual_omega * R_eff - Vx) / V_abs;
@@ -275,6 +280,35 @@ public:
     Real get_Fx() const { return last_result.Fx; }
     Real get_Fy() const { return last_result.Fy; }
     const TireForceResult& get_last_result() const { return last_result; }
+
+    /// Rolling radius: the lever arm of the longitudinal force about the
+    /// wheel axis, and the radius that converts wheel spin into slip [m].
+    Real get_rolling_radius() const { return R_free - last_deflection * 0.5; }
+
+    /// How fast the longitudinal force grows with wheel spin, dFx/d(omega)
+    /// [N s/rad], at the state of the last apply() call.
+    ///
+    ///   Fx depends on omega through the slip ratio,
+    ///   kappa = (omega * R_eff - Vx) / V_abs, so
+    ///   dFx/d(omega) = dFx/d(kappa) * R_eff / V_abs.
+    ///
+    /// Zero when the tyre is off the ground. Past the friction peak, where
+    /// the force falls as slip grows, zero is returned instead of a negative
+    /// value: callers use this to treat the stiff, stable part of the tyre
+    /// implicitly, and must not be handed a destabilizing term.
+    Real longitudinal_force_slope() const
+    {
+        if (last_Fz <= Real(0.0) || last_R_eff <= Real(0.0)) {
+            return Real(0.0);
+        }
+        const Real eps = Real(1e-4);
+        const Real Fx_plus  = pacejka.compute(last_result.kappa + eps,
+                                              last_result.alpha, last_Fz).Fx;
+        const Real Fx_minus = pacejka.compute(last_result.kappa - eps,
+                                              last_result.alpha, last_Fz).Fx;
+        const Real dFx_dkappa = (Fx_plus - Fx_minus) / (Real(2.0) * eps);
+        return std::max(dFx_dkappa, Real(0.0)) * last_R_eff / last_V_abs;
+    }
 };
 
 } // namespace mbd
