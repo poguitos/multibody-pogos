@@ -5,13 +5,21 @@
 #include <vector>
 
 #include "mbd/vehicle/vehicle_template.hpp"
-#include "mbd/integrators/simulator.hpp"
 #include "mbd/analysis/lap_vehicle.hpp"
 #include "mbd/analysis/lap_speed_profile.hpp"
 #include "mbd/analysis/bicycle_model.hpp"
 #include "mbd/vehicle/drivetrain.hpp"
 
 using Catch::Matchers::WithinAbs;
+
+namespace
+{
+    /// World X velocity of the chassis (body 1) of a template-built vehicle.
+    mbd::Real vx(const mbd::kernel::Simulator& sim)
+    {
+        return sim.states()[1].v_WB.x();
+    }
+}
 
 // ============================================================================
 // QSS sanity: V_max formula matches analytical sqrt(mu*g*R)
@@ -86,18 +94,16 @@ TEST_CASE("Lap validation: terminal velocity matches QSS prediction order-of-mag
     REQUIRE(V_term_QSS < 150.0);
 
     // Build multibody and run from rest with full throttle
-    MultibodySystem sys;
+    kernel::System sys;
     auto vh = build_vehicle(sys, tmpl);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vh);
     sim.initialize();
 
-    set_vehicle_equilibrium(sys, vh);
-
     Drivetrain dt(tmpl.drivetrain);
-    dt.initialize(sys, vh);
+    dt.initialize(sim, vh);
     dt.connect(sim, vh);
     vh.install_aerodynamics(sys);
 
@@ -109,7 +115,7 @@ TEST_CASE("Lap validation: terminal velocity matches QSS prediction order-of-mag
     dt.throttle = 0.5;
     sim.run(8.0, 0.001);
 
-    const Real V_actual_end = sys.q_dot(0);
+    const Real V_actual_end = vx(sim);
 
     INFO("Multibody V at t=8s: " << V_actual_end);
 

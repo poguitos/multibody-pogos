@@ -2,7 +2,6 @@
 
 #include "mbd/core/core.hpp"
 #include "mbd/model/rigid_body.hpp"
-#include "mbd/algorithms/dynamics_og.hpp"
 
 namespace mbd {
 

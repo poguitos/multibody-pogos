@@ -1,7 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include <mbd/model/system.hpp>
+#include <vector>
+
+#include <mbd/forces/force_element.hpp>
+
+// The spring-damper force element, given body states directly.
 
 using Catch::Matchers::WithinAbs;
 
@@ -10,16 +14,16 @@ TEST_CASE("LinearSpringDamper applies correct force between ground and body",
 {
     using namespace mbd;
 
-    MultibodySystem system;
-
-    RigidBodyInertia inertia = RigidBodyInertia::from_solid_box(1.0, Vec3(0.5, 0.5, 0.5));
     RigidBodyState s_body;
     s_body.p_WB = Vec3(2.0, 0.0, 0.0);
     s_body.q_WB = Quat(Eigen::AngleAxisd(pi / 2.0, Vec3::UnitZ()));
     s_body.v_WB = Vec3(1.0, 0.0, 0.0);
     s_body.w_WB = Vec3::Zero();
 
-    BodyIndex b_body = system.add_body(inertia, s_body);
+    const BodyIndex b_body = 1;
+    std::vector<RigidBodyState> states(2);
+    states[1] = s_body;
+    std::vector<RigidBodyForces> forces(2);
 
     // Spring from ground anchor at (0,1,0) to body-local anchor at (0,0.5,0)
     LinearSpringDamper spring(kGroundIndex, b_body,
@@ -27,10 +31,9 @@ TEST_CASE("LinearSpringDamper applies correct force between ground and body",
                               Vec3(0.0, 0.5, 0.0),
                               100.0, 10.0, 1.0);
 
-    system.clear_forces();
-    spring.apply(system.states, system.forces);
+    spring.apply(states, forces);
 
-    auto& forces_body = system.forces[b_body];
+    auto& forces_body = forces[b_body];
 
     // Body rotated 90 deg about Z: local Y -> -world X
     // Body attachment in world: (2,0,0) + Rz(90)*(0,0.5,0) = (2,0,0) + (-0.5,0,0) = (1.5,0,0)
@@ -46,7 +49,7 @@ TEST_CASE("LinearSpringDamper applies correct force between ground and body",
     REQUIRE(forces_body.tau_W.z() < -0.001);
 
     // Newton's 3rd law: ground forces equal and opposite
-    auto& forces_ground = system.forces[kGroundIndex];
+    auto& forces_ground = forces[kGroundIndex];
     REQUIRE_THAT(forces_ground.f_W.x() + forces_body.f_W.x(), WithinAbs(0.0, 1e-9));
     REQUIRE_THAT(forces_ground.f_W.y() + forces_body.f_W.y(), WithinAbs(0.0, 1e-9));
     REQUIRE_THAT(forces_ground.f_W.z() + forces_body.f_W.z(), WithinAbs(0.0, 1e-9));
@@ -57,20 +60,19 @@ TEST_CASE("LinearSpringDamper at rest length with zero velocity gives zero force
 {
     using namespace mbd;
 
-    MultibodySystem system;
-
-    RigidBodyInertia inertia = RigidBodyInertia::from_solid_box(1.0, Vec3(0.1, 0.1, 0.1));
     RigidBodyState s_body;
     s_body.p_WB = Vec3(1.0, 0.0, 0.0);
-    BodyIndex b_body = system.add_body(inertia, s_body);
+    const BodyIndex b_body = 1;
+    std::vector<RigidBodyState> states(2);
+    states[1] = s_body;
+    std::vector<RigidBodyForces> forces(2);
 
     // Spring from ground origin to body origin, rest_length = 1.0, no velocity
     LinearSpringDamper spring(kGroundIndex, b_body,
                               Vec3::Zero(), Vec3::Zero(),
                               100.0, 10.0, 1.0);
 
-    system.clear_forces();
-    spring.apply(system.states, system.forces);
+    spring.apply(states, forces);
 
-    REQUIRE_THAT(system.forces[b_body].f_W.norm(), WithinAbs(0.0, 1e-9));
+    REQUIRE_THAT(forces[b_body].f_W.norm(), WithinAbs(0.0, 1e-9));
 }

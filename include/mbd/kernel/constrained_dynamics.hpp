@@ -75,7 +75,8 @@ public:
 
     /// Move q onto phi(q, t) = 0, then v onto J v = nu, each by the change of
     /// least kinetic-energy norm (M-weighted). Gauss-Newton on q with the mass
-    /// matrix of the starting point. q and v are changed in place.
+    /// matrix of the starting point, each step halved until |phi| decreases.
+    /// q and v are changed in place.
     ProjectionInfo project(Data& data, VecX& q, VecX& v, Real t,
                            Real tolerance = 1e-10, int max_iterations = 20);
 
@@ -106,7 +107,7 @@ private:
 
     VecX phi_, nu_, gamma_, lambda_, rhs_m_, mu_;
     MatX J_, Y_, A_;
-    VecX v_dot_, v_dot_free_, rhs_v_, dv_, zero_v_;
+    VecX q_save_, v_dot_, v_dot_free_, rhs_v_, dv_, zero_v_;
     Eigen::LLT<MatX> llt_M_;
     Eigen::LDLT<MatX> ldlt_A_;
     Real pivot_cut_{0.0};

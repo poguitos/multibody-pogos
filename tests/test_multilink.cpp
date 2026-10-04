@@ -1,8 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <cmath>
+#include <fstream>
+#include <string>
 
 #include "mbd/vehicle/suspension/multilink.hpp"
+
+// Kinematics of the multilink corner, on the kernel (plan task 2.7). k.t is
+// the bump travel prescribed by the corner's driver.
 
 using Catch::Matchers::WithinAbs;
 
@@ -16,51 +21,49 @@ TEST_CASE("Multilink: reference configuration satisfies all constraints",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
-    auto ml = build_multilink_corner(sys);
-    set_multilink_reference(sys, ml);
+    kernel::System sys;
+    build_multilink_corner(sys);
+    Kinematics k(sys);
 
-    VecX phi = evaluate_all_constraints(sys);
-    REQUIRE_THAT(phi.norm(), WithinAbs(0.0, 1e-10));
+    REQUIRE_THAT(k.phi().norm(), WithinAbs(0.0, 1e-10));
 }
 
 TEST_CASE("Multilink: upright at wheel center at reference", "[multilink][reference]")
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     MultilinkParams p;
     auto ml = build_multilink_corner(sys, p);
-    set_multilink_reference(sys, ml);
+    Kinematics k(sys);
 
-    REQUIRE_THAT(sys.states[ml.upright_body].p_WB.x(),
-                 WithinAbs(p.wheel_center.x(), 1e-10));
-    REQUIRE_THAT(sys.states[ml.upright_body].p_WB.y(),
-                 WithinAbs(p.wheel_center.y(), 1e-10));
-    REQUIRE_THAT(sys.states[ml.upright_body].p_WB.z(),
-                 WithinAbs(p.wheel_center.z(), 1e-10));
+    REQUIRE_THAT(k.state(ml.upright_body).p_WB.x(), WithinAbs(p.wheel_center.x(), 1e-10));
+    REQUIRE_THAT(k.state(ml.upright_body).p_WB.y(), WithinAbs(p.wheel_center.y(), 1e-10));
+    REQUIRE_THAT(k.state(ml.upright_body).p_WB.z(), WithinAbs(p.wheel_center.z(), 1e-10));
 }
 
 TEST_CASE("Multilink: camber and toe zero at reference", "[multilink][reference]")
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto ml = build_multilink_corner(sys);
-    set_multilink_reference(sys, ml);
+    Kinematics k(sys);
 
-    REQUIRE_THAT(extract_camber(sys.states[ml.upright_body]), WithinAbs(0.0, 1e-10));
-    REQUIRE_THAT(extract_toe(sys.states[ml.upright_body]), WithinAbs(0.0, 1e-10));
+    REQUIRE_THAT(extract_camber(k.state(ml.upright_body)), WithinAbs(0.0, 1e-10));
+    REQUIRE_THAT(extract_toe(k.state(ml.upright_body)), WithinAbs(0.0, 1e-10));
 }
 
 TEST_CASE("Multilink: 6 DOF and 6 constraints", "[multilink][topology]")
 {
     using namespace mbd;
 
-    MultibodySystem sys;
-    auto ml = build_multilink_corner(sys);
+    kernel::System sys;
+    build_multilink_corner(sys);
 
-    REQUIRE(sys.total_dof == 6);
+    // A free upright: six velocities (seven coordinates with the quaternion).
+    REQUIRE(sys.model.nv == 6);
+    REQUIRE(sys.model.nq == 7);
     REQUIRE(sys.constraints.size() == 6);
 }
 
@@ -68,43 +71,31 @@ TEST_CASE("Multilink: Newton-Raphson converges for 20mm bump", "[multilink][solv
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     MultilinkParams p;
     auto ml = build_multilink_corner(sys, p);
-    set_multilink_reference(sys, ml);
+    Kinematics k(sys);
 
-    auto* h = dynamic_cast<PointCoordinateConstraint*>(
-        sys.constraints[ml.bump_constraint_idx].get());
-    h->target = p.wheel_center.y() + 0.02;
+    k.t = 0.02;
+    REQUIRE(k.solve());
 
-    bool ok = solve_position_kinematics(sys);
-    REQUIRE(ok);
-
-    REQUIRE_THAT(sys.states[ml.upright_body].p_WB.y(),
-                 WithinAbs(p.wheel_center.y() + 0.02, 1e-8));
-
-    VecX phi = evaluate_all_constraints(sys);
-    REQUIRE_THAT(phi.norm(), WithinAbs(0.0, 1e-8));
+    REQUIRE_THAT(k.state(ml.upright_body).p_WB.y(), WithinAbs(p.wheel_center.y() + 0.02, 1e-8));
+    REQUIRE_THAT(k.phi().norm(), WithinAbs(0.0, 1e-8));
 }
 
 TEST_CASE("Multilink: converges for 20mm droop", "[multilink][solver]")
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     MultilinkParams p;
     auto ml = build_multilink_corner(sys, p);
-    set_multilink_reference(sys, ml);
+    Kinematics k(sys);
 
-    auto* h = dynamic_cast<PointCoordinateConstraint*>(
-        sys.constraints[ml.bump_constraint_idx].get());
-    h->target = p.wheel_center.y() - 0.02;
+    k.t = -0.02;
+    REQUIRE(k.solve());
 
-    bool ok = solve_position_kinematics(sys);
-    REQUIRE(ok);
-
-    REQUIRE_THAT(sys.states[ml.upright_body].p_WB.y(),
-                 WithinAbs(p.wheel_center.y() - 0.02, 1e-8));
+    REQUIRE_THAT(k.state(ml.upright_body).p_WB.y(), WithinAbs(p.wheel_center.y() - 0.02, 1e-8));
 }
 
 TEST_CASE("Multilink: kinematic sweep converges over full range",
@@ -112,14 +103,11 @@ TEST_CASE("Multilink: kinematic sweep converges over full range",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
-    MultilinkParams p;
-    auto ml = build_multilink_corner(sys, p);
-    set_multilink_reference(sys, ml);
+    kernel::System sys;
+    auto ml = build_multilink_corner(sys);
+    Kinematics k(sys);
 
-    auto result = sweep_bump_travel(
-        sys, ml.bump_constraint_idx, ml.upright_body,
-        p.wheel_center.y(), -0.04, 0.04, 21);
+    auto result = sweep_bump_travel(k, ml.upright_body, -0.04, 0.04, 21);
 
     REQUIRE(result.points.size() == 21);
 
@@ -139,14 +127,11 @@ TEST_CASE("Multilink: camber variation is bounded",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
-    MultilinkParams p;
-    auto ml = build_multilink_corner(sys, p);
-    set_multilink_reference(sys, ml);
+    kernel::System sys;
+    auto ml = build_multilink_corner(sys);
+    Kinematics k(sys);
 
-    auto result = sweep_bump_travel(
-        sys, ml.bump_constraint_idx, ml.upright_body,
-        p.wheel_center.y(), -0.03, 0.03, 11);
+    auto result = sweep_bump_travel(k, ml.upright_body, -0.03, 0.03, 11);
 
     // Camber should stay within ±5 deg over ±30mm travel
     for (const auto& pt : result.points) {
@@ -160,14 +145,11 @@ TEST_CASE("Multilink: toe variation is bounded",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
-    MultilinkParams p;
-    auto ml = build_multilink_corner(sys, p);
-    set_multilink_reference(sys, ml);
+    kernel::System sys;
+    auto ml = build_multilink_corner(sys);
+    Kinematics k(sys);
 
-    auto result = sweep_bump_travel(
-        sys, ml.bump_constraint_idx, ml.upright_body,
-        p.wheel_center.y(), -0.03, 0.03, 11);
+    auto result = sweep_bump_travel(k, ml.upright_body, -0.03, 0.03, 11);
 
     for (const auto& pt : result.points) {
         REQUIRE(pt.converged);
@@ -186,36 +168,27 @@ TEST_CASE("Multilink: different link lengths produce different camber behavior",
     // Lower links span: sqrt((0.20-0.20)^2 + (0.15-0.18)^2 + (0.70-0.25)^2) ≈ 0.45
     // Upper < Lower: should give negative camber gain
 
-    MultibodySystem sys_a;
+    kernel::System sys_a;
     auto ml_a = build_multilink_corner(sys_a, p_a);
-    set_multilink_reference(sys_a, ml_a);
-
-    auto result_a = sweep_bump_travel(
-        sys_a, ml_a.bump_constraint_idx, ml_a.upright_body,
-        p_a.wheel_center.y(), -0.03, 0.03, 11);
+    Kinematics k_a(sys_a);
+    auto result_a = sweep_bump_travel(k_a, ml_a.upright_body, -0.03, 0.03, 11);
 
     // Config B: make upper links longer by moving inner points outward
     MultilinkParams p_b = p_a;
     p_b.inner[2] = Vec3( 0.15, 0.42, 0.50);  // upper front inner moved outboard
     p_b.inner[3] = Vec3(-0.15, 0.42, 0.50);  // upper rear inner moved outboard
 
-    MultibodySystem sys_b;
+    kernel::System sys_b;
     auto ml_b = build_multilink_corner(sys_b, p_b);
-    set_multilink_reference(sys_b, ml_b);
-
-    auto result_b = sweep_bump_travel(
-        sys_b, ml_b.bump_constraint_idx, ml_b.upright_body,
-        p_b.wheel_center.y(), -0.03, 0.03, 11);
+    Kinematics k_b(sys_b);
+    auto result_b = sweep_bump_travel(k_b, ml_b.upright_body, -0.03, 0.03, 11);
 
     // Both should converge
     for (const auto& pt : result_a.points) { REQUIRE(pt.converged); }
     for (const auto& pt : result_b.points) { REQUIRE(pt.converged); }
 
     // They should have different camber gain
-    Real gain_a = result_a.camber_gain();
-    Real gain_b = result_b.camber_gain();
-
-    const Real diff = std::abs(gain_a - gain_b);
+    const Real diff = std::abs(result_a.camber_gain() - result_b.camber_gain());
     REQUIRE(diff > 0.01); // Measurably different
 }
 
@@ -223,13 +196,11 @@ TEST_CASE("Multilink: CSV export", "[multilink][csv]")
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto ml = build_multilink_corner(sys);
-    set_multilink_reference(sys, ml);
+    Kinematics k(sys);
 
-    auto result = sweep_bump_travel(
-        sys, ml.bump_constraint_idx, ml.upright_body,
-        ml.params.wheel_center.y(), -0.02, 0.02, 5);
+    auto result = sweep_bump_travel(k, ml.upright_body, -0.02, 0.02, 5);
 
     result.export_csv("test_multilink_sweep.csv");
 

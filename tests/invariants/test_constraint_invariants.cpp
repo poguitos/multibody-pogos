@@ -107,7 +107,7 @@ namespace
                 const Vec3 axis1 = rng.direction();
                 const Vec3 axis1_in_second = s2.q_WB.conjugate() * (s1.q_WB * axis1);
                 const Vec3 axis2 = rng.direction();
-                sys.constraints.push_back(std::make_shared<mbd::RevoluteJoint>(
+                sys.constraints.push_back(std::make_shared<mbd::RevoluteConstraint>(
                     bp.first, bp.second,
                     a1, axis1,
                     satisfied ? a1_in_second : a2,

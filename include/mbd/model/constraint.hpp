@@ -172,9 +172,9 @@ public:
     }
 };
 
-// A Revolute Joint (Hinge) constrains two bodies to share a common point (anchor)
+// A revolute (hinge) loop closure: two bodies share a common point (anchor)
 // and a common axis of rotation. Removes 5 DOFs.
-class RevoluteJoint : public Constraint {
+class RevoluteConstraint : public Constraint {
 public:
     Vec3 anchor1_B; // Anchor on Body 1
     Vec3 axis1_B;   // Axis of rotation on Body 1 (must be normalized)
@@ -187,9 +187,9 @@ public:
     Vec3 u2_B;
     Vec3 v2_B;
 
-    RevoluteJoint(BodyIndex b1, BodyIndex b2,
-                  const Vec3& a1, const Vec3& axis1,
-                  const Vec3& a2, const Vec3& axis2)
+    RevoluteConstraint(BodyIndex b1, BodyIndex b2,
+                       const Vec3& a1, const Vec3& axis1,
+                       const Vec3& a2, const Vec3& axis2)
         : Constraint(b1, b2)
         , anchor1_B(a1)
         , axis1_B(axis1.normalized())

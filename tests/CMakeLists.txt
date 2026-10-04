@@ -53,7 +53,6 @@ mbd_add_test_exe(test_model
     model/test_rigid_body.cpp
     model/test_joints.cpp
     model/test_freejoint_conventions.cpp
-    test_rigid_body_dynamics.cpp
     test_forward_kinematics.cpp
     test_revolute_joint.cpp
     test_prismatic_joint.cpp
@@ -85,10 +84,12 @@ mbd_add_test_exe(test_invariants
 # and the legacy path.
 mbd_add_test_exe(test_kernel
     kernel/test_spatial.cpp
+    kernel/test_kernel_analytic.cpp
     kernel/test_kernel_invariants.cpp
     kernel/test_kernel_threads.cpp
     kernel/test_kernel_constraints.cpp
     kernel/test_kernel_constrained.cpp
+    kernel/test_kernel_simulator.cpp
     kernel/test_kernel_vs_legacy.cpp
 )
 find_package(Threads REQUIRED)

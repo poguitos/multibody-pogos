@@ -140,4 +140,20 @@ struct RigidBodyState
     }
 };
 
+//------------------------------------------------------------------------------
+// Forces on a rigid body
+//------------------------------------------------------------------------------
+//
+// External force and moment on a body, both in world axes. The force acts at
+// the origin of the body frame and tau_W is the moment about that origin, so a
+// force F at a point P adds (P - origin) x F to tau_W. This is how the force
+// elements fill it and how the dynamics reads it (Jacobians at the body
+// origin). It is the centre of mass only where the body frame is placed there.
+//
+struct RigidBodyForces
+{
+    Vec3 f_W{Vec3::Zero()};
+    Vec3 tau_W{Vec3::Zero()};
+};
+
 } // namespace mbd

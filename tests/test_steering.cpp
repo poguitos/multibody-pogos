@@ -4,7 +4,6 @@
 #include <cmath>
 
 #include "mbd/vehicle/vehicle.hpp"
-#include "mbd/integrators/simulator.hpp"
 
 using Catch::Matchers::WithinAbs;
 
@@ -26,7 +25,7 @@ TEST_CASE("Steering: Ackermann at zero returns zero", "[steering][ackermann]")
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto vm = build_simple_vehicle(sys);
 
     auto [fl, fr] = vm.ackermann_steering(0.0);
@@ -39,7 +38,7 @@ TEST_CASE("Steering: Ackermann left turn inner angle larger than outer",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto vm = build_simple_vehicle(sys);
 
     const Real delta = 0.1;
@@ -62,7 +61,7 @@ TEST_CASE("Steering: Ackermann right turn signs flip correctly",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto vm = build_simple_vehicle(sys);
 
     const Real delta = -0.1;
@@ -81,7 +80,7 @@ TEST_CASE("Steering: Ackermann is antisymmetric",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto vm = build_simple_vehicle(sys);
 
     auto [fl_L, fr_L] = vm.ackermann_steering(0.08);
@@ -100,31 +99,26 @@ TEST_CASE("Steering: steered tire develops lateral force from pure forward veloc
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto vm = build_simple_vehicle(sys);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
-    sim.initialize();
-
-    set_vehicle_equilibrium(sys, vm);
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
 
     // Give the vehicle forward speed
-    sys.q_dot(0) = 15.0;
-    sys.compute_kinematics();
+    sim.v(3) = 15.0;
+    sim.initialize();
 
     // No steering: FL tire should have near-zero Fy
-    sys.clear_forces();
-    sys.apply_force_elements();
+    sim.acceleration(sim.q, sim.v, sim.time);   // applies the force elements
     const Real Fy_no_steer = vm.tires[0]->get_Fy();
     REQUIRE_THAT(Fy_no_steer, WithinAbs(0.0, 10.0));
 
     // Apply 0.05 rad left steering to FL tire only
     vm.tires[0]->steer_angle = 0.05;
 
-    sys.clear_forces();
-    sys.apply_force_elements();
+    sim.acceleration(sim.q, sim.v, sim.time);   // applies the force elements
     const Real Fy_steered = vm.tires[0]->get_Fy();
 
     // Steered tire should now produce significant lateral force
@@ -143,20 +137,17 @@ TEST_CASE("Steering: vehicle turns left with positive steering angle",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams params;
     auto vm = build_simple_vehicle(sys, params);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
-    sim.initialize();
-
-    set_vehicle_equilibrium(sys, vm);
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
 
     // Start already at speed to avoid violent transient
-    sys.q_dot(0) = 10.0;
-    sys.compute_kinematics();
+    sim.v(3) = 10.0;
+    sim.initialize();
 
     const Real delta_steer = 0.03;
     const Real K_speed = 500.0;
@@ -164,10 +155,10 @@ TEST_CASE("Steering: vehicle turns left with positive steering angle",
 
     vm.set_front_steering(delta_steer);
 
-    sim.force_callback = [&](MultibodySystem& s, Real /*t*/, VecX& tau) {
-        const Vec3 fwd_W = s.states[vm.chassis_body].q_WB * Vec3::UnitX();
-        const Real Vx = s.states[vm.chassis_body].v_WB.dot(fwd_W);
-        tau(0) += K_speed * (V_target - Vx);
+    sim.force_callback = [&](kernel::Simulator& s, Real /*t*/, VecX& tau) {
+        const Vec3 fwd_W = s.states()[vm.chassis_body].q_WB * Vec3::UnitX();
+        const Real Vx = s.states()[vm.chassis_body].v_WB.dot(fwd_W);
+        tau(3) += K_speed * (V_target - Vx);
     };
 
     // Let suspension settle for 0.5s, then corner for 3s
@@ -175,15 +166,15 @@ TEST_CASE("Steering: vehicle turns left with positive steering angle",
     sim.run(0.5, 0.001);
 
     vm.set_front_steering(delta_steer);
-    const Real z_before = sys.states[vm.chassis_body].p_WB.z();
+    const Real z_before = sim.states()[vm.chassis_body].p_WB.z();
     sim.run(3.0, 0.001);
-    const Real z_after = sys.states[vm.chassis_body].p_WB.z();
+    const Real z_after = sim.states()[vm.chassis_body].p_WB.z();
 
     // Vehicle should have moved LEFT (positive Z)
     REQUIRE(z_after - z_before > 0.05);
 
     // Vehicle should still be near ground
-    REQUIRE_THAT(sys.states[vm.chassis_body].p_WB.y(),
+    REQUIRE_THAT(sim.states()[vm.chassis_body].p_WB.y(),
                  WithinAbs(params.chassis_height_eq(), 0.05));
 }
 
@@ -192,37 +183,34 @@ TEST_CASE("Steering: vehicle turns right with negative steering angle",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams params;
     auto vm = build_simple_vehicle(sys, params);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
+
+    sim.v(3) = 10.0;
     sim.initialize();
-
-    set_vehicle_equilibrium(sys, vm);
-
-    sys.q_dot(0) = 10.0;
-    sys.compute_kinematics();
 
     const Real delta_steer = -0.03;
     const Real K_speed = 500.0;
     const Real V_target = 10.0;
 
-    sim.force_callback = [&](MultibodySystem& s, Real /*t*/, VecX& tau) {
-        const Vec3 fwd_W = s.states[vm.chassis_body].q_WB * Vec3::UnitX();
-        const Real Vx = s.states[vm.chassis_body].v_WB.dot(fwd_W);
-        tau(0) += K_speed * (V_target - Vx);
+    sim.force_callback = [&](kernel::Simulator& s, Real /*t*/, VecX& tau) {
+        const Vec3 fwd_W = s.states()[vm.chassis_body].q_WB * Vec3::UnitX();
+        const Real Vx = s.states()[vm.chassis_body].v_WB.dot(fwd_W);
+        tau(3) += K_speed * (V_target - Vx);
     };
 
     // Settle first
     sim.run(0.5, 0.001);
 
     vm.set_front_steering(delta_steer);
-    const Real z_before = sys.states[vm.chassis_body].p_WB.z();
+    const Real z_before = sim.states()[vm.chassis_body].p_WB.z();
     sim.run(3.0, 0.001);
-    const Real z_after = sys.states[vm.chassis_body].p_WB.z();
+    const Real z_after = sim.states()[vm.chassis_body].p_WB.z();
 
     // Vehicle should have moved RIGHT (negative Z)
     REQUIRE(z_after - z_before < -0.05);
@@ -237,41 +225,37 @@ TEST_CASE("Steering: zero steering produces straight-line motion",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams params;
     auto vm = build_simple_vehicle(sys, params);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
-    sim.initialize();
-
-    set_vehicle_equilibrium(sys, vm);
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
     vm.clear_steering();
-
-    sys.q_dot(0) = 10.0;
-    sys.compute_kinematics();
+    sim.v(3) = 10.0;
+    sim.initialize();
 
     const Real K_speed = 500.0;
     const Real V_target = 10.0;
 
-    sim.force_callback = [&](MultibodySystem& s, Real /*t*/, VecX& tau) {
-        const Vec3 fwd_W = s.states[vm.chassis_body].q_WB * Vec3::UnitX();
-        const Real Vx = s.states[vm.chassis_body].v_WB.dot(fwd_W);
-        tau(0) += K_speed * (V_target - Vx);
+    sim.force_callback = [&](kernel::Simulator& s, Real /*t*/, VecX& tau) {
+        const Vec3 fwd_W = s.states()[vm.chassis_body].q_WB * Vec3::UnitX();
+        const Real Vx = s.states()[vm.chassis_body].v_WB.dot(fwd_W);
+        tau(3) += K_speed * (V_target - Vx);
     };
 
     sim.run(0.5, 0.001); // settle
     sim.run(2.0, 0.001);
 
     // Vehicle moves forward
-    REQUIRE(sys.states[vm.chassis_body].p_WB.x() > 10.0);
+    REQUIRE(sim.states()[vm.chassis_body].p_WB.x() > 10.0);
 
     // No lateral displacement
-    REQUIRE_THAT(sys.states[vm.chassis_body].p_WB.z(), WithinAbs(0.0, 0.02));
+    REQUIRE_THAT(sim.states()[vm.chassis_body].p_WB.z(), WithinAbs(0.0, 0.02));
 
     // No yaw
-    const Vec3 fwd_W = sys.states[vm.chassis_body].q_WB * Vec3::UnitX();
+    const Vec3 fwd_W = sim.states()[vm.chassis_body].q_WB * Vec3::UnitX();
     REQUIRE_THAT(fwd_W.z(), WithinAbs(0.0, 0.005));
 }
 
@@ -284,28 +268,25 @@ TEST_CASE("Steering: low-speed turn radius approximately matches kinematic predi
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams params;
     auto vm = build_simple_vehicle(sys, params);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
+
+    sim.v(3) = 8.0;
     sim.initialize();
-
-    set_vehicle_equilibrium(sys, vm);
-
-    sys.q_dot(0) = 8.0;
-    sys.compute_kinematics();
 
     const Real V_target = 8.0;
     const Real delta = 0.02;
     const Real K_speed = 500.0;
 
-    sim.force_callback = [&](MultibodySystem& s, Real /*t*/, VecX& tau) {
-        const Vec3 fwd_W = s.states[vm.chassis_body].q_WB * Vec3::UnitX();
-        const Real Vx = s.states[vm.chassis_body].v_WB.dot(fwd_W);
-        tau(0) += K_speed * (V_target - Vx);
+    sim.force_callback = [&](kernel::Simulator& s, Real /*t*/, VecX& tau) {
+        const Vec3 fwd_W = s.states()[vm.chassis_body].q_WB * Vec3::UnitX();
+        const Real Vx = s.states()[vm.chassis_body].v_WB.dot(fwd_W);
+        tau(3) += K_speed * (V_target - Vx);
     };
 
     // Settle suspension at speed without steering
@@ -320,9 +301,9 @@ TEST_CASE("Steering: low-speed turn radius approximately matches kinematic predi
     const Real R_kinematic = L / std::tan(delta);
 
     // Measure actual turn radius from yaw rate
-    const Real omega_yaw = sys.states[vm.chassis_body].w_WB.y();
-    const Vec3 fwd_W = sys.states[vm.chassis_body].q_WB * Vec3::UnitX();
-    const Real V_actual = sys.states[vm.chassis_body].v_WB.dot(fwd_W);
+    const Real omega_yaw = sim.states()[vm.chassis_body].w_WB.y();
+    const Vec3 fwd_W = sim.states()[vm.chassis_body].q_WB * Vec3::UnitX();
+    const Real V_actual = sim.states()[vm.chassis_body].v_WB.dot(fwd_W);
 
     REQUIRE(std::abs(omega_yaw) > 0.001);
     const Real R_actual = V_actual / std::abs(omega_yaw);
@@ -341,7 +322,7 @@ TEST_CASE("Steering: set_front_steering applies Ackermann to front tires only",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto vm = build_simple_vehicle(sys);
 
     vm.set_front_steering(0.1);

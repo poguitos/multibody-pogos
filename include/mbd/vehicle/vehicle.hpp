@@ -2,15 +2,17 @@
 
 // Simplified full vehicle model builder.
 //
-// Creates a 5-body, 10-DOF vehicle: chassis on FreeCoordJoint + 4 wheels
-// on PrismaticCoordJoints for vertical suspension travel.
+// Creates a 5-body vehicle on the kinematics kernel: chassis on a free joint
+// + 4 wheels on prismatic joints for vertical suspension travel (10 DOF).
 //
-// q layout: [tx, ty, tz, rx, ry, rz, q_FL, q_FR, q_RL, q_RR]
-//   0-2: chassis translation (in joint frame ≈ world at small angles)
-//   3-5: chassis rotation (exponential map)
-//   6-9: suspension travel per corner (positive = wheel moves down from mount)
+// q layout: [tx, ty, tz, quaternion (x, y, z, w), q_FL, q_FR, q_RL, q_RR]
+// v layout: [chassis w, chassis v (both in chassis axes), qd_FL ... qd_RR]
+// The suspension coordinate is the travel (positive = wheel moves down from
+// its mount). Use VehicleModel::susp_q_idx and susp_v_idx rather than fixed
+// offsets.
 
-#include "mbd/model/system.hpp"
+#include "mbd/kernel/simulator.hpp"
+#include "mbd/forces/force_element.hpp"
 #include "mbd/forces/tire.hpp"
 
 #include <array>
@@ -116,17 +118,19 @@ struct VehicleModel {
     std::array<BodyIndex, 4> wheel_bodies{2, 3, 4, 5};
     std::array<int, 4> wheel_joint_indices{};
     int chassis_joint_index{0};
+    std::array<int, 4> susp_q{};   ///< Index of each suspension coordinate in q
+    std::array<int, 4> susp_v{};   ///< Index of each suspension velocity in v
     std::array<FullTireForce*, 4> tires{};
     VehicleParams params;
 
-    /// Index of the chassis joint coordinate q_dot(1) (ty, vertical)
+    /// Index of the chassis height (ty) in q.
     int chassis_ty_idx() const { return 1; }
 
-    /// Index of a wheel's suspension q in the global q vector.
-    int susp_q_idx(Corner c) const
-    {
-        return 6 + static_cast<int>(c);
-    }
+    /// Index of a wheel's suspension coordinate in q.
+    int susp_q_idx(Corner c) const { return susp_q[static_cast<std::size_t>(c)]; }
+
+    /// Index of a wheel's suspension velocity in v.
+    int susp_v_idx(Corner c) const { return susp_v[static_cast<std::size_t>(c)]; }
     /// Compute Ackermann steering angles for front wheels.
     /// \param delta  Driver steering input [rad]. Positive = left turn.
     /// \return {delta_FL, delta_FR}
@@ -175,29 +179,26 @@ struct VehicleModel {
 // Builder function
 // ============================================================================
 
-/// Build a simplified vehicle MultibodySystem.
-/// Returns a VehicleModel with indices for easy access.
-inline VehicleModel build_simple_vehicle(MultibodySystem& sys,
+/// Build a simplified vehicle on a kernel system. Returns a VehicleModel
+/// with indices for easy access. The vehicle layer is still Y-up with +Z to
+/// the left (ISO 8855 is plan task 7.1), so the model's gravity is set to -Y.
+inline VehicleModel build_simple_vehicle(kernel::System& sys,
                                          const VehicleParams& p = VehicleParams{})
 {
     VehicleModel vm;
     vm.params = p;
+    sys.model.gravity = Vec3(0.0, -g_accel, 0.0);
 
-    // Prismatic joint rotation: Rx(pi/2) maps joint Z → parent -Y (downward).
-    // Wait — Rx(π/2): x→x, y→-z, z→y. So joint Z → parent +Y.
-    // We want q>0 = downward, so we need joint Z → parent -Y.
-    // Use Rx(-π/2): x→x, y→z, z→-y. Joint Z → parent -Y. Correct.
+    // Prismatic joint frames: Rx(pi/2) maps joint Z to chassis -Y, so a
+    // positive coordinate moves the wheel down from its mount.
     const Mat3 R_susp = Eigen::AngleAxisd(pi / 2.0, Vec3::UnitX()).toRotationMatrix();
-    // --- Chassis (body 1) ---
-    auto I_chassis = RigidBodyInertia::from_solid_box(
-        p.chassis_mass, p.chassis_half_extents);
-    vm.chassis_body = sys.add_body(
-        I_chassis, RigidBodyState{}, "chassis", kGroundIndex);
 
-    auto chassis_joint = std::make_unique<FreeCoordJoint>(
-        Transform3::Identity(), Transform3::Identity(),
-        kGroundIndex, vm.chassis_body);
-    vm.chassis_joint_index = sys.add_joint(std::move(chassis_joint));
+    // --- Chassis (body 1) ---
+    vm.chassis_body = sys.model.add_body(
+        0, std::make_shared<kernel::FreeJointModel>(), Transform3::Identity(),
+        Transform3::Identity(),
+        RigidBodyInertia::from_solid_box(p.chassis_mass, p.chassis_half_extents), "chassis");
+    vm.chassis_joint_index = vm.chassis_body;
 
     // --- Wheel mount positions in chassis frame ---
     const std::array<Vec3, 4> mount_pos = {{
@@ -208,34 +209,26 @@ inline VehicleModel build_simple_vehicle(MultibodySystem& sys,
     }};
 
     const std::array<std::string, 4> names = {{"FL", "FR", "RL", "RR"}};
+    const auto I_wheel = RigidBodyInertia::from_solid_box(p.wheel_mass, p.wheel_half_extents);
+    const auto prismatic = std::make_shared<kernel::PrismaticJointModel>();
 
-    auto I_wheel = RigidBodyInertia::from_solid_box(
-        p.wheel_mass, p.wheel_half_extents);
+    for (std::size_t c = 0; c < 4; ++c) {
+        // --- Wheel body on a prismatic joint from the chassis ---
+        vm.wheel_bodies[c] = sys.model.add_body(
+            vm.chassis_body, prismatic, Transform3(R_susp, mount_pos[c]),
+            Transform3::FromRotation(R_susp), I_wheel, names[c]);
+        vm.wheel_joint_indices[c] = vm.wheel_bodies[c];
+        vm.susp_q[c] = sys.model.idx_q[vm.wheel_bodies[c]];
+        vm.susp_v[c] = sys.model.idx_v[vm.wheel_bodies[c]];
 
-    for (int c = 0; c < 4; ++c) {
-        // --- Add wheel body ---
-        vm.wheel_bodies[c] = sys.add_body(
-            I_wheel, RigidBodyState{}, names[c], vm.chassis_body);
-
-        // --- Prismatic joint from chassis to wheel ---
-        Transform3 X_PJ(R_susp, mount_pos[c]);
-        Transform3 X_CJ = Transform3::FromRotation(R_susp);
-
-        auto joint = std::make_unique<PrismaticCoordJoint>(
-            X_PJ, X_CJ, vm.chassis_body, vm.wheel_bodies[c]);
-        vm.wheel_joint_indices[c] = sys.add_joint(std::move(joint));
-
-        // --- Suspension spring-damper ---
-        // Connects chassis mount point to wheel body origin.
-        // anchor1 on chassis = mount_pos[c] (chassis body frame)
-        // anchor2 on wheel = (0, 0, 0) (wheel body frame)
-        sys.force_elements.push_back(std::make_unique<LinearSpringDamper>(
+        // --- Suspension spring-damper: chassis mount to wheel origin ---
+        sys.force_elements.push_back(std::make_shared<LinearSpringDamper>(
             vm.chassis_body, vm.wheel_bodies[c],
             mount_pos[c], Vec3::Zero(),
             p.k_susp, p.c_susp, p.susp_rest_length));
 
         // --- Tire force ---
-        auto tire = std::make_unique<FullTireForce>(
+        auto tire = std::make_shared<FullTireForce>(
             vm.wheel_bodies[c],
             p.tire_free_radius,
             p.tire_k_z,
@@ -248,22 +241,22 @@ inline VehicleModel build_simple_vehicle(MultibodySystem& sys,
     return vm;
 }
 
-/// Set the vehicle to static equilibrium initial conditions.
-inline void set_vehicle_equilibrium(MultibodySystem& sys, const VehicleModel& vm)
+/// Put the simulator's state at the static equilibrium of the vehicle, at rest.
+inline void set_vehicle_equilibrium(kernel::Simulator& sim, const VehicleModel& vm)
 {
     const auto& p = vm.params;
 
     // Chassis: centered at equilibrium height, no rotation
-    sys.q.setZero();
-    sys.q(1) = p.chassis_height_eq(); // ty = CG height
+    sim.q = sim.system.model.neutral_configuration();
+    sim.q(vm.chassis_ty_idx()) = p.chassis_height_eq();
 
     // Wheels: each at equilibrium suspension extension
-    for (int c = 0; c < 4; ++c) {
-        sys.q(6 + c) = p.q_susp_eq();
+    for (std::size_t c = 0; c < 4; ++c) {
+        sim.q(vm.susp_q[c]) = p.q_susp_eq();
     }
 
-    sys.q_dot.setZero();
-    sys.compute_kinematics();
+    sim.v.setZero();
+    sim.refresh();
 }
 
 } // namespace mbd

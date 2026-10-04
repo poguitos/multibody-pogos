@@ -409,35 +409,23 @@ inline DwbOptimizationResult optimize_dwb(
     DwbOptimizationResult result;
     result.optimized_params = base_params;
 
+    // A bump sweep of the kinematic corner built from p, on the kernel.
+    auto sweep_of = [&sweep_config](const DoubleWishboneParams& p) {
+        kernel::System sys;
+        const auto dwb = build_double_wishbone_corner(sys, p);
+        Kinematics k(sys);
+        return sweep_bump_travel(k, dwb.upright_body, sweep_config.bump_min,
+                                 sweep_config.bump_max, sweep_config.n_steps);
+    };
+
     // Objective function
     auto objective = [&](const VecX& x) -> Real {
-        DoubleWishboneParams p = param_mapping.apply(base_params, x);
-
-        MultibodySystem sys;
-        auto dwb = build_double_wishbone_corner(sys, p);
-        set_dwb_reference(sys, dwb);
-
-        auto sweep = sweep_bump_travel(
-            sys, dwb.bump_constraint_idx, dwb.upright_body,
-            p.wheel_center.y(),
-            sweep_config.bump_min, sweep_config.bump_max,
-            sweep_config.n_steps);
-
-        return evaluate_suspension_cost(sweep, cost_terms);
+        return evaluate_suspension_cost(sweep_of(param_mapping.apply(base_params, x)), cost_terms);
     };
 
     // Initial cost and sweep
-    {
-        MultibodySystem sys;
-        auto dwb = build_double_wishbone_corner(sys, base_params);
-        set_dwb_reference(sys, dwb);
-        result.initial_sweep = sweep_bump_travel(
-            sys, dwb.bump_constraint_idx, dwb.upright_body,
-            base_params.wheel_center.y(),
-            sweep_config.bump_min, sweep_config.bump_max,
-            sweep_config.n_steps);
-        result.initial_cost = evaluate_suspension_cost(result.initial_sweep, cost_terms);
-    }
+    result.initial_sweep = sweep_of(base_params);
+    result.initial_cost = evaluate_suspension_cost(result.initial_sweep, cost_terms);
 
     // Run optimizer
     VecX x0 = param_mapping.extract(base_params);
@@ -453,16 +441,7 @@ inline DwbOptimizationResult optimize_dwb(
     result.converged  = nm_result.converged;
 
     // Final sweep with optimized params
-    {
-        MultibodySystem sys;
-        auto dwb = build_double_wishbone_corner(sys, result.optimized_params);
-        set_dwb_reference(sys, dwb);
-        result.final_sweep = sweep_bump_travel(
-            sys, dwb.bump_constraint_idx, dwb.upright_body,
-            result.optimized_params.wheel_center.y(),
-            sweep_config.bump_min, sweep_config.bump_max,
-            sweep_config.n_steps);
-    }
+    result.final_sweep = sweep_of(result.optimized_params);
 
     return result;
 }

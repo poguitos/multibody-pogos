@@ -7,6 +7,8 @@ add_library(multibody_core
     kernel/algorithms.cpp
     kernel/constraints.cpp
     kernel/constrained_dynamics.cpp
+    kernel/forces.cpp
+    kernel/simulator.cpp
 )
 
 # Public headers live in the top-level include directory

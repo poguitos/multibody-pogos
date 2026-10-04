@@ -2,8 +2,14 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <Eigen/Geometry>
 #include <cmath>
+#include <fstream>
+#include <string>
 
 #include "mbd/vehicle/suspension/double_wishbone.hpp"
+
+// Kinematics of the double-wishbone corner, on the kernel (plan task 2.7).
+// The corner's bump driver holds the wheel-centre height at its nominal value
+// plus k.t, so setting k.t prescribes the bump travel.
 
 using Catch::Matchers::WithinAbs;
 
@@ -22,13 +28,11 @@ TEST_CASE("DWB: reference configuration satisfies all constraints",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
-    auto dwb = build_double_wishbone_corner(sys);
-    set_dwb_reference(sys, dwb);
+    kernel::System sys;
+    build_double_wishbone_corner(sys);
+    Kinematics k(sys);
 
-    VecX phi = evaluate_all_constraints(sys);
-
-    REQUIRE_THAT(phi.norm(), WithinAbs(0.0, 1e-10));
+    REQUIRE_THAT(k.phi().norm(), WithinAbs(0.0, 1e-10));
 }
 
 TEST_CASE("DWB: body positions at reference configuration",
@@ -36,28 +40,22 @@ TEST_CASE("DWB: body positions at reference configuration",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     DoubleWishboneParams p;
     auto dwb = build_double_wishbone_corner(sys, p);
-    set_dwb_reference(sys, dwb);
+    Kinematics k(sys);
 
     // LCA body origin at pivot
-    REQUIRE_THAT(sys.states[dwb.lca_body].p_WB.y(),
-                 WithinAbs(p.lca_pivot.y(), 1e-10));
-    REQUIRE_THAT(sys.states[dwb.lca_body].p_WB.z(),
-                 WithinAbs(p.lca_pivot.z(), 1e-10));
+    REQUIRE_THAT(k.state(dwb.lca_body).p_WB.y(), WithinAbs(p.lca_pivot.y(), 1e-10));
+    REQUIRE_THAT(k.state(dwb.lca_body).p_WB.z(), WithinAbs(p.lca_pivot.z(), 1e-10));
 
     // UCA body origin at pivot
-    REQUIRE_THAT(sys.states[dwb.uca_body].p_WB.y(),
-                 WithinAbs(p.uca_pivot.y(), 1e-10));
-    REQUIRE_THAT(sys.states[dwb.uca_body].p_WB.z(),
-                 WithinAbs(p.uca_pivot.z(), 1e-10));
+    REQUIRE_THAT(k.state(dwb.uca_body).p_WB.y(), WithinAbs(p.uca_pivot.y(), 1e-10));
+    REQUIRE_THAT(k.state(dwb.uca_body).p_WB.z(), WithinAbs(p.uca_pivot.z(), 1e-10));
 
     // Upright at wheel center
-    REQUIRE_THAT(sys.states[dwb.upright_body].p_WB.y(),
-                 WithinAbs(p.wheel_center.y(), 1e-10));
-    REQUIRE_THAT(sys.states[dwb.upright_body].p_WB.z(),
-                 WithinAbs(p.wheel_center.z(), 1e-10));
+    REQUIRE_THAT(k.state(dwb.upright_body).p_WB.y(), WithinAbs(p.wheel_center.y(), 1e-10));
+    REQUIRE_THAT(k.state(dwb.upright_body).p_WB.z(), WithinAbs(p.wheel_center.z(), 1e-10));
 }
 
 TEST_CASE("DWB: camber and toe are zero at reference",
@@ -65,15 +63,12 @@ TEST_CASE("DWB: camber and toe are zero at reference",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto dwb = build_double_wishbone_corner(sys);
-    set_dwb_reference(sys, dwb);
+    Kinematics k(sys);
 
-    Real camber = extract_camber(sys.states[dwb.upright_body]);
-    Real toe    = extract_toe(sys.states[dwb.upright_body]);
-
-    REQUIRE_THAT(camber, WithinAbs(0.0, 1e-10));
-    REQUIRE_THAT(toe, WithinAbs(0.0, 1e-10));
+    REQUIRE_THAT(extract_camber(k.state(dwb.upright_body)), WithinAbs(0.0, 1e-10));
+    REQUIRE_THAT(extract_toe(k.state(dwb.upright_body)), WithinAbs(0.0, 1e-10));
 }
 
 // ============================================================================
@@ -85,15 +80,12 @@ TEST_CASE("DWB: Newton-Raphson converges from reference",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
-    auto dwb = build_double_wishbone_corner(sys);
-    set_dwb_reference(sys, dwb);
+    kernel::System sys;
+    build_double_wishbone_corner(sys);
+    Kinematics k(sys);
 
-    bool ok = solve_position_kinematics(sys);
-    REQUIRE(ok);
-
-    VecX phi = evaluate_all_constraints(sys);
-    REQUIRE_THAT(phi.norm(), WithinAbs(0.0, 1e-10));
+    REQUIRE(k.solve());
+    REQUIRE_THAT(k.phi().norm(), WithinAbs(0.0, 1e-10));
 }
 
 TEST_CASE("DWB: Newton-Raphson converges for 20mm bump",
@@ -101,26 +93,18 @@ TEST_CASE("DWB: Newton-Raphson converges for 20mm bump",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     DoubleWishboneParams p;
     auto dwb = build_double_wishbone_corner(sys, p);
-    set_dwb_reference(sys, dwb);
+    Kinematics k(sys);
 
     // Prescribe 20mm bump (wheel up)
-    auto* height_con = dynamic_cast<PointCoordinateConstraint*>(
-        sys.constraints[dwb.bump_constraint_idx].get());
-    height_con->target = p.wheel_center.y() + 0.02;
+    k.t = 0.02;
+    REQUIRE(k.solve());
 
-    bool ok = solve_position_kinematics(sys);
-    REQUIRE(ok);
-
-    // Wheel center should be at target height
-    REQUIRE_THAT(sys.states[dwb.upright_body].p_WB.y(),
-                 WithinAbs(p.wheel_center.y() + 0.02, 1e-8));
-
-    // All constraints satisfied
-    VecX phi = evaluate_all_constraints(sys);
-    REQUIRE_THAT(phi.norm(), WithinAbs(0.0, 1e-8));
+    // Wheel center at target height, all constraints satisfied
+    REQUIRE_THAT(k.state(dwb.upright_body).p_WB.y(), WithinAbs(p.wheel_center.y() + 0.02, 1e-8));
+    REQUIRE_THAT(k.phi().norm(), WithinAbs(0.0, 1e-8));
 }
 
 TEST_CASE("DWB: Newton-Raphson converges for 20mm droop",
@@ -128,20 +112,15 @@ TEST_CASE("DWB: Newton-Raphson converges for 20mm droop",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     DoubleWishboneParams p;
     auto dwb = build_double_wishbone_corner(sys, p);
-    set_dwb_reference(sys, dwb);
+    Kinematics k(sys);
 
-    auto* height_con = dynamic_cast<PointCoordinateConstraint*>(
-        sys.constraints[dwb.bump_constraint_idx].get());
-    height_con->target = p.wheel_center.y() - 0.02;
+    k.t = -0.02;
+    REQUIRE(k.solve());
 
-    bool ok = solve_position_kinematics(sys);
-    REQUIRE(ok);
-
-    REQUIRE_THAT(sys.states[dwb.upright_body].p_WB.y(),
-                 WithinAbs(p.wheel_center.y() - 0.02, 1e-8));
+    REQUIRE_THAT(k.state(dwb.upright_body).p_WB.y(), WithinAbs(p.wheel_center.y() - 0.02, 1e-8));
 }
 
 // ============================================================================
@@ -153,7 +132,7 @@ TEST_CASE("DWB: negative camber gain in bump (unequal-length arms)",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     DoubleWishboneParams p;
     // Verify UCA is shorter than LCA (necessary for negative camber gain)
     const Real lca_span = (p.lca_outer - p.lca_pivot).norm();
@@ -161,29 +140,21 @@ TEST_CASE("DWB: negative camber gain in bump (unequal-length arms)",
     REQUIRE(uca_span < lca_span);
 
     auto dwb = build_double_wishbone_corner(sys, p);
-    set_dwb_reference(sys, dwb);
+    Kinematics k(sys);
 
     // --- Bump: 30mm compression (wheel up = Y increases in chassis frame) ---
-    auto* height_con = dynamic_cast<PointCoordinateConstraint*>(
-        sys.constraints[dwb.bump_constraint_idx].get());
-    height_con->target = p.wheel_center.y() + 0.03;
-
-    bool ok = solve_position_kinematics(sys);
-    REQUIRE(ok);
-
-    Real camber_bump = extract_camber(sys.states[dwb.upright_body]);
+    k.t = 0.03;
+    REQUIRE(k.solve());
+    const Real camber_bump = extract_camber(k.state(dwb.upright_body));
 
     // Negative camber in bump: top of wheel tilts inward (-Z for left wheel)
     REQUIRE(camber_bump < -0.1 * deg);
 
-    // --- Droop: 30mm extension (wheel down = Y decreases in chassis frame) ---
-    set_dwb_reference(sys, dwb);
-    height_con->target = p.wheel_center.y() - 0.03;
-
-    ok = solve_position_kinematics(sys);
-    REQUIRE(ok);
-
-    Real camber_droop = extract_camber(sys.states[dwb.upright_body]);
+    // --- Droop: 30mm extension, from the reference ---
+    k.q = sys.model.neutral_configuration();
+    k.t = -0.03;
+    REQUIRE(k.solve());
+    const Real camber_droop = extract_camber(k.state(dwb.upright_body));
 
     // Positive camber in droop
     REQUIRE(camber_droop > 0.1 * deg);
@@ -201,17 +172,13 @@ TEST_CASE("DWB: kinematic sweep produces valid results",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     DoubleWishboneParams p;
     auto dwb = build_double_wishbone_corner(sys, p);
-    set_dwb_reference(sys, dwb);
+    Kinematics k(sys);
 
     // Sweep from -40mm droop to +40mm bump
-    auto result = sweep_bump_travel(
-        sys, dwb.bump_constraint_idx, dwb.upright_body,
-        p.wheel_center.y(),
-        -0.04, 0.04,
-        21);
+    auto result = sweep_bump_travel(k, dwb.upright_body, -0.04, 0.04, 21);
 
     REQUIRE(result.points.size() == 21);
 
@@ -239,16 +206,12 @@ TEST_CASE("DWB: toe change is small (well-designed tie rod)",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     DoubleWishboneParams p;
     auto dwb = build_double_wishbone_corner(sys, p);
-    set_dwb_reference(sys, dwb);
+    Kinematics k(sys);
 
-    auto result = sweep_bump_travel(
-        sys, dwb.bump_constraint_idx, dwb.upright_body,
-        p.wheel_center.y(),
-        -0.03, 0.03,
-        11);
+    auto result = sweep_bump_travel(k, dwb.upright_body, -0.03, 0.03, 11);
 
     // Toe change should be small over ±30mm travel (well-designed geometry)
     for (const auto& pt : result.points) {
@@ -315,16 +278,12 @@ TEST_CASE("DWB: CSV export writes a file", "[dwb][csv]")
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     DoubleWishboneParams p;
     auto dwb = build_double_wishbone_corner(sys, p);
-    set_dwb_reference(sys, dwb);
+    Kinematics k(sys);
 
-    auto result = sweep_bump_travel(
-        sys, dwb.bump_constraint_idx, dwb.upright_body,
-        p.wheel_center.y(),
-        -0.02, 0.02,
-        5);
+    auto result = sweep_bump_travel(k, dwb.upright_body, -0.02, 0.02, 5);
 
     // Export to a temporary file
     result.export_csv("test_dwb_sweep.csv");

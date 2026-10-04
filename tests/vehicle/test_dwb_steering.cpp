@@ -4,13 +4,41 @@
 
 #include "mbd/vehicle/vehicle_template.hpp"
 #include "mbd/analysis/position_kinematics.hpp"
-#include "mbd/integrators/simulator.hpp"
+
+// Steering of linkage suspensions through the steering rack, on the kernel
+// (plan task 2.7): set_steering moves the rack, its driver carries the tie
+// rods, and the linkage turns the wheels.
 
 using Catch::Matchers::WithinAbs;
 
 namespace
 {
-    constexpr mbd::Real deg = mbd::pi / 180.0;
+    mbd::VehicleTemplate all_dwb_sedan()
+    {
+        auto tmpl = mbd::VehicleTemplate::DefaultSedan();
+        tmpl.front_axle.suspension_type = mbd::SuspensionType::DoubleWishbone;
+        tmpl.rear_axle.suspension_type  = mbd::SuspensionType::DoubleWishbone;
+        return tmpl;
+    }
+
+    /// Toe of the two front wheels after steering by delta and settling 0.1 s.
+    std::pair<mbd::Real, mbd::Real> front_toe_after_steering(mbd::Real delta)
+    {
+        using namespace mbd;
+        kernel::System sys;
+        auto vh = build_vehicle(sys, all_dwb_sedan());
+
+        kernel::Simulator sim(sys);
+        sim.method = kernel::Integrator::RK4;
+        set_vehicle_equilibrium(sim, vh);
+        vh.set_steering(delta);
+        sim.initialize();   // the projection moves the rack and the linkage
+
+        sim.run(0.1, 0.0005);
+
+        return {extract_toe(sim.states()[static_cast<std::size_t>(vh.corners[0].wheel_body)]),
+                extract_toe(sim.states()[static_cast<std::size_t>(vh.corners[1].wheel_body)])};
+    }
 }
 
 // ============================================================================
@@ -22,12 +50,8 @@ TEST_CASE("DWB steering: calibration produces nonzero ratio for steered DWB corn
 {
     using namespace mbd;
 
-    auto tmpl = VehicleTemplate::DefaultSedan();
-    tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
-    tmpl.rear_axle.suspension_type  = SuspensionType::DoubleWishbone;
-
-    MultibodySystem sys;
-    auto vh = build_vehicle(sys, tmpl);
+    kernel::System sys;
+    auto vh = build_vehicle(sys, all_dwb_sedan());
 
     // Front corners are steered
     REQUIRE(std::abs(vh.corners[0].rack_per_rad) > 1e-6);
@@ -42,16 +66,15 @@ TEST_CASE("DWB steering: Simple corners have zero calibration", "[dwb_steer][cal
 {
     using namespace mbd;
 
-    auto tmpl = VehicleTemplate::DefaultSedan();
-    // All Simple
-
-    MultibodySystem sys;
-    auto vh = build_vehicle(sys, tmpl);
+    kernel::System sys;
+    auto vh = build_vehicle(sys, VehicleTemplate::DefaultSedan());   // all Simple
 
     for (int c = 0; c < 4; ++c) {
-        REQUIRE(vh.corners[c].tierod_constraint == nullptr);
+        REQUIRE_FALSE(vh.corners[c].on_rack);
         REQUIRE(vh.corners[c].rack_per_rad == 0.0);
     }
+    REQUIRE(vh.rack[0] == nullptr);
+    REQUIRE(vh.rack[1] == nullptr);
 }
 
 // ============================================================================
@@ -63,36 +86,10 @@ TEST_CASE("DWB steering: commanded angle produces expected wheel toe",
 {
     using namespace mbd;
 
-    auto tmpl = VehicleTemplate::DefaultSedan();
-    tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
-    tmpl.rear_axle.suspension_type  = SuspensionType::DoubleWishbone;
+    // Small steering input: ~2.9 deg
+    const Real delta_command = 0.05;
+    const auto [toe_FL, toe_FR] = front_toe_after_steering(delta_command);
 
-    MultibodySystem sys;
-    auto vh = build_vehicle(sys, tmpl);
-
-    set_vehicle_equilibrium(sys, vh);
-
-    // Apply small steering input
-    const Real delta_command = 0.05; // ~2.9 deg
-    vh.set_steering(delta_command);
-
-    // Solve position kinematics for the full system to propagate tie rod motion
-    // through the mechanism. Since the vehicle is free in 6 DOF, this is more
-    // complex than for the kinematic builder. Instead, we use damping in a
-    // short simulation to let the mechanism settle.
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
-    sim.initialize();
-
-    // Run briefly to let constraint forces propagate
-    sim.run(0.1, 0.0005);
-
-    // Measure actual toe on front corners
-    const Real toe_FL = extract_toe(sys.states[vh.corners[0].wheel_body]);
-    const Real toe_FR = extract_toe(sys.states[vh.corners[1].wheel_body]);
-
-    // For left turn: both front wheels should have positive toe
     // For left turn: both front wheels should have positive toe
     REQUIRE(toe_FL > 0.0005);
     REQUIRE(toe_FR > 0.0005);
@@ -111,31 +108,11 @@ TEST_CASE("DWB steering: negative command gives negative toe", "[dwb_steer][resp
 {
     using namespace mbd;
 
-    auto tmpl = VehicleTemplate::DefaultSedan();
-    tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
-    tmpl.rear_axle.suspension_type  = SuspensionType::DoubleWishbone;
-
-    MultibodySystem sys;
-    auto vh = build_vehicle(sys, tmpl);
-
-    set_vehicle_equilibrium(sys, vh);
-
-    vh.set_steering(-0.05);
-
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
-    sim.initialize();
-
-    sim.run(0.1, 0.0005);
-
-    const Real toe_FL = extract_toe(sys.states[vh.corners[0].wheel_body]);
-    const Real toe_FR = extract_toe(sys.states[vh.corners[1].wheel_body]);
+    const auto [toe_FL, toe_FR] = front_toe_after_steering(-0.05);
 
     // Both front wheels should have negative toe (right turn)
     REQUIRE(toe_FL < -0.0005);
     REQUIRE(toe_FR < -0.0005);
-
 }
 
 // ============================================================================
@@ -147,28 +124,22 @@ TEST_CASE("DWB steering: clear_steering restores tie rod position",
 {
     using namespace mbd;
 
-    auto tmpl = VehicleTemplate::DefaultSedan();
-    tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
-    tmpl.rear_axle.suspension_type  = SuspensionType::DoubleWishbone;
-
-    MultibodySystem sys;
-    auto vh = build_vehicle(sys, tmpl);
-
-    // Store reference tie rod points
-    const Vec3 ref_FL = vh.corners[0].tierod_inner_ref;
-    const Vec3 ref_FR = vh.corners[1].tierod_inner_ref;
+    kernel::System sys;
+    auto vh = build_vehicle(sys, all_dwb_sedan());
+    REQUIRE(vh.rack[0] != nullptr);
 
     vh.set_steering(0.05);
 
-    // Tie rod inner points should have moved
-    REQUIRE_FALSE(vh.corners[0].tierod_constraint->anchor1_B.isApprox(ref_FL));
-    REQUIRE_FALSE(vh.corners[1].tierod_constraint->anchor1_B.isApprox(ref_FR));
+    // The rack, which carries the tie rods' inner points, has moved left:
+    // its travel is the command times the mean calibrated ratio.
+    const Real ratio = 0.5 * (std::abs(vh.corners[0].rack_per_rad) + std::abs(vh.corners[1].rack_per_rad));
+    REQUIRE_THAT(vh.rack[0]->travel, WithinAbs(0.05 * ratio, 1e-15));
+    REQUIRE(vh.rack[0]->travel > 0.0);
 
     vh.clear_steering();
 
-    // After clearing, tie rod inner points should be back at reference
-    REQUIRE(vh.corners[0].tierod_constraint->anchor1_B.isApprox(ref_FL, 1e-10));
-    REQUIRE(vh.corners[1].tierod_constraint->anchor1_B.isApprox(ref_FR, 1e-10));
+    // After clearing, the rack is back at the reference
+    REQUIRE(vh.rack[0]->travel == 0.0);
 }
 
 // ============================================================================
@@ -184,19 +155,18 @@ TEST_CASE("DWB steering: mixed suspension steering works correctly",
     tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
     tmpl.rear_axle.suspension_type  = SuspensionType::Simple;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto vh = build_vehicle(sys, tmpl);
 
     // Front DWB should have calibrated ratio; rear Simple should not
     REQUIRE(std::abs(vh.corners[0].rack_per_rad) > 1e-6);
     REQUIRE(vh.corners[2].rack_per_rad == 0.0);
-    REQUIRE(vh.corners[2].tierod_constraint == nullptr);
+    REQUIRE_FALSE(vh.corners[2].on_rack);
 
     vh.set_steering(0.05);
 
-    // Front corners: tie rod moved
-    REQUIRE_FALSE(vh.corners[0].tierod_constraint->anchor1_B.isApprox(
-        vh.corners[0].tierod_inner_ref));
+    // Front corners: the rack moved
+    REQUIRE(vh.rack[0]->travel > 0.0);
 
     // Rear corners (Simple + not steered): tire steer_angle stays zero
     REQUIRE_THAT(vh.corners[2].tire->steer_angle, WithinAbs(0.0, 1e-12));
@@ -205,4 +175,38 @@ TEST_CASE("DWB steering: mixed suspension steering works correctly",
     // Front corners' tire steer_angle should be zero (we use tie rod instead)
     REQUIRE_THAT(vh.corners[0].tire->steer_angle, WithinAbs(0.0, 1e-12));
     REQUIRE_THAT(vh.corners[1].tire->steer_angle, WithinAbs(0.0, 1e-12));
+}
+
+TEST_CASE("DWB steering: the rack's toe matches its calibration on a pinned chassis",
+          "[dwb_steer][calibration]")
+{
+    // With the chassis pinned, moving the rack by delta * ratio must turn the
+    // left front wheel by close to delta: the calibration is linear for
+    // small steps, so a 0.02 rad command lands within 10 % of it.
+    using namespace mbd;
+
+    const auto tmpl = all_dwb_sedan();
+    kernel::System sys;
+    auto vh = build_vehicle(sys, tmpl);
+
+    kernel::System pinned;
+    const BodyIndex chassis = pinned.model.add_body(
+        0, std::make_shared<kernel::FixedJointModel>(), Transform3::Identity(),
+        Transform3::Identity(), RigidBodyInertia::from_solid_box(1000.0, tmpl.chassis.half_extents),
+        "chassis");
+    auto rack = std::make_shared<SteeringRack>();
+    const BodyIndex rack_body = detail::add_steering_rack(pinned, chassis, rack, "rack");
+    const Vec3 wheel_center(tmpl.front_axle_x, 0.0, tmpl.front_axle.half_track);
+    const auto p = detail::make_dwb_params_for_corner(wheel_center, tmpl.front_axle.dwb, false,
+                                                      tmpl.front_axle.arm_mass,
+                                                      tmpl.front_axle.upright_mass);
+    const auto dwb = build_double_wishbone_corner_dynamic(pinned, chassis, p, rack_body);
+
+    Kinematics k(pinned);
+    REQUIRE(k.solve());
+    const Real toe0 = extract_toe(k.state(dwb.upright_body));
+    rack->travel = 0.02 * vh.corners[0].rack_per_rad;
+    REQUIRE(k.solve());
+    const Real dtoe = extract_toe(k.state(dwb.upright_body)) - toe0;
+    REQUIRE_THAT(dtoe, WithinAbs(0.02, 0.002));
 }

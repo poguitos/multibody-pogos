@@ -7,7 +7,6 @@
 #include "mbd/core/core.hpp"
 #include "mbd/model/rigid_body.hpp"
 #include "mbd/forces/force_element.hpp"
-#include "mbd/algorithms/dynamics_og.hpp"
 #include "mbd/model/joint.hpp"
 
 namespace mbd {

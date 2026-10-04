@@ -8,6 +8,8 @@
 
 #include "mbd/kernel/constraints.hpp"
 
+#include <cmath>
+#include <string>
 #include <utility>
 
 #include "mbd/kernel/algorithms.hpp"
@@ -212,6 +214,37 @@ void NoTwist::calc(const Model& model, const Data& data, Real /*t*/,
     phi(0)   = xy.value - yx.value;
     nu(0)    = 0.0;
     gamma(0) = yx.bias - xy.bias;
+}
+
+JointDriver::JointDriver(const Model& model, int body, TimeFunction s)
+    : body_(body), iv_(0), revolute_(false), s_(std::move(s))
+{
+    MBD_THROW_IF(body < 1 || body >= model.nbodies(), "kernel::JointDriver: no such body");
+    const std::string kind = model.joint[body]->name();
+    MBD_THROW_IF(kind != "revolute" && kind != "prismatic",
+                 "kernel::JointDriver: the joint must be revolute or prismatic");
+    revolute_ = kind == "revolute";
+    iv_ = model.idx_v[body];
+}
+
+void JointDriver::calc(const Model& /*model*/, const Data& data, Real t,
+                       VecRef phi, MatRef J, VecRef nu, VecRef gamma) const
+{
+    const Real s = s_.value(t);
+    const Transform3& X_J = data.joint[body_].X_J;
+    Real q;
+    if (revolute_) {
+        // Rotation about Z by q: the quaternion is (cos(q/2), 0, 0, sin(q/2)).
+        const Real angle = 2.0 * std::atan2(X_J.q.z(), X_J.q.w());
+        q = s + std::remainder(angle - s, 2.0 * pi);
+    } else {
+        q = X_J.p.z();
+    }
+    J.topRows(1).setZero();
+    J(0, iv_) = 1.0;
+    phi(0)   = q - s;
+    nu(0)    = s_.rate(t);
+    gamma(0) = s_.acceleration(t);
 }
 
 // --- Composites ------------------------------------------------------------------

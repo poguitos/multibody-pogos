@@ -38,9 +38,7 @@
 #include "mbd/model/system.hpp"
 #include "mbd/model/constraint.hpp"
 
-#include "mbd/algorithms/dynamics_og.hpp"
 #include "mbd/algorithms/dynamics.hpp"
-#include "mbd/solvers/solver.hpp"
 #include "mbd/integrators/simulator.hpp"
 
 #include "mbd/forces/force_element.hpp"

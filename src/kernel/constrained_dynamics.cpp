@@ -40,6 +40,7 @@ ConstraintSolver::ConstraintSolver(const Model& model,
     J_.setZero(m_, nv);
     Y_.setZero(nv, m_);
     A_.setZero(m_, m_);
+    q_save_.setZero(model.nq);
     v_dot_.setZero(nv);
     v_dot_free_.setZero(nv);
     rhs_v_.setZero(nv);
@@ -142,15 +143,24 @@ ProjectionInfo ConstraintSolver::project(Data& data, VecX& q, VecX& v, Real t,
     crba(model_, data, q);
     llt_M_.compute(data.M);
 
-    // Positions: Gauss-Newton steps dq = -M^-1 J^T (J M^-1 J^T)^-1 phi.
-    for (;;) {
-        evaluate(data, q, zero_v_, t);
-        out.position_residual = phi_.norm();
-        if (out.position_residual <= tolerance || out.iterations == max_iterations) break;
+    // Positions: Gauss-Newton steps dq = -M^-1 J^T (J M^-1 J^T)^-1 phi, each
+    // halved until |phi| decreases, for starts far from the solution.
+    evaluate(data, q, zero_v_, t);
+    out.position_residual = phi_.norm();
+    while (out.position_residual > tolerance && out.iterations < max_iterations) {
         factorize_constraint_matrix();
         solve_constraint_matrix(phi_, mu_);
         dv_.noalias() = Y_ * mu_;
-        integrate(model_, q, dv_, -1.0, q);
+        q_save_ = q;
+        const Real before = out.position_residual;
+        Real step = 1.0;
+        for (int halving = 0; halving < 12; ++halving) {
+            integrate(model_, q_save_, dv_, -step, q);
+            evaluate(data, q, zero_v_, t);
+            out.position_residual = phi_.norm();
+            if (out.position_residual < before) break;
+            step *= 0.5;
+        }
         ++out.iterations;
     }
     out.converged = out.position_residual <= tolerance;

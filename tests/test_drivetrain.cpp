@@ -4,10 +4,20 @@
 #include <cmath>
 
 #include "mbd/vehicle/drivetrain.hpp"
-#include "mbd/integrators/simulator.hpp"
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
+
+// The drivetrain on the simple vehicle, simulated on the kernel (plan task 2.7).
+
+namespace
+{
+    /// World X velocity of the chassis (body 1): the speed of a car driving along X.
+    mbd::Real vx(const mbd::kernel::Simulator& sim)
+    {
+        return sim.states()[1].v_WB.x();
+    }
+}
 
 // ============================================================================
 // Engine torque curve
@@ -175,20 +185,18 @@ TEST_CASE("Drivetrain: standing start accelerates the vehicle", "[drivetrain][dy
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams vp;
     auto vm = build_simple_vehicle(sys, vp);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
     sim.initialize();
-
-    set_vehicle_equilibrium(sys, vm);
 
     Drivetrain dt;
     dt.params.layout = DriveLayout::RWD;
-    dt.initialize(sys, vm);
+    dt.initialize(sim, vm);
     dt.throttle = 1.0;
     dt.brake = 0.0;
     dt.connect(sim, vm);
@@ -202,7 +210,7 @@ TEST_CASE("Drivetrain: standing start accelerates the vehicle", "[drivetrain][dy
     sim.run(3.0, 0.001);
 
     // Vehicle should be moving forward significantly
-    const Real Vx = sys.q_dot(0);
+    const Real Vx = vx(sim);
     REQUIRE(Vx > 5.0); // Should reach at least 5 m/s in 3 seconds
 
     // Wheel omegas should be positive
@@ -229,23 +237,20 @@ TEST_CASE("Drivetrain: braking deceleration matches the hand calculation",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams vp;
     auto vm = build_simple_vehicle(sys, vp);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
+    sim.v(3) = 20.0; // Start at 20 m/s
     sim.initialize();
-
-    set_vehicle_equilibrium(sys, vm);
-    sys.q_dot(0) = 20.0; // Start at 20 m/s
-    sys.compute_kinematics();
 
     Drivetrain dt;
     dt.params.layout = DriveLayout::RWD;
     dt.params.engine.inertia = 0.0; // keep the engine out of the inertia that is braked
-    dt.initialize(sys, vm);
+    dt.initialize(sim, vm);
     dt.throttle = 0.0;
     dt.brake = 0.0;
     dt.connect(sim, vm);
@@ -259,9 +264,9 @@ TEST_CASE("Drivetrain: braking deceleration matches the hand calculation",
     // inside the tyre's peak friction of 1.1. No wheel is near its limit.
     dt.brake = 0.5;
     sim.run(0.5, 0.001);               // pitch and tyre deflection settle
-    const Real V1 = sys.q_dot(0);
+    const Real V1 = vx(sim);
     sim.run(1.0, 0.001);
-    const Real V2 = sys.q_dot(0);
+    const Real V2 = vx(sim);
     const Real decel = (V1 - V2) / 1.0;
 
     // Hand calculation, for wheels that roll without locking:
@@ -303,28 +308,25 @@ TEST_CASE("Drivetrain: full braking decelerates at the grip limit",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams vp;
     auto vm = build_simple_vehicle(sys, vp);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
+    sim.v(3) = 20.0;
     sim.initialize();
-
-    set_vehicle_equilibrium(sys, vm);
-    sys.q_dot(0) = 20.0;
-    sys.compute_kinematics();
 
     Drivetrain dt;
     dt.params.layout = DriveLayout::RWD;
-    dt.initialize(sys, vm);
+    dt.initialize(sim, vm);
     dt.throttle = 0.0;
     dt.brake = 0.0;
     dt.connect(sim, vm);
 
     sim.run(0.3, 0.001);
-    const Real V_before = sys.q_dot(0);
+    const Real V_before = vx(sim);
 
     // Full pedal asks for 6000 Nm, about 17.6 kN at the contact patches. The
     // tyres can transmit at most 1.1 * m * g = 16.8 kN, so the brakes are no
@@ -334,7 +336,7 @@ TEST_CASE("Drivetrain: full braking decelerates at the grip limit",
     dt.brake = 1.0;
     const Real t_brake = 1.0;
     sim.run(t_brake, 0.001);
-    const Real V_after = sys.q_dot(0);
+    const Real V_after = vx(sim);
     const Real decel = (V_before - V_after) / t_brake;
 
     const PacejkaTire tyre(vp.tire_params);
@@ -364,31 +366,28 @@ TEST_CASE("Drivetrain: coasting approximately maintains speed", "[drivetrain][co
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams vp;
     auto vm = build_simple_vehicle(sys, vp);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
+    sim.v(3) = 15.0;
     sim.initialize();
-
-    set_vehicle_equilibrium(sys, vm);
-    sys.q_dot(0) = 15.0;
-    sys.compute_kinematics();
 
     Drivetrain dt;
     dt.params.layout = DriveLayout::RWD;
-    dt.initialize(sys, vm);
+    dt.initialize(sim, vm);
     dt.throttle = 0.0;
     dt.brake = 0.0;
     dt.connect(sim, vm);
 
     sim.run(0.3, 0.001); // settle
-    const Real V_start = sys.q_dot(0);
+    const Real V_start = vx(sim);
 
     sim.run(2.0, 0.001);
-    const Real V_end = sys.q_dot(0);
+    const Real V_end = vx(sim);
 
     // Nothing in this model takes energy out of a coasting car: there is no
     // aerodynamic drag, no rolling resistance and no engine braking. The
@@ -406,20 +405,18 @@ TEST_CASE("Drivetrain: auto-shift changes up at the shift speed of each gear",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams vp;
     auto vm = build_simple_vehicle(sys, vp);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
     sim.initialize();
-
-    set_vehicle_equilibrium(sys, vm);
 
     Drivetrain dt;
     dt.params.layout = DriveLayout::RWD;
-    dt.initialize(sys, vm);
+    dt.initialize(sim, vm);
     dt.connect(sim, vm);
 
     const auto& gp = dt.params.gearbox;
@@ -467,7 +464,7 @@ TEST_CASE("Drivetrain: auto-shift changes up at the shift speed of each gear",
     // Third gear is taken at 84.6 rad/s, about 28.8 m/s, so no later than
     // 28.8 / 2.88 = 10.0 s after the start.
     REQUIRE(dt.current_gear >= 3);
-    REQUIRE(sys.q_dot(0) > 2.88 * 10.0);
+    REQUIRE(vx(sim) > 2.88 * 10.0);
 
     // RPM should be within the shift band
     REQUIRE(dt.engine_rpm >= dt.params.gearbox.shift_down_rpm - 100.0);
@@ -483,27 +480,25 @@ TEST_CASE("Drivetrain: FWD drives front wheels and accelerates",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams vp;
     auto vm = build_simple_vehicle(sys, vp);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
     sim.initialize();
-
-    set_vehicle_equilibrium(sys, vm);
 
     Drivetrain dt;
     dt.params.layout = DriveLayout::FWD;
-    dt.initialize(sys, vm);
+    dt.initialize(sim, vm);
     dt.throttle = 1.0;
     dt.connect(sim, vm);
 
     sim.run(3.0, 0.001);
 
     // Vehicle should be moving
-    REQUIRE(sys.q_dot(0) > 3.0);
+    REQUIRE(vx(sim) > 3.0);
 
     // The rear wheels are not driven: they roll freely at the speed of the
     // car. The front wheels pull the car, so they turn slightly faster than
@@ -511,7 +506,7 @@ TEST_CASE("Drivetrain: FWD drives front wheels and accelerates",
     const Real omega_front_avg = 0.5 * (dt.wheel_omega[0] + dt.wheel_omega[1]);
     const Real omega_rear_avg  = 0.5 * (dt.wheel_omega[2] + dt.wheel_omega[3]);
     const Real R_rear = vm.tires[2]->get_rolling_radius();
-    REQUIRE_THAT(omega_rear_avg * R_rear, WithinRel(sys.q_dot(0), 0.01));
+    REQUIRE_THAT(omega_rear_avg * R_rear, WithinRel(vx(sim), 0.01));
     REQUIRE(omega_front_avg > omega_rear_avg);
 }
 
@@ -523,22 +518,19 @@ TEST_CASE("Drivetrain: RWD vehicle corners under power", "[drivetrain][cornering
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams vp;
     auto vm = build_simple_vehicle(sys, vp);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
+    sim.v(3) = 10.0;
     sim.initialize();
-
-    set_vehicle_equilibrium(sys, vm);
-    sys.q_dot(0) = 10.0;
-    sys.compute_kinematics();
 
     Drivetrain dt;
     dt.params.layout = DriveLayout::RWD;
-    dt.initialize(sys, vm);
+    dt.initialize(sim, vm);
     dt.throttle = 0.0;
     dt.brake = 0.0;
     dt.connect(sim, vm);
@@ -546,10 +538,10 @@ TEST_CASE("Drivetrain: RWD vehicle corners under power", "[drivetrain][cornering
     // Maintain speed via external force callback (gentle controller)
     const Real V_target = 10.0;
     const Real K_speed = 500.0;
-    sim.force_callback = [&](MultibodySystem& s, Real /*t*/, VecX& tau) {
-        const Vec3 fwd_W = s.states[vm.chassis_body].q_WB * Vec3::UnitX();
-        const Real Vx = s.states[vm.chassis_body].v_WB.dot(fwd_W);
-        tau(0) += K_speed * (V_target - Vx);
+    sim.force_callback = [&](kernel::Simulator& s, Real /*t*/, VecX& tau) {
+        const Vec3 fwd_W = s.states()[vm.chassis_body].q_WB * Vec3::UnitX();
+        const Real Vx = s.states()[vm.chassis_body].v_WB.dot(fwd_W);
+        tau(3) += K_speed * (V_target - Vx);
     };
 
     // Settle at speed
@@ -557,16 +549,16 @@ TEST_CASE("Drivetrain: RWD vehicle corners under power", "[drivetrain][cornering
 
     // Apply steering
     vm.set_front_steering(0.02);
-    const Real z_before = sys.states[vm.chassis_body].p_WB.z();
+    const Real z_before = sim.states()[vm.chassis_body].p_WB.z();
 
     sim.run(3.0, 0.001);
-    const Real z_after = sys.states[vm.chassis_body].p_WB.z();
+    const Real z_after = sim.states()[vm.chassis_body].p_WB.z();
 
     // Vehicle should turn left (positive Z)
     REQUIRE(z_after - z_before > 0.05);
 
     // Vehicle should still be on the ground
-    REQUIRE_THAT(sys.states[vm.chassis_body].p_WB.y(),
+    REQUIRE_THAT(sim.states()[vm.chassis_body].p_WB.y(),
                  WithinAbs(vp.chassis_height_eq(), 0.05));
 }
 
@@ -579,21 +571,18 @@ TEST_CASE("Drivetrain: initialize matches wheel omega to vehicle speed",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams vp;
     auto vm = build_simple_vehicle(sys, vp);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
+    sim.v(3) = 20.0;
     sim.initialize();
 
-    set_vehicle_equilibrium(sys, vm);
-    sys.q_dot(0) = 20.0;
-    sys.compute_kinematics();
-
     Drivetrain dt;
-    dt.initialize(sys, vm);
+    dt.initialize(sim, vm);
 
     const Real R_eff = vp.tire_free_radius * 0.97;
     const Real expected_omega = 20.0 / R_eff;

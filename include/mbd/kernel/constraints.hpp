@@ -180,6 +180,28 @@ private:
     Marker i_, j_;
 };
 
+/// q - s(t) = 0 for the coordinate q of the joint above `body`: drives that
+/// joint along s(t). The joint must be revolute or prismatic, whose velocity
+/// is q_dot. The multiplier is the force (or torque) the drive exerts.
+///
+/// The coordinate is read from the joint transform, an angle being taken on
+/// the branch nearest s(t); a drive that holds its joint within half a turn
+/// of the target therefore sees it continuously.
+class JointDriver final : public ConstraintModel {
+public:
+    JointDriver(const Model& model, int body, TimeFunction s);
+    const char* name() const override { return "joint driver"; }
+    int size() const override { return 1; }
+    void calc(const Model& model, const Data& data, Real t,
+              VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
+
+private:
+    int body_;
+    int iv_;
+    bool revolute_;
+    TimeFunction s_;
+};
+
 // ============================================================================
 // Composites
 // ============================================================================

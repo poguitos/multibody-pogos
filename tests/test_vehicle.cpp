@@ -3,8 +3,12 @@
 #include <Eigen/Geometry>
 #include <cmath>
 
+#include "mbd/kernel/algorithms.hpp"
+#include "mbd/spatial/spatial.hpp"
 #include "mbd/vehicle/vehicle.hpp"
-#include "mbd/integrators/simulator.hpp"
+
+// The simple 5-body vehicle, on the kernel (plan task 2.7). The chassis pose
+// is read from its world state: position, and rotation as a rotation vector.
 
 using Catch::Matchers::WithinAbs;
 
@@ -15,6 +19,18 @@ namespace
         REQUIRE_THAT(a.x(), WithinAbs(b.x(), tol));
         REQUIRE_THAT(a.y(), WithinAbs(b.y(), tol));
         REQUIRE_THAT(a.z(), WithinAbs(b.z(), tol));
+    }
+
+    const mbd::RigidBodyState& body(const mbd::kernel::Simulator& sim, mbd::BodyIndex i)
+    {
+        return sim.states()[static_cast<std::size_t>(i)];
+    }
+
+    /// Chassis rotation as a rotation vector (roll about X, yaw about Y in
+    /// this Y-up layer, pitch about Z for small angles).
+    mbd::Vec3 chassis_rotation(const mbd::kernel::Simulator& sim, const mbd::VehicleModel& vm)
+    {
+        return mbd::log3(body(sim, vm.chassis_body).q_WB);
     }
 }
 
@@ -27,43 +43,40 @@ TEST_CASE("Vehicle: settles to static equilibrium from perturbed state",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams params;
     auto vm = build_simple_vehicle(sys, params);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
-    sim.initialize();
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
 
     // Start near equilibrium with a 3cm perturbation on chassis height
-    set_vehicle_equilibrium(sys, vm);
-    sys.q(1) += 0.03;
-    sys.compute_kinematics();
+    set_vehicle_equilibrium(sim, vm);
+    sim.q(vm.chassis_ty_idx()) += 0.03;
+    sim.initialize();
 
     // Simulate with damping for 5 seconds
     sim.run(5.0, 0.001);
 
     // Chassis should settle to equilibrium height
-    REQUIRE_THAT(sys.q(1), WithinAbs(params.chassis_height_eq(), 0.003));
+    const RigidBodyState& chassis = body(sim, vm.chassis_body);
+    REQUIRE_THAT(chassis.p_WB.y(), WithinAbs(params.chassis_height_eq(), 0.003));
 
     // Chassis horizontal position unchanged (no lateral/longitudinal forces)
-    REQUIRE_THAT(sys.q(0), WithinAbs(0.0, 0.001));
-    REQUIRE_THAT(sys.q(2), WithinAbs(0.0, 0.001));
+    REQUIRE_THAT(chassis.p_WB.x(), WithinAbs(0.0, 0.001));
+    REQUIRE_THAT(chassis.p_WB.z(), WithinAbs(0.0, 0.001));
 
     // No rotations
-    REQUIRE_THAT(sys.q(3), WithinAbs(0.0, 0.001));
-    REQUIRE_THAT(sys.q(4), WithinAbs(0.0, 0.001));
-    REQUIRE_THAT(sys.q(5), WithinAbs(0.0, 0.001));
+    require_vec3_near(chassis_rotation(sim, vm), Vec3::Zero(), 0.001);
 
     // All four suspension travels should be equal and at equilibrium
     for (int c = 0; c < 4; ++c) {
-        REQUIRE_THAT(sys.q(6 + c), WithinAbs(params.q_susp_eq(), 0.003));
+        REQUIRE_THAT(sim.q(vm.susp_q_idx(static_cast<Corner>(c))), WithinAbs(params.q_susp_eq(), 0.003));
     }
 
     // All velocities near zero
-    for (int i = 0; i < sys.total_dof; ++i) {
-        REQUIRE_THAT(sys.q_dot(i), WithinAbs(0.0, 0.02));
+    for (int i = 0; i < sys.model.nv; ++i) {
+        REQUIRE_THAT(sim.v(i), WithinAbs(0.0, 0.02));
     }
 }
 
@@ -76,20 +89,18 @@ TEST_CASE("Vehicle: equilibrium initial conditions produce near-zero acceleratio
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams params;
     auto vm = build_simple_vehicle(sys, params);
 
-    set_vehicle_equilibrium(sys, vm);
+    kernel::Simulator sim(sys);
+    set_vehicle_equilibrium(sim, vm);
 
-    // Compute forward dynamics — accelerations should be near zero
-    sys.clear_forces();
-    sys.apply_force_elements();
-    VecX tau = project_body_forces_to_joint_space(sys);
-    VecX q_ddot = forward_dynamics(sys, tau, Vec3(0.0, -g_accel, 0.0));
+    // Forward dynamics with every force applied: accelerations near zero
+    const VecX a = sim.acceleration(sim.q, sim.v, sim.time);
 
-    for (int i = 0; i < sys.total_dof; ++i) {
-        REQUIRE_THAT(q_ddot(i), WithinAbs(0.0, 0.5));
+    for (int i = 0; i < sys.model.nv; ++i) {
+        REQUIRE_THAT(a(i), WithinAbs(0.0, 0.5));
     }
 }
 
@@ -102,33 +113,26 @@ TEST_CASE("Vehicle: wheel world positions are correct at equilibrium",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams params;
     auto vm = build_simple_vehicle(sys, params);
 
-    set_vehicle_equilibrium(sys, vm);
+    kernel::Simulator sim(sys);
+    set_vehicle_equilibrium(sim, vm);
 
     const Real y_wheel = params.wheel_center_height_eq();
     const Real a  = params.front_axle_x;
     const Real b  = params.rear_axle_x;
     const Real ht = params.half_track;
 
-    // FL
-    require_vec3_near(sys.states[vm.wheel_bodies[0]].p_WB,
-                      Vec3(a, y_wheel, ht), 0.001);
-    // FR
-    require_vec3_near(sys.states[vm.wheel_bodies[1]].p_WB,
-                      Vec3(a, y_wheel, -ht), 0.001);
-    // RL
-    require_vec3_near(sys.states[vm.wheel_bodies[2]].p_WB,
-                      Vec3(-b, y_wheel, ht), 0.001);
-    // RR
-    require_vec3_near(sys.states[vm.wheel_bodies[3]].p_WB,
-                      Vec3(-b, y_wheel, -ht), 0.001);
+    // FL, FR, RL, RR
+    require_vec3_near(body(sim, vm.wheel_bodies[0]).p_WB, Vec3(a, y_wheel, ht), 0.001);
+    require_vec3_near(body(sim, vm.wheel_bodies[1]).p_WB, Vec3(a, y_wheel, -ht), 0.001);
+    require_vec3_near(body(sim, vm.wheel_bodies[2]).p_WB, Vec3(-b, y_wheel, ht), 0.001);
+    require_vec3_near(body(sim, vm.wheel_bodies[3]).p_WB, Vec3(-b, y_wheel, -ht), 0.001);
 
     // Chassis CG
-    REQUIRE_THAT(sys.states[vm.chassis_body].p_WB.y(),
-                 WithinAbs(params.chassis_height_eq(), 0.001));
+    REQUIRE_THAT(body(sim, vm.chassis_body).p_WB.y(), WithinAbs(params.chassis_height_eq(), 0.001));
 }
 
 // ============================================================================
@@ -140,20 +144,18 @@ TEST_CASE("Vehicle: tire vertical loads are correct at equilibrium",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams params;
     auto vm = build_simple_vehicle(sys, params);
 
-    set_vehicle_equilibrium(sys, vm);
-
-    sys.clear_forces();
-    sys.apply_force_elements();
+    kernel::Simulator sim(sys);
+    set_vehicle_equilibrium(sim, vm);
+    sim.acceleration(sim.q, sim.v, sim.time);   // applies the force elements
 
     const Real Fz_expected = params.weight_per_wheel();
 
     for (int c = 0; c < 4; ++c) {
-        Real Fz = vm.tires[c]->get_vertical_force();
-        REQUIRE_THAT(Fz, WithinAbs(Fz_expected, 5.0));
+        REQUIRE_THAT(vm.tires[c]->get_vertical_force(), WithinAbs(Fz_expected, 5.0));
     }
 }
 
@@ -166,49 +168,38 @@ TEST_CASE("Vehicle: undamped bounce conserves energy",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams params;
     params.c_susp = 0.0;  // No suspension damping
     params.tire_c_z = 0.0; // No tire damping
     auto vm = build_simple_vehicle(sys, params);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
+    sim.q(vm.chassis_ty_idx()) += 0.01; // 10mm chassis bounce
     sim.initialize();
 
-    set_vehicle_equilibrium(sys, vm);
-    sys.q(1) += 0.01; // 10mm chassis bounce
-    sys.compute_kinematics();
-
     auto compute_energy = [&]() -> Real {
-        sys.compute_kinematics();
-        const MatX M = compute_mass_matrix(sys);
-        const Real KE = 0.5 * sys.q_dot.transpose() * M * sys.q_dot;
-
-        Real PE_grav = 0.0;
-        for (BodyIndex i = 1; i < sys.body_count(); ++i) {
-            const auto& st = sys.states[i];
-            const auto& in = sys.inertias[i];
-            const Mat3 R = st.q_WB.toRotationMatrix();
-            const Vec3 com_W = st.p_WB + R * in.com_B;
-            PE_grav += in.mass * g_accel * com_W.y();
-        }
+        // Kinetic and gravitational energy of the bodies.
+        const Real KE = kernel::kinetic_energy(sys.model, sim.data());
+        const Real PE_grav = kernel::potential_energy(sys.model, sim.data());
 
         // Spring PE: computed from actual world distances
         Real PE_spring = 0.0;
         for (int c = 0; c < 4; ++c) {
-            const Vec3 p_mount = sys.states[vm.chassis_body].pose_WB().apply(
+            const Vec3 p_mount = body(sim, vm.chassis_body).pose_WB().apply(
                 Vec3(c < 2 ? params.front_axle_x : -params.rear_axle_x,
                      0.0,
                      (c % 2 == 0) ? params.half_track : -params.half_track));
-            const Vec3 p_wheel = sys.states[vm.wheel_bodies[c]].p_WB;
+            const Vec3 p_wheel = body(sim, vm.wheel_bodies[static_cast<std::size_t>(c)]).p_WB;
             const Real dist = (p_wheel - p_mount).norm();
             PE_spring += 0.5 * params.k_susp *
                 (dist - params.susp_rest_length) * (dist - params.susp_rest_length);
         }
 
-        // Tire PE
+        // Tire PE (deflections from the last force evaluation, at this state)
+        sim.acceleration(sim.q, sim.v, sim.time);
         Real PE_tire = 0.0;
         for (int c = 0; c < 4; ++c) {
             const Real defl = vm.tires[c]->get_deflection();
@@ -237,31 +228,29 @@ TEST_CASE("Vehicle: symmetric bounce keeps all corners equal",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams params;
     auto vm = build_simple_vehicle(sys, params);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
+    sim.q(vm.chassis_ty_idx()) += 0.02; // Pure heave perturbation
     sim.initialize();
-
-    set_vehicle_equilibrium(sys, vm);
-    sys.q(1) += 0.02; // Pure heave perturbation
-    sys.compute_kinematics();
 
     sim.run(0.5, 0.001);
 
     // All four suspension travels should be identical (symmetric excitation)
-    const Real q_FL = sys.q(6);
-    REQUIRE_THAT(sys.q(7), WithinAbs(q_FL, 1e-6)); // FR
-    REQUIRE_THAT(sys.q(8), WithinAbs(q_FL, 1e-6)); // RL
-    REQUIRE_THAT(sys.q(9), WithinAbs(q_FL, 1e-6)); // RR
+    const Real q_FL = sim.q(vm.susp_q_idx(Corner::FL));
+    REQUIRE_THAT(sim.q(vm.susp_q_idx(Corner::FR)), WithinAbs(q_FL, 1e-6));
+    REQUIRE_THAT(sim.q(vm.susp_q_idx(Corner::RL)), WithinAbs(q_FL, 1e-6));
+    REQUIRE_THAT(sim.q(vm.susp_q_idx(Corner::RR)), WithinAbs(q_FL, 1e-6));
 
     // No chassis yaw, roll, or lateral motion
-    REQUIRE_THAT(sys.q(2), WithinAbs(0.0, 1e-6)); // tz
-    REQUIRE_THAT(sys.q(3), WithinAbs(0.0, 1e-6)); // rx (roll)
-    REQUIRE_THAT(sys.q(5), WithinAbs(0.0, 1e-6)); // rz (yaw)
+    const Vec3 rotation = chassis_rotation(sim, vm);
+    REQUIRE_THAT(body(sim, vm.chassis_body).p_WB.z(), WithinAbs(0.0, 1e-6));   // lateral
+    REQUIRE_THAT(rotation.x(), WithinAbs(0.0, 1e-6));                          // roll
+    REQUIRE_THAT(rotation.y(), WithinAbs(0.0, 1e-6));                          // yaw
 }
 
 // ============================================================================
@@ -273,25 +262,22 @@ TEST_CASE("Vehicle: forward force accelerates vehicle in X",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams params;
     auto vm = build_simple_vehicle(sys, params);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vm);
     sim.initialize();
 
-    set_vehicle_equilibrium(sys, vm);
-
-    // Apply a constant forward force on the chassis via the force callback.
+    // A constant forward force on the chassis, along its own X axis: the
+    // generalized force of the chassis's linear velocity in X.
     // This simulates a simplified drive force (not through tires yet).
     const Real F_drive = 5000.0; // 5 kN forward
-    sim.force_callback = [&](MultibodySystem& /*s*/, Real /*t*/, VecX& tau) {
-        // Chassis tx is q(0). The generalized force for translation in the
-        // FreeCoordJoint frame is just the force projected onto the joint axes.
-        // At small rotations, joint X ≈ world X, so tau(0) ≈ Fx.
-        tau(0) += F_drive;
+    const int v_forward = sys.model.idx_v[vm.chassis_body] + 3;
+    sim.force_callback = [&](kernel::Simulator& /*s*/, Real /*t*/, VecX& tau) {
+        tau(v_forward) += F_drive;
     };
 
     sim.run(1.0, 0.001);
@@ -303,14 +289,15 @@ TEST_CASE("Vehicle: forward force accelerates vehicle in X",
     const Real x_expected = 0.5 * a_expected * 1.0 * 1.0;
 
     // Allow some tolerance (tires/suspension couple vertical and horizontal)
-    REQUIRE_THAT(sys.q_dot(0), WithinAbs(v_expected, v_expected * 0.05));
-    REQUIRE_THAT(sys.q(0), WithinAbs(x_expected, x_expected * 0.05));
+    const RigidBodyState& chassis = body(sim, vm.chassis_body);
+    REQUIRE_THAT(chassis.v_WB.x(), WithinAbs(v_expected, v_expected * 0.05));
+    REQUIRE_THAT(chassis.p_WB.x(), WithinAbs(x_expected, x_expected * 0.05));
 
     // Lateral motion should be zero
-    REQUIRE_THAT(sys.q(2), WithinAbs(0.0, 0.01));
+    REQUIRE_THAT(chassis.p_WB.z(), WithinAbs(0.0, 0.01));
 
     // Vehicle should still be near ground (not flying)
-    REQUIRE_THAT(sys.q(1), WithinAbs(params.chassis_height_eq(), 0.02));
+    REQUIRE_THAT(chassis.p_WB.y(), WithinAbs(params.chassis_height_eq(), 0.02));
 }
 
 // ============================================================================
@@ -322,18 +309,19 @@ TEST_CASE("Vehicle: correct DOF count and body count",
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     VehicleParams params;
     auto vm = build_simple_vehicle(sys, params);
 
     // 6 bodies: ground + chassis + 4 wheels
-    REQUIRE(sys.body_count() == 6);
+    REQUIRE(sys.model.nbodies() == 6);
 
-    // 10 DOF: 6 (chassis) + 4 (suspension)
-    REQUIRE(sys.total_dof == 10);
+    // 10 DOF: 6 (chassis) + 4 (suspension); 11 coordinates with the quaternion
+    REQUIRE(sys.model.nv == 10);
+    REQUIRE(sys.model.nq == 11);
 
-    // 5 joints
-    REQUIRE(sys.joint_count() == 5);
+    // 5 joints, one per body but ground
+    REQUIRE(sys.model.nbodies() - 1 == 5);
 
     // 8 force elements: 4 springs + 4 tires
     REQUIRE(sys.force_elements.size() == 8);
@@ -344,4 +332,8 @@ TEST_CASE("Vehicle: correct DOF count and body count",
     REQUIRE(vm.wheel_bodies[1] == 3); // FR
     REQUIRE(vm.wheel_bodies[2] == 4); // RL
     REQUIRE(vm.wheel_bodies[3] == 5); // RR
+
+    // Suspension coordinates follow the chassis's seven
+    REQUIRE(vm.susp_q_idx(Corner::FL) == 7);
+    REQUIRE(vm.susp_v_idx(Corner::FL) == 6);
 }

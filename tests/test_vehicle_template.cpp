@@ -4,10 +4,21 @@
 #include <cmath>
 
 #include "mbd/vehicle/vehicle_template.hpp"
-#include "mbd/integrators/simulator.hpp"
 #include "mbd/vehicle/drivetrain.hpp"
 
+// The template-built vehicle on the kernel (plan task 2.7).
+
 using Catch::Matchers::WithinAbs;
+
+namespace
+{
+    /// Forward speed of the chassis in the world.
+    mbd::Real forward_speed(const mbd::kernel::Simulator& sim, const mbd::VehicleHandle& vh)
+    {
+        const auto& s = sim.states()[static_cast<std::size_t>(vh.chassis_body)];
+        return s.v_WB.dot(s.q_WB * mbd::Vec3::UnitX());
+    }
+}
 
 // ============================================================================
 // Topology tests
@@ -17,20 +28,21 @@ TEST_CASE("Template: DefaultSedan has correct topology", "[template][topology]")
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto vh = build_vehicle(sys, VehicleTemplate::DefaultSedan());
 
     // ground + chassis + 4 wheels = 6 bodies
-    REQUIRE(sys.body_count() == 6);
+    REQUIRE(sys.model.nbodies() == 6);
 
     // 6 (chassis) + 4 (prismatic) = 10 DOF
-    REQUIRE(sys.total_dof == 10);
+    REQUIRE(sys.model.nv == 10);
 
-    // 5 joints (1 free + 4 prismatic)
-    REQUIRE(sys.joint_count() == 5);
+    // 5 joints (1 free + 4 prismatic): one per body but ground
+    REQUIRE(sys.model.nbodies() - 1 == 5);
 
-    // 8 force elements (4 springs + 4 tires)
+    // 8 force elements (4 springs + 4 tires), no constraints
     REQUIRE(sys.force_elements.size() == 8);
+    REQUIRE(sys.constraints.empty());
 
     // Chassis body is 1
     REQUIRE(vh.chassis_body == 1);
@@ -40,27 +52,31 @@ TEST_CASE("Template: SportsCar preset builds successfully", "[template][topology
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto vh = build_vehicle(sys, VehicleTemplate::SportsCar());
 
-    // SportsCar uses DWB front + DWB rear: 1 (ground) + 1 (chassis) + 4*3 = 14 bodies
-    REQUIRE(sys.body_count() == 14);
-    // DOFs: 6 (chassis) + 4*(1+3+1) = 26
-    REQUIRE(sys.total_dof == 26);
+    // DWB front + DWB rear: ground + chassis + front steering rack + 4*3 = 15 bodies
+    REQUIRE(sys.model.nbodies() == 15);
+    REQUIRE(vh.rack_body[0] > 0);
+    REQUIRE(vh.rack_body[1] == 0);
+    // Velocities: 6 (chassis) + 1 (rack) + 4*(1+3+1) = 27. The rack's driver
+    // takes its freedom away again.
+    REQUIRE(sys.model.nv == 27);
 }
 
 TEST_CASE("Template: FWDHatchback preset builds successfully", "[template][topology]")
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto vh = build_vehicle(sys, VehicleTemplate::FWDHatchback());
 
-    // FWDHatchback: McPherson front (2 bodies each) + Simple rear (1 body each)
-    // Bodies: 1 (ground) + 1 (chassis) + 2*2 (MC front) + 2*1 (simple rear) = 8
-    REQUIRE(sys.body_count() == 8);
-    // DOFs: 6 (chassis) + 2*(1+3) (MC front) + 2*1 (simple rear) = 16
-    REQUIRE(sys.total_dof == 16);
+    // McPherson front (2 bodies each, steered: plus a rack) + Simple rear (1 body each)
+    // Bodies: 1 (ground) + 1 (chassis) + 1 (rack) + 2*2 (MC front) + 2*1 (simple rear) = 9
+    REQUIRE(sys.model.nbodies() == 9);
+    // Velocities: 6 (chassis) + 1 (rack) + 2*(1+3) (MC front) + 2*1 (simple rear) = 17
+    REQUIRE(sys.model.nv == 17);
+    REQUIRE(vh.rack_body[0] > 0);
 }
 
 // ============================================================================
@@ -72,23 +88,20 @@ TEST_CASE("Template: DefaultSedan reaches static equilibrium", "[template][equil
     using namespace mbd;
 
     auto tmpl = VehicleTemplate::DefaultSedan();
-    MultibodySystem sys;
+    kernel::System sys;
     auto vh = build_vehicle(sys, tmpl);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vh);
+    sim.q(1) += 0.02; // Small perturbation
     sim.initialize();
-
-    set_vehicle_equilibrium(sys, vh);
-    sys.q(1) += 0.02; // Small perturbation
-    sys.compute_kinematics();
 
     sim.run(5.0, 0.001);
 
     // Velocities should be near zero
-    for (int i = 0; i < sys.total_dof; ++i) {
-        REQUIRE_THAT(sys.q_dot(i), WithinAbs(0.0, 0.02));
+    for (int i = 0; i < sys.model.nv; ++i) {
+        REQUIRE_THAT(sim.v(i), WithinAbs(0.0, 0.02));
     }
 }
 
@@ -97,13 +110,14 @@ TEST_CASE("Template: equilibrium tire loads are correct", "[template][equilibriu
     using namespace mbd;
 
     auto tmpl = VehicleTemplate::DefaultSedan();
-    MultibodySystem sys;
+    kernel::System sys;
     auto vh = build_vehicle(sys, tmpl);
 
-    set_vehicle_equilibrium(sys, vh);
+    kernel::Simulator sim(sys);
+    set_vehicle_equilibrium(sim, vh);
 
-    sys.clear_forces();
-    sys.apply_force_elements();
+    // One evaluation applies every force element at this state.
+    sim.acceleration(sim.q, sim.v, sim.time);
 
     // Front/rear loads depend on CG position (front_axle_x vs rear_axle_x)
     const Real L = tmpl.wheelbase();
@@ -131,7 +145,7 @@ TEST_CASE("Template: tire accessors work for all corners", "[template][tires]")
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto vh = build_vehicle(sys, VehicleTemplate::DefaultSedan());
 
     for (int c = 0; c < 4; ++c) {
@@ -155,7 +169,7 @@ TEST_CASE("Template: steering applies to front axle only (sedan)", "[template][s
 {
     using namespace mbd;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto vh = build_vehicle(sys, VehicleTemplate::DefaultSedan());
 
     vh.set_steering(0.1);
@@ -187,15 +201,14 @@ TEST_CASE("Template: heavier car has lower tire load frequency", "[template][par
     auto tmpl_light = VehicleTemplate::DefaultSedan();
     tmpl_light.chassis.mass = 1000.0;
 
-    MultibodySystem sys_light;
-    auto vh_light = build_vehicle(sys_light, tmpl_light);
-
     // Heavy car (same springs)
     auto tmpl_heavy = VehicleTemplate::DefaultSedan();
     tmpl_heavy.chassis.mass = 2000.0;
 
-    MultibodySystem sys_heavy;
-    auto vh_heavy = build_vehicle(sys_heavy, tmpl_heavy);
+    // Both build.
+    kernel::System sys_light, sys_heavy;
+    build_vehicle(sys_light, tmpl_light);
+    build_vehicle(sys_heavy, tmpl_heavy);
 
     // Natural frequency: omega = sqrt(k/m)
     // Heavier car should have lower frequency
@@ -237,18 +250,16 @@ TEST_CASE("Template: vehicle with drivetrain accelerates",
     using namespace mbd;
 
     auto tmpl = VehicleTemplate::DefaultSedan();
-    MultibodySystem sys;
+    kernel::System sys;
     auto vh = build_vehicle(sys, tmpl);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vh);
     sim.initialize();
 
-    set_vehicle_equilibrium(sys, vh);
-
     Drivetrain dt(tmpl.drivetrain);
-    dt.initialize(sys, vh);
+    dt.initialize(sim, vh);
     dt.connect(sim, vh);
 
     // Settle
@@ -259,7 +270,7 @@ TEST_CASE("Template: vehicle with drivetrain accelerates",
     dt.throttle = 0.5;
     sim.run(3.0, 0.001);
 
-    REQUIRE(sys.q_dot(0) > 3.0);
+    REQUIRE(forward_speed(sim, vh) > 3.0);
 }
 
 // ============================================================================
@@ -275,23 +286,21 @@ TEST_CASE("Template: vehicle corners with steering", "[template][cornering]")
     tmpl.rear_axle.k_spring = tmpl.front_axle.k_spring;
     tmpl.rear_axle.c_damper = tmpl.front_axle.c_damper;
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto vh = build_vehicle(sys, tmpl);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vh);
+    // 10 m/s forward: the chassis velocity is in its own axes (at rest
+    // orientation, the world's).
+    const int v_forward = sys.model.idx_v[vh.chassis_body] + 3;
+    sim.v(v_forward) = 10.0;
     sim.initialize();
 
-    set_vehicle_equilibrium(sys, vh);
-    sys.q_dot(0) = 10.0;
-    sys.compute_kinematics();
-
-    // Gentle speed controller
-    sim.force_callback = [&](MultibodySystem& s, Real, VecX& tau) {
-        const Vec3 fwd = s.states[vh.chassis_body].q_WB * Vec3::UnitX();
-        const Real Vx = s.states[vh.chassis_body].v_WB.dot(fwd);
-        tau(0) += 500.0 * (10.0 - Vx);
+    // Gentle speed controller: a push along the chassis's forward axis.
+    sim.force_callback = [&](kernel::Simulator& s, Real, VecX& tau) {
+        tau(v_forward) += 500.0 * (10.0 - forward_speed(s, vh));
     };
 
     // Settle
@@ -299,9 +308,9 @@ TEST_CASE("Template: vehicle corners with steering", "[template][cornering]")
 
     // Steer left and drive
     vh.set_steering(0.03);
-    const Real z_before = sys.states[vh.chassis_body].p_WB.z();
+    const Real z_before = sim.states()[static_cast<std::size_t>(vh.chassis_body)].p_WB.z();
     sim.run(3.0, 0.001);
-    const Real z_after = sys.states[vh.chassis_body].p_WB.z();
+    const Real z_after = sim.states()[static_cast<std::size_t>(vh.chassis_body)].p_WB.z();
 
     // Should turn left (positive Z)
     REQUIRE(z_after - z_before > 0.05);
@@ -318,15 +327,12 @@ TEST_CASE("Template: DWB kinematic analysis from template",
 
     auto tmpl = VehicleTemplate::SportsCar();
 
-    MultibodySystem sys;
+    kernel::System sys;
     auto [dwb, bump_idx] = build_dwb_for_analysis(sys, tmpl, 0); // FL corner
+    (void)bump_idx;
+    Kinematics k(sys);
 
-    set_dwb_reference(sys, dwb);
-
-    auto result = sweep_bump_travel(
-        sys, bump_idx, dwb.upright_body,
-        dwb.params.wheel_center.y(),
-        -0.03, 0.03, 11);
+    auto result = sweep_bump_travel(k, dwb.upright_body, -0.03, 0.03, 11);
 
     for (const auto& pt : result.points) {
         REQUIRE(pt.converged);
@@ -377,22 +383,20 @@ TEST_CASE("Template: symmetric bounce keeps corners equal",
     using namespace mbd;
 
     auto tmpl = VehicleTemplate::DefaultSedan();
-    MultibodySystem sys;
+    kernel::System sys;
     auto vh = build_vehicle(sys, tmpl);
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
+    set_vehicle_equilibrium(sim, vh);
+    sim.q(1) += 0.015; // Pure heave
     sim.initialize();
-
-    set_vehicle_equilibrium(sys, vh);
-    sys.q(1) += 0.015; // Pure heave
-    sys.compute_kinematics();
 
     sim.run(0.5, 0.001);
 
-    // Left/right symmetry: FL=FR and RL=RR
+    // Left/right symmetry: FL=FR and RL=RR (suspension travel of each corner)
     // Front/rear may differ due to different spring rates
-    REQUIRE_THAT(sys.q(7), WithinAbs(sys.q(6), 1e-5)); // FR == FL
-    REQUIRE_THAT(sys.q(9), WithinAbs(sys.q(8), 1e-5)); // RR == RL
+    auto travel = [&](int c) { return sim.q(sys.model.idx_q[vh.wheel(c)]); };
+    REQUIRE_THAT(travel(1), WithinAbs(travel(0), 1e-5)); // FR == FL
+    REQUIRE_THAT(travel(3), WithinAbs(travel(2), 1e-5)); // RR == RL
 }

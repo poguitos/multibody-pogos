@@ -83,7 +83,7 @@ Signs in the ISO 8855 frame, which the migration will establish:
 
 - Types are `PascalCase`, functions and variables are `snake_case`, constants start with `k`.
 - A quantity carries its frames in its name: `p_WB`, `R_WJ`, `X_PJ`.
-- Classes ending in `CoordJoint` are joints of the tree. Classes derived from `Constraint` are loop closures. (Two constraint classes are still called `RevoluteJoint` and similar; they are renamed in plan task 2.7.)
+- Classes ending in `CoordJoint` are joints of the tree. Classes derived from `Constraint` are loop closures, and their names end in `Constraint`.
 
 ## Decisions on record
 

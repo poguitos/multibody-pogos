@@ -12,9 +12,10 @@
 #include "mbd/vehicle/drivetrain_params.hpp"
 #include "mbd/vehicle/vehicle.hpp"
 #include "mbd/vehicle/vehicle_template.hpp"
-#include "mbd/integrators/simulator.hpp"
+#include "mbd/kernel/simulator.hpp"
 
 #include <array>
+#include <vector>
 #include <algorithm>
 #include <cmath>
 
@@ -109,16 +110,16 @@ public:
 
     /// Set wheel inertias from the vehicle, wheel omegas to match the current
     /// vehicle speed (free-rolling), and the gear for that speed.
-    void initialize(const MultibodySystem& sys, const VehicleModel& vm)
+    void initialize(const kernel::Simulator& sim, const VehicleModel& vm)
     {
         const Real R = vm.params.tire_free_radius;
         const Real I = disc_inertia(vm.params.wheel_mass, R);
         wheel_inertia = {{I, I, I, I}};
-        initialize_from_speed(sys, vm.chassis_body, {{R, R, R, R}});
+        initialize_from_speed(sim.states(), vm.chassis_body, {{R, R, R, R}});
     }
 
     /// Initialize from a VehicleHandle (template-built vehicle).
-    void initialize(const MultibodySystem& sys, const VehicleHandle& vh)
+    void initialize(const kernel::Simulator& sim, const VehicleHandle& vh)
     {
         const auto& front = vh.tmpl.front_axle;
         const auto& rear  = vh.tmpl.rear_axle;
@@ -127,7 +128,7 @@ public:
         const Real I_f = disc_inertia(front.wheel_mass, R_f);
         const Real I_r = disc_inertia(rear.wheel_mass, R_r);
         wheel_inertia = {{I_f, I_f, I_r, I_r}};
-        initialize_from_speed(sys, vh.chassis_body, {{R_f, R_f, R_r, R_r}});
+        initialize_from_speed(sim.states(), vh.chassis_body, {{R_f, R_f, R_r, R_r}});
     }
 
     // --- Per-stage callback: hand the wheel spins to the tyres ---
@@ -262,24 +263,24 @@ public:
 
     /// Register this drivetrain's callbacks on a Simulator.
     /// Call after simulator.initialize().
-    void connect(Simulator& sim, const TireSet& tires)
+    void connect(kernel::Simulator& sim, const TireSet& tires)
     {
-        sim.pre_force_callback = [this, tires](MultibodySystem& /*sys*/, Real /*t*/) {
+        sim.pre_force_callback = [this, tires](kernel::Simulator& /*sim*/, Real /*t*/) {
             apply_to_tires(tires);
         };
 
-        sim.post_step_callback = [this, tires](MultibodySystem& /*sys*/, Real dt) {
+        sim.post_step_callback = [this, tires](kernel::Simulator& /*sim*/, Real dt) {
             step(dt, tires);
         };
     }
 
-    void connect(Simulator& sim, const VehicleModel& vm)
+    void connect(kernel::Simulator& sim, const VehicleModel& vm)
     {
         connect(sim, vm.tires);
     }
 
     /// Connect to a simulator using a VehicleHandle.
-    void connect(Simulator& sim, const VehicleHandle& vh)
+    void connect(kernel::Simulator& sim, const VehicleHandle& vh)
     {
         connect(sim, tires_of(vh));
     }
@@ -305,11 +306,12 @@ private:
         return (n_driven > 0) ? sum / n_driven : Real(0.0);
     }
 
-    void initialize_from_speed(const MultibodySystem& sys, BodyIndex chassis,
+    void initialize_from_speed(const std::vector<RigidBodyState>& states, BodyIndex chassis,
                                const std::array<Real, 4>& free_radius)
     {
-        const Vec3 fwd_W = sys.states[chassis].q_WB * Vec3::UnitX();
-        const Real Vx = sys.states[chassis].v_WB.dot(fwd_W);
+        const auto& chassis_state = states[static_cast<std::size_t>(chassis)];
+        const Vec3 fwd_W = chassis_state.q_WB * Vec3::UnitX();
+        const Real Vx = chassis_state.v_WB.dot(fwd_W);
 
         // Free rolling on a tyre that is about 3 % smaller under load.
         for (int c = 0; c < 4; ++c) {

@@ -3,8 +3,13 @@
 #include <Eigen/Geometry>
 #include <cmath>
 
-#include "mbd/integrators/simulator.hpp"
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "mbd/forces/tire.hpp"
+#include "mbd/kernel/simulator.hpp"
+#include "mbd/spatial/spatial.hpp"
 
 using Catch::Matchers::WithinAbs;
 
@@ -19,27 +24,41 @@ namespace
         REQUIRE_THAT(a.z(), WithinAbs(b.z(), tol));
     }
 
-    /// Build a single wheel on a free joint with a FullTireForce.
-    /// Returns {system, tire_ptr}.
-    std::pair<mbd::MultibodySystem, const mbd::FullTireForce*>
-    make_free_wheel(mbd::Real mass, mbd::Real R_free, mbd::Real k_z, mbd::Real c_z)
+    /// A single wheel for testing the tyre force element, which reads only the
+    /// wheel's world state. q holds the position and a rotation vector, q_dot
+    /// the world velocity of the wheel centre (its last three entries, rotation
+    /// rates, must stay zero: no test spins the wheel body).
+    struct FreeWheel {
+        Eigen::Matrix<mbd::Real, 6, 1> q = Eigen::Matrix<mbd::Real, 6, 1>::Zero();
+        Eigen::Matrix<mbd::Real, 6, 1> q_dot = Eigen::Matrix<mbd::Real, 6, 1>::Zero();
+        std::vector<mbd::RigidBodyState> states = std::vector<mbd::RigidBodyState>(2);
+        std::vector<mbd::RigidBodyForces> forces = std::vector<mbd::RigidBodyForces>(2);
+        std::shared_ptr<mbd::FullTireForce> tire;
+
+        void compute_kinematics()
+        {
+            REQUIRE(q_dot.tail<3>().isZero());
+            states[1] = mbd::RigidBodyState(q.head<3>(), mbd::exp3(q.tail<3>()), q_dot.head<3>(),
+                                            mbd::Vec3::Zero());
+        }
+        void clear_forces() { forces.assign(2, mbd::RigidBodyForces{}); }
+        void apply_force_elements()
+        {
+            compute_kinematics();
+            tire->apply(states, forces);
+        }
+    };
+
+    /// A wheel with a FullTireForce. Returns {wheel, tire_ptr}.
+    std::pair<FreeWheel, mbd::FullTireForce*>
+    make_free_wheel(mbd::Real /*mass*/, mbd::Real R_free, mbd::Real k_z, mbd::Real c_z)
     {
         using namespace mbd;
-
-        MultibodySystem sys;
-        auto inertia = RigidBodyInertia::from_solid_box(mass, Vec3(0.15, R_free, 0.15));
-        sys.add_body(inertia, RigidBodyState{}, "wheel", kGroundIndex);
-        sys.add_joint(std::make_unique<FreeCoordJoint>(
-            Transform3::Identity(), Transform3::Identity(),
-            kGroundIndex, 1));
-
-        auto tire = std::make_unique<FullTireForce>(
-            1, R_free, k_z, c_z,
-            PacejkaTireParams::DefaultPassengerCar());
-        const FullTireForce* ptr = tire.get();
-        sys.force_elements.push_back(std::move(tire));
-
-        return {std::move(sys), ptr};
+        FreeWheel w;
+        w.tire = std::make_shared<FullTireForce>(1, R_free, k_z, c_z,
+                                                 PacejkaTireParams::DefaultPassengerCar());
+        FullTireForce* ptr = w.tire.get();
+        return {std::move(w), ptr};
     }
 }
 
@@ -263,31 +282,34 @@ TEST_CASE("FullTireForce: free wheel settles to static equilibrium under gravity
     const Real k_z = 200000.0;
     const Real c_z = 2000.0;
 
-    auto [sys, tire] = make_free_wheel(mass, R_free, k_z, c_z);
+    // A free wheel body on the kernel, with the tyre as its only force.
+    kernel::System sys;
+    sys.model.gravity = Vec3(0.0, -g_accel, 0.0);
+    sys.model.add_body(0, std::make_shared<kernel::FreeJointModel>(), Transform3::Identity(),
+                       Transform3::Identity(),
+                       RigidBodyInertia::from_solid_box(mass, Vec3(0.15, R_free, 0.15)), "wheel");
+    sys.force_elements.push_back(std::make_shared<FullTireForce>(
+        1, R_free, k_z, c_z, PacejkaTireParams::DefaultPassengerCar()));
 
-    Simulator sim(sys);
-    sim.set_gravity(Vec3(0.0, -g_accel, 0.0));
-    sim.method = IntegrationMethod::RK4;
-    sim.initialize();
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::RK4;
 
     // Start slightly above equilibrium
     const Real y_eq = R_free - mass * g_accel / k_z;
-    sys.q << 0.0, y_eq + 0.02, 0.0, 0.0, 0.0, 0.0;
-    sys.q_dot.setZero();
-    sys.compute_kinematics();
+    sim.q(1) = y_eq + 0.02;
+    sim.initialize();
 
     sim.run(2.0, 0.001);
 
-    // Should settle near equilibrium
-    REQUIRE_THAT(sys.q(1), WithinAbs(y_eq, 0.002));
-
-    // Horizontal position unchanged
-    REQUIRE_THAT(sys.q(0), WithinAbs(0.0, 0.001));
-    REQUIRE_THAT(sys.q(2), WithinAbs(0.0, 0.001));
+    // Should settle near equilibrium, without moving horizontally
+    const RigidBodyState& wheel = sim.states()[1];
+    REQUIRE_THAT(wheel.p_WB.y(), WithinAbs(y_eq, 0.002));
+    REQUIRE_THAT(wheel.p_WB.x(), WithinAbs(0.0, 0.001));
+    REQUIRE_THAT(wheel.p_WB.z(), WithinAbs(0.0, 0.001));
 
     // Velocities near zero
     for (int i = 0; i < 6; ++i) {
-        REQUIRE_THAT(sys.q_dot(i), WithinAbs(0.0, 0.05));
+        REQUIRE_THAT(sim.v(i), WithinAbs(0.0, 0.05));
     }
 }
 

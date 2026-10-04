@@ -15,6 +15,8 @@ model, and every algorithm uses that description.
 | `include/mbd/kernel/algorithms.hpp`, `src/kernel/algorithms.cpp` | Kinematics, RNEA, CRBA, ABA, Jacobians, momentum, energy, configuration space |
 | `include/mbd/kernel/constraints.hpp`, `src/kernel/constraints.cpp` | Markers, constraint primitives and joint closures |
 | `include/mbd/kernel/constrained_dynamics.hpp`, `src/kernel/constrained_dynamics.cpp` | The constrained solve: accelerations, multipliers, redundancy, projection |
+| `include/mbd/kernel/forces.hpp`, `src/kernel/forces.cpp` | Body states for the force elements, and their generalized forces |
+| `include/mbd/kernel/simulator.hpp`, `src/kernel/simulator.cpp` | `System` (model, constraints, force elements) and `Simulator` |
 | `tests/kernel/` | Identities, invariants, and the cross-check against the legacy path |
 
 The reference is R. Featherstone, *Rigid Body Dynamics Algorithms*, Springer
@@ -172,6 +174,7 @@ axes, in world axes, and `d = p_j - p_i`:
 | `Dot2` | `a_i . d - s(t)` | 1 |
 | `Distance` | `(d . d - L(t)^2) / (2 L0)` | 1 |
 | `NoTwist` | `x_i . y_j - y_i . x_j` | 1 |
+| `JointDriver` | `q - s(t)` for a revolute or prismatic joint | 1 |
 
 `Distance` divides by the nominal length L0 so that phi is a length, equal to
 `|d| - L` to first order, without the singularity of `|d|` at zero.
@@ -246,6 +249,40 @@ vector the temporary goes on the heap. Write `x = y; x.noalias() -= A * b;`
 instead. Temporaries whose maximum size is fixed (`Mat6X`, vectors of at most
 six) live on the stack.
 
+## Forces and simulation
+
+**Force elements** (springs, dampers, tyres, aerodynamics, anti-roll bars)
+keep the interface they had before the kernel: they read world body states
+(`RigidBodyState`) and add world forces at body origins, with the moment
+about each origin (`RigidBodyForces`). `kernel/forces.hpp` connects them:
+`body_states` fills the states from `Data`, and `generalized_forces` turns
+the forces into generalized forces `tau = sum J_i^T [tau_W; f_W]` in one pass
+from the leaves, without forming the Jacobians.
+
+**`kernel::System`** is a `Model` with its loop constraints and force
+elements: what the vehicle builders fill. **`kernel::Simulator`** advances
+one. It owns the state (`q`, `v`, `time`) and, at every evaluation of the
+accelerations, computes the kinematics and body states, calls
+`pre_force_callback` (the drivetrain hands wheel spins to the tyres there),
+applies the force elements, adds `tau` and `force_callback`, and solves the
+constrained dynamics with `ConstraintSolver`. RK4 combines the stages'
+`q_dot` and normalizes once per step; semi-implicit Euler moves q through
+`integrate`. After each step the state is projected onto the constraints.
+
+**Drivers.** A constraint whose target depends on t drives a mechanism.
+`JointDriver` holds a revolute or prismatic coordinate at s(t); its
+multiplier is the force or torque the drive needs (plan task 3.2's driven
+pendulum is a test). In kinematic analysis t is a parameter rather than a
+time: a suspension's bump driver holds the wheel centre at its nominal
+height plus t, so `Kinematics` (in `analysis/position_kinematics.hpp`)
+sweeps bump travel by solving `phi(q, t) = 0` for successive t.
+
+**Steering.** A steered axle with linkage suspension has a steering rack: a
+light body sliding along the chassis's lateral axis, carrying the tie rods'
+inner points and driven to `SteeringRack::travel` by a `JointDriver`.
+`VehicleHandle::set_steering` sets that travel; the projection after the
+next step moves the linkage, and each wheel's toe follows from the geometry.
+
 ## Tests
 
 `tests/kernel/test_spatial.cpp` checks the identities of the spatial algebra
@@ -284,6 +321,14 @@ four-bar closed in 3D (rank 2 of 5) conserves energy over two seconds while
 its crank turns twice; that projection and Baumgarte stabilization return
 the state to the constraints; and, in the hidden `[alloc]` test, that nothing
 is allocated.
+
+`tests/kernel/test_kernel_analytic.cpp` holds closed-form cases: a free body
+at constant velocity, in free fall, Euler's equations and the torque-free
+symmetric top; a pendulum rod's force and the elliptic-integral period of a
+large swing; a hinged bar's reaction. `tests/kernel/test_kernel_simulator.cpp`
+checks the force bridge against `J^T f`, a spring-mass oscillator and the
+convergence orders of both integrators, a constrained pendulum, the callbacks,
+and a driven pendulum's torque.
 
 `tests/kernel/test_kernel_vs_legacy.cpp` builds the same random models in the
 kernel and in the legacy `MultibodySystem` and compares poses, velocities,

@@ -146,3 +146,24 @@ What the numbers show:
 | double-wishbone sedan, 26 DOF  | constrained forward dynamics     |     311.78 |            |        |
 | double-wishbone sedan, 26 DOF  | constraint projection            |     291.80 |            |        |
 | double-wishbone sedan, 26 DOF  | one RK4 step of 1 ms, everything |    1859.08 |            |        |
+
+## The sedan on the kernel, 4 October 2026
+
+The all-double-wishbone sedan, now built on the kernel (plan task 2.7b):
+chassis on a free joint, a steering rack, four double-wishbone corners
+closed by 17 constraint equations, springs, dampers and tyres, driven
+through the drivetrain. Same run as the chain and tree timings above, in
+which the legacy sedan took 739 us per step.
+
+| Operation | Kernel [us] |
+|---|---|
+| mass matrix | 6.1 |
+| constrained forward dynamics | 42.0 |
+| constraint projection | 47.1 |
+| one RK4 step of 1 ms, everything | 291.5 |
+
+Task 2.10's target is 250 us. The step is four evaluations of about 42 us of
+constrained dynamics each, one projection, and about 75 us for the force
+elements and bookkeeping. Each evaluation still runs the kinematics four
+times (the simulator, the constraints, the mass matrix and the bias forces
+each do their own pass); sharing one pass is the obvious first saving.

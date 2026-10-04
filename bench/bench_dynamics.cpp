@@ -20,6 +20,8 @@
 #include "mbd/algorithms/dynamics.hpp"
 #include "mbd/integrators/simulator.hpp"
 #include "mbd/kernel/algorithms.hpp"
+#include "mbd/kernel/constrained_dynamics.hpp"
+#include "mbd/kernel/simulator.hpp"
 #include "mbd/vehicle/vehicle_template.hpp"
 #include "mbd/vehicle/drivetrain.hpp"
 
@@ -101,7 +103,10 @@ namespace
 
     void row(const std::string& model, const std::string& op, double legacy_us, double kernel_us)
     {
-        if (kernel_us > 0.0) {
+        if (legacy_us <= 0.0) {
+            std::printf("| %-30s | %-32s |            | %10.2f |        |\n", model.c_str(),
+                        op.c_str(), kernel_us);
+        } else if (kernel_us > 0.0) {
             std::printf("| %-30s | %-32s | %10.2f | %10.2f | %6.1f |\n", model.c_str(), op.c_str(),
                         legacy_us, kernel_us, legacy_us / kernel_us);
         } else {
@@ -145,34 +150,36 @@ int main()
         }
     }
 
-    // The detailed vehicle: chassis on a free joint, four double-wishbone
-    // corners closed by constraints, which the kernel does not have yet.
+    // The detailed vehicle, on the kernel: chassis on a free joint, steering
+    // rack, four double-wishbone corners closed by constraints, springs,
+    // dampers and tyres, driven through the drivetrain.
     {
         auto tmpl = VehicleTemplate::DefaultSedan();
         tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
         tmpl.rear_axle.suspension_type  = SuspensionType::DoubleWishbone;
-        MultibodySystem sys;
+        kernel::System sys;
         auto vh = build_vehicle(sys, tmpl);
-        Simulator sim(sys);
-        sim.set_gravity(g);
-        sim.method = IntegrationMethod::RK4;
+        kernel::Simulator sim(sys);
+        sim.method = kernel::Integrator::RK4;
+        set_vehicle_equilibrium(sim, vh);
         sim.initialize();
-        set_vehicle_equilibrium(sys, vh);
         Drivetrain dt(tmpl.drivetrain);
-        dt.initialize(sys, vh);
+        dt.initialize(sim, vh);
         dt.connect(sim, vh);
         dt.throttle = 0.3;
         sim.run(0.2, 0.001);   // moving, wheels loaded
 
-        const std::string name = "double-wishbone sedan, 26 DOF";
-        const VecX zero = VecX::Zero(sys.total_dof);
-        sys.compute_kinematics();
-        row(name, "mass matrix", time_per_call_us([&] {
-            volatile double x = compute_mass_matrix(sys)(0, 0); (void)x; }), 0.0);
-        row(name, "constrained forward dynamics", time_per_call_us([&] {
-            volatile double x = constrained_forward_dynamics(sys, zero, g)(0); (void)x; }), 0.0);
-        row(name, "constraint projection", time_per_call_us([&] { project_onto_constraints(sys); }), 0.0);
-        row(name, "one RK4 step of 1 ms, everything", time_per_call_us([&] { sim.step(0.001); }), 0.0);
+        const std::string name = "double-wishbone sedan, kernel";
+        kernel::Data data(sys.model);
+        kernel::ConstraintSolver solver(sys.model, sys.constraints);
+        const VecX zero = VecX::Zero(sys.model.nv);
+        VecX q = sim.q, v = sim.v;
+        row(name, "mass matrix", 0.0, time_per_call_us([&] {
+            volatile double x = kernel::crba(sys.model, data, q)(0, 0); (void)x; }));
+        row(name, "constrained forward dynamics", 0.0, time_per_call_us([&] {
+            volatile double x = solver.forward_dynamics(data, q, v, zero, 0.0)(0); (void)x; }));
+        row(name, "constraint projection", 0.0, time_per_call_us([&] { solver.project(data, q, v, 0.0); }));
+        row(name, "one RK4 step of 1 ms, everything", 0.0, time_per_call_us([&] { sim.step(0.001); }));
     }
     return 0;
 }
