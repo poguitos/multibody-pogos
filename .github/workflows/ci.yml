@@ -53,3 +53,30 @@ jobs:
       - name: Run tests
         run: ctest --test-dir build-linux --output-on-failure -E "_NOT_BUILT"
 
+  # The kernel must not allocate memory once set up (plan tasks 2.6, 2.10).
+  # In a Debug build with EIGEN_RUNTIME_NO_MALLOC, any Eigen heap allocation
+  # inside the checked calls fails an assertion. Runs the hidden [alloc] tests.
+  kernel-no-malloc:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-nomalloc -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DMBD_COMPILE_JOBS=3
+          -DMBD_TEST_PCH=OFF
+          -DMBD_BUILD_PYTHON=OFF
+          "-DCMAKE_CXX_FLAGS=-DEIGEN_RUNTIME_NO_MALLOC"
+
+      - name: Build the kernel tests
+        run: cmake --build build-nomalloc --target test_kernel
+
+      - name: Check that nothing allocates
+        run: ./build-nomalloc/tests/test_kernel "[alloc]"

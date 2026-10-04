@@ -230,7 +230,10 @@ const VecX& aba(const Model& model, Data& data,
             } else {
                 data.Dinv[i] = D.inverse();
             }
-            data.u[i] = tau.segment(model.idx_v[i], nvi) - data.S[i].transpose() * data.pA[i];
+            // In two steps: Eigen evaluates "y - A b" through a temporary sized
+            // like y, here a block of a dynamic vector, so on the heap.
+            data.u[i] = tau.segment(model.idx_v[i], nvi);
+            data.u[i].noalias() -= data.S[i].transpose() * data.pA[i];
         }
         if (p == 0) continue;
 

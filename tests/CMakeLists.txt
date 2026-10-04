@@ -80,12 +80,15 @@ mbd_add_test_exe(test_invariants
     invariants/test_conservation.cpp
 )
 
-# The kinematics kernel (plan Phase 2): spatial algebra, the joint models and
-# the recursive algorithms, checked against invariants and the legacy path.
+# The kinematics kernel (plan Phase 2): spatial algebra, joint models, recursive
+# algorithms, constraints and the constrained solve, checked against invariants
+# and the legacy path.
 mbd_add_test_exe(test_kernel
     kernel/test_spatial.cpp
     kernel/test_kernel_invariants.cpp
     kernel/test_kernel_threads.cpp
+    kernel/test_kernel_constraints.cpp
+    kernel/test_kernel_constrained.cpp
     kernel/test_kernel_vs_legacy.cpp
 )
 find_package(Threads REQUIRED)

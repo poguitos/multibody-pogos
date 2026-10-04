@@ -13,6 +13,8 @@ model, and every algorithm uses that description.
 | `include/mbd/kernel/joint_model.hpp`, `src/kernel/joint_models.cpp` | The joint interface and the eight joints |
 | `include/mbd/kernel/model.hpp`, `src/kernel/model.cpp` | `Model` (what does not change) and `Data` (what the algorithms compute) |
 | `include/mbd/kernel/algorithms.hpp`, `src/kernel/algorithms.cpp` | Kinematics, RNEA, CRBA, ABA, Jacobians, momentum, energy, configuration space |
+| `include/mbd/kernel/constraints.hpp`, `src/kernel/constraints.cpp` | Markers, constraint primitives and joint closures |
+| `include/mbd/kernel/constrained_dynamics.hpp`, `src/kernel/constrained_dynamics.cpp` | The constrained solve: accelerations, multipliers, redundancy, projection |
 | `tests/kernel/` | Identities, invariants, and the cross-check against the legacy path |
 
 The reference is R. Featherstone, *Rigid Body Dynamics Algorithms*, Springer
@@ -144,6 +146,106 @@ physical acceleration, `data.a = a_gf + [0; R^T g]`.
 | Body Jacobian, world axes, body origin | `body_jacobian_world` | |
 | Momentum about the world origin | `momentum_world` | |
 
+## Constraints
+
+The tree has no loops. A loop is closed by constraint equations `phi(q, t) =
+0` between **markers**, frames fixed on bodies (`Marker{body, X_BM}`, body 0
+for the ground). Each constraint returns its value, its Jacobian and the
+right-hand sides of the velocity and acceleration equations,
+
+    J v = nu,        J v_dot = gamma,
+    nu = -d(phi)/dt at fixed q,
+    gamma = -(dJ/dt) v - d2(phi)/dt2 at fixed q,
+
+and needs `Data` after `forward_kinematics(q, v, 0)`: the body accelerations
+at zero joint accelerations are exactly the velocity-product terms of
+`gamma`.
+
+Every closure is built from a few primitive equations (Haug 1989; Shabana,
+*Computational Dynamics*, chapter 3). With p a marker origin and a one of its
+axes, in world axes, and `d = p_j - p_i`:
+
+| Primitive | phi | Equations |
+|---|---|---|
+| `PointCoincidence` | `p_j - p_i` | 3 |
+| `Dot1` | `a_i . a_j - s(t)` | 1 |
+| `Dot2` | `a_i . d - s(t)` | 1 |
+| `Distance` | `(d . d - L(t)^2) / (2 L0)` | 1 |
+| `NoTwist` | `x_i . y_j - y_i . x_j` | 1 |
+
+`Distance` divides by the nominal length L0 so that phi is a length, equal to
+`|d| - L` to first order, without the singularity of `|d|` at zero.
+`NoTwist` is zero when the relative rotation of the two markers has its axis
+in their XY plane: a pure bend, which is what a constant-velocity joint
+allows. The skew part of the relative rotation's XY block is `-2 sin(angle)
+axis_z`, so it vanishes exactly for such rotations.
+
+**Jacobian rows.** Every row is a sum of terms `c_w . w + c_p . v_P` over the
+two bodies (w a body's angular velocity, v_P the velocity of a point P on it).
+Such a term is the power of the world wrench `[c_w + P x c_p; c_p]` on the
+body, so `add_wrench_row` turns it into generalized forces by walking up the
+tree: `J_k += S_k^T f` for each joint k above the body, with f moved into
+that body's frame. For example, for `Dot2`,
+`d/dt (a_i . d) = (a_i x d) . w_i + a_i . (v_j - v_i)`.
+
+**Closures.** The markers coincide when the joint is assembled; the joint axis
+is Z, as for the tree joints.
+
+| Closure | Built from | Equations | Relative freedom |
+|---|---|---|---|
+| spherical | point coincidence | 3 | 3 rotations |
+| revolute | point coincidence, `z_i . x_j`, `z_i . y_j` | 5 | rotation about Z |
+| universal | point coincidence, `z_i . z_j` (arms of the cross along `z_i`, `z_j`) | 4 | 2 rotations |
+| cylindrical | point on the Z line, `z_i . x_j`, `z_i . y_j` | 4 | rotation about and slide along Z |
+| prismatic | cylindrical, `x_i . y_j` | 5 | slide along Z |
+| constant velocity | point coincidence, no twist | 4 | 2 bending rotations |
+
+The tests check, for a free body tied to the ground by each closure, that the
+velocities satisfying `J v = 0` are exactly the joint's motions.
+
+## Constrained dynamics
+
+`ConstraintSolver` (task 2.6) is the one place that forms and solves the
+equations of a tree closed by constraints:
+
+    M v_dot + b = tau + J^T lambda
+    J v_dot     = gamma - 2 alpha (J v - nu) - beta^2 phi
+
+with `b = rnea(q, v, 0)` (velocity products and gravity) and `J^T lambda`
+the constraint forces. It uses the range-space method: `Y = M^-1 J^T` from
+the Cholesky factor of M, then `(J Y) lambda = rhs - J M^-1 (tau - b)`.
+
+**Redundant constraints.** A planar loop closed in 3D, or a joint closed
+twice, makes `J Y` singular. It is factorized as `L D L^T` with diagonal
+pivoting, which puts the largest pivots first; pivots below 1e-10 of the
+largest are dropped and the multipliers of their equations set to zero.
+`J^T lambda` and the accelerations are unique all the same, because the
+dropped directions are those in which J has no rank. `info()` reports the
+number of equations and the rank.
+
+**Projection.** `project` moves q onto `phi = 0` by Gauss-Newton steps
+`dq = -Y (J Y)^-1 phi`, the least change in the kinetic-energy metric,
+applied through `integrate` so quaternions stay unit. The mass matrix of the
+starting point serves all the steps. It then moves v onto `J v = nu` the same
+way. Starting a centimetre off, three steps reach 1e-16.
+
+**Baumgarte stabilization** (`baumgarte_alpha`, `baumgarte_beta`) is off by
+default; with it the constraint error obeys `phi'' + 2 alpha phi' + beta^2
+phi = 0`.
+
+**Memory.** The solver holds all its working storage, so `forward_dynamics`
+and `project` allocate nothing after construction, and neither do the
+algorithms. The hidden test `[alloc]` checks every kernel call in a Debug
+build with `EIGEN_RUNTIME_NO_MALLOC`, where any Eigen heap allocation fails
+an assertion; the CI job `kernel-no-malloc` runs it with GCC, and it has been
+run with MSVC. Like `Data`, a solver belongs to one thread.
+
+One rule follows from what that check found. Eigen evaluates `x = y - A * b`
+through a temporary shaped like `y`, so when `y` is a block of a dynamic
+vector the temporary goes on the heap. Write `x = y; x.noalias() -= A * b;`
+instead. Temporaries whose maximum size is fixed (`Mat6X`, vectors of at most
+six) live on the stack.
+
 ## Tests
 
 `tests/kernel/test_spatial.cpp` checks the identities of the spatial algebra
@@ -168,6 +270,20 @@ child of every other, and two branching trees, through:
 `tests/kernel/test_kernel_threads.cpp` runs one `Model` on two threads, each
 with its own `Data`, and requires results identical bit for bit to a
 single-threaded run.
+
+`tests/kernel/test_kernel_constraints.cpp` checks every primitive and closure,
+with constant and time-dependent targets and markers on every kind of body
+pair, against finite differences of phi (first and second time
+derivatives), and checks that each closure allows exactly its joint's motions.
+
+`tests/kernel/test_kernel_constrained.cpp` checks that a body held by each
+closure moves exactly like the same body on the matching tree joint, with
+constraint forces equal to the tree's joint forces; that duplicated
+constraints are reported as redundant and change nothing; that a planar
+four-bar closed in 3D (rank 2 of 5) conserves energy over two seconds while
+its crank turns twice; that projection and Baumgarte stabilization return
+the state to the constraints; and, in the hidden `[alloc]` test, that nothing
+is allocated.
 
 `tests/kernel/test_kernel_vs_legacy.cpp` builds the same random models in the
 kernel and in the legacy `MultibodySystem` and compares poses, velocities,

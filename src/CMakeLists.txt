@@ -5,6 +5,8 @@ add_library(multibody_core
     kernel/joint_models.cpp
     kernel/model.cpp
     kernel/algorithms.cpp
+    kernel/constraints.cpp
+    kernel/constrained_dynamics.cpp
 )
 
 # Public headers live in the top-level include directory
