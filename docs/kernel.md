@@ -147,6 +147,7 @@ physical acceleration, `data.a = a_gf + [0; R^T g]`.
 | Positions, velocities, accelerations | `forward_kinematics` | RBDA chapters 4, 5 |
 | Inverse dynamics | `rnea` | RBDA chapter 5 |
 | Mass matrix | `crba` | RBDA chapter 6 |
+| Mass matrix, bias forces `rnea(q, v, 0)`, from the last kinematics pass | `mass_matrix`, `bias_forces` | |
 | Forward dynamics | `aba` | RBDA chapter 7 |
 | Body Jacobian, world axes, body origin | `body_jacobian_world` | |
 | Momentum about the world origin | `momentum_world` | |
@@ -218,11 +219,18 @@ equations of a tree closed by constraints:
     J v_dot     = gamma - 2 alpha (J v - nu) - beta^2 phi
 
 with `b = rnea(q, v, 0)` (velocity products and gravity) and `J^T lambda`
-the constraint forces. It uses the range-space method: `Y = M^-1 J^T` from
-the Cholesky factor of M, then `(J Y) lambda = rhs - J M^-1 (tau - b)`.
+the constraint forces. It uses the range-space method: with the Cholesky
+factor `M = L L^T` and `Z = L^-1 J^T`, it solves
+`(Z^T Z) lambda = rhs - J M^-1 (tau - b)`, since `Z^T Z = J M^-1 J^T`, and
+adds `M^-1 J^T lambda = L^-T (Z lambda)` to the free accelerations; the
+matrix `M^-1 J^T` itself is never formed. One kinematics pass,
+`forward_kinematics(q, v, 0)`, serves the constraint equations, the mass
+matrix (`mass_matrix`) and the bias forces (`bias_forces`);
+`forward_dynamics_from_kinematics` takes it from a caller that has run it
+already.
 
 **Redundant constraints.** A planar loop closed in 3D, or a joint closed
-twice, makes `J Y` singular. It is factorized as `L D L^T` with diagonal
+twice, makes `J M^-1 J^T` singular. It is factorized as `L D L^T` with diagonal
 pivoting, which puts the largest pivots first; pivots below 1e-10 of the
 largest are dropped and the multipliers of their equations set to zero.
 `J^T lambda` and the accelerations are unique all the same, because the
@@ -230,10 +238,16 @@ dropped directions are those in which J has no rank. `info()` reports the
 number of equations and the rank.
 
 **Projection.** `project` moves q onto `phi = 0` by Gauss-Newton steps
-`dq = -Y (J Y)^-1 phi`, the least change in the kinetic-energy metric,
-applied through `integrate` so quaternions stay unit. The mass matrix of the
-starting point serves all the steps. It then moves v onto `J v = nu` the same
-way. Starting a centimetre off, three steps reach 1e-16.
+`dq = -M^-1 J^T (J M^-1 J^T)^-1 phi`, the least change in the
+kinetic-energy metric, applied through `integrate` so quaternions stay unit.
+One mass matrix serves all the steps: that of the starting point or, with
+`reuse_mass_matrix` (the simulator's setting), the one the last
+`forward_dynamics` factorized, at the step's last stage. Any positive
+definite weight gives a valid projection; the weight only decides which
+nearby point of the constraint manifold is chosen. It then moves v onto
+`J v = nu` the same way, with the J and nu of the last position evaluation
+(nu does not depend on v). Starting a centimetre off, three steps reach
+1e-16.
 
 **Baumgarte stabilization** (`baumgarte_alpha`, `baumgarte_beta`) is off by
 default; with it the constraint error obeys `phi'' + 2 alpha phi' + beta^2
@@ -244,7 +258,11 @@ and `project` allocate nothing after construction, and neither do the
 algorithms. The hidden test `[alloc]` checks every kernel call in a Debug
 build with `EIGEN_RUNTIME_NO_MALLOC`, where any Eigen heap allocation fails
 an assertion; the CI job `kernel-no-malloc` runs it with GCC, and it has been
-run with MSVC. Like `Data`, a solver belongs to one thread.
+run with MSVC. A whole simulation step allocates nothing either (task 2.10):
+`test_alloc` replaces the global `operator new` to count every allocation
+while the double-wishbone sedan, with tyres and drivetrain, and a four-bar
+take 100 steps, in every build; the same CI job runs it with Eigen's check
+on as well. Like `Data`, a solver belongs to one thread.
 
 One rule follows from what that check found. Eigen evaluates `x = y - A * b`
 through a temporary shaped like `y`, so when `y` is a block of a dynamic
@@ -268,7 +286,7 @@ one. It owns the state (`q`, `v`, `time`) and, at every evaluation of the
 accelerations, computes the kinematics and body states, calls
 `pre_force_callback` (the drivetrain hands wheel spins to the tyres there),
 applies the force elements, adds `tau` and `force_callback`, and solves the
-constrained dynamics with `ConstraintSolver`. RK4 combines the stages'
+constrained dynamics with `ConstraintSolver`, from the same kinematics pass. RK4 combines the stages'
 `q_dot` and normalizes once per step; semi-implicit Euler moves q through
 `integrate`. After each step the state is projected onto the constraints.
 

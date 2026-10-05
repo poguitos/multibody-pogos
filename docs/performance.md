@@ -169,3 +169,120 @@ constrained dynamics each, one projection, and about 75 us for the force
 elements and bookkeeping. Each evaluation still runs the kinematics four
 times (the simulator, the constraints, the mass matrix and the bias forces
 each do their own pass); sharing one pass is the obvious first saving.
+
+## Task 2.10: the sedan step, 5 October 2026
+
+**How to measure.** The i7-13700H mixes performance and efficiency cores,
+and its clock follows temperature and the power plan. Unpinned, the same
+benchmark varied by more than a factor of two within one hour, because a
+single-threaded run lands on either kind of core. The figures below are
+therefore taken pinned to logical processor 2, a performance core, at high
+priority (PowerShell: start `mbd_bench.exe`, then set the process's
+`ProcessorAffinity` to 4 and `PriorityClass` to `High`). Two runs pinned so
+agree within 1 %. To compare two versions of the code, build both and run
+them alternately in the same session.
+
+**The step.** The commit of 4 October (`24faade`, built separately) against
+this one, alternately, two rounds each, pinned:
+
+| Operation | 4 October [us] | Now [us] |
+|---|---|---|
+| constrained forward dynamics | 30.4, 30.5 | 23.7, 23.6 |
+| constraint projection (state already on the constraints) | 33.9, 34.2 | 24.1, 23.8 |
+| one RK4 step of 1 ms, everything | 180.8, 182.3 | 124.4, 124.2 |
+
+What changed:
+
+- **One kinematics pass per evaluation instead of four.** The simulator,
+  the constraint equations, the mass matrix and the bias forces each ran
+  their own. Now `forward_kinematics(q, v, 0)` serves them all:
+  `mass_matrix` and `bias_forces` take the placements, velocities and
+  zero-acceleration body accelerations it leaves, and the simulator hands
+  the pass it made for the forces to `forward_dynamics_from_kinematics`.
+- **No `M^-1 J^T`.** The constraint matrix is `Z^T Z` with `Z = L^-1 J^T`,
+  one triangular solve instead of two, and `M^-1 J^T lambda` is applied as
+  `L^-T (Z lambda)`.
+- **A cheaper projection.** It weighs by the mass matrix the step's last
+  stage factorized instead of computing one more, and its velocity part
+  uses the J and nu of the last position evaluation instead of evaluating
+  again.
+
+Where an evaluation's 25.8 us go now: kinematics 2.7, constraint equations
+5.9, mass matrix 2.0 beyond the kinematics, bias forces 1.3, force elements
+and body states about 2, and the linear algebra (Cholesky of the 27 x 27
+mass matrix, `Z`, `Z^T Z`, its pivoted factorization and the solves) about
+11. A step is four evaluations, one projection and a final kinematics pass.
+
+**Against the target.** The step takes 124 us, half the 250 us of task 2.10.
+Earlier on the same day the machine was slower for reasons outside the code:
+the code of that morning, which runs as fast as the 4 October code, took 395
+to 413 us pinned, 2.2 times its time above. At that factor the step would
+take about 280 us. The target holds in the laptop's normal state, not in
+that one.
+
+**Allocations.** `test_alloc` counts every allocation through `operator new`
+during 100 steps of this sedan, tyres and drivetrain included, and of a
+four-bar with both integrators: none. The CI job `kernel-no-malloc` also runs
+it with Eigen's own check on.
+
+The whole benchmark, pinned:
+
+| Model | Operation | Time [us] |
+|---|---|---|
+| revolute chain, 2 bodies       | positions and velocities         |       0.36 |
+| revolute chain, 2 bodies       | mass matrix                      |       0.40 |
+| revolute chain, 2 bodies       | inverse dynamics                 |       0.57 |
+| revolute chain, 2 bodies       | forward dynamics                 |       0.82 |
+| revolute chain, 4 bodies       | positions and velocities         |       0.73 |
+| revolute chain, 4 bodies       | mass matrix                      |       1.02 |
+| revolute chain, 4 bodies       | inverse dynamics                 |       1.10 |
+| revolute chain, 4 bodies       | forward dynamics                 |       1.67 |
+| revolute chain, 8 bodies       | positions and velocities         |       1.42 |
+| revolute chain, 8 bodies       | mass matrix                      |       2.85 |
+| revolute chain, 8 bodies       | inverse dynamics                 |       2.26 |
+| revolute chain, 8 bodies       | forward dynamics                 |       3.46 |
+| revolute chain, 16 bodies      | positions and velocities         |       2.82 |
+| revolute chain, 16 bodies      | mass matrix                      |       8.23 |
+| revolute chain, 16 bodies      | inverse dynamics                 |       4.55 |
+| revolute chain, 16 bodies      | forward dynamics                 |       7.08 |
+| revolute chain, 32 bodies      | positions and velocities         |       5.80 |
+| revolute chain, 32 bodies      | mass matrix                      |      27.85 |
+| revolute chain, 32 bodies      | inverse dynamics                 |       9.40 |
+| revolute chain, 32 bodies      | forward dynamics                 |      14.23 |
+| revolute chain, 64 bodies      | positions and velocities         |      11.49 |
+| revolute chain, 64 bodies      | mass matrix                      |      97.71 |
+| revolute chain, 64 bodies      | inverse dynamics                 |      18.38 |
+| revolute chain, 64 bodies      | forward dynamics                 |      28.83 |
+| revolute tree, 2 bodies        | positions and velocities         |       0.37 |
+| revolute tree, 2 bodies        | mass matrix                      |       0.39 |
+| revolute tree, 2 bodies        | inverse dynamics                 |       0.59 |
+| revolute tree, 2 bodies        | forward dynamics                 |       0.79 |
+| revolute tree, 4 bodies        | positions and velocities         |       0.74 |
+| revolute tree, 4 bodies        | mass matrix                      |       0.94 |
+| revolute tree, 4 bodies        | inverse dynamics                 |       1.10 |
+| revolute tree, 4 bodies        | forward dynamics                 |       1.66 |
+| revolute tree, 8 bodies        | positions and velocities         |       1.42 |
+| revolute tree, 8 bodies        | mass matrix                      |       2.17 |
+| revolute tree, 8 bodies        | inverse dynamics                 |       2.27 |
+| revolute tree, 8 bodies        | forward dynamics                 |       3.54 |
+| revolute tree, 16 bodies       | positions and velocities         |       2.94 |
+| revolute tree, 16 bodies       | mass matrix                      |       4.87 |
+| revolute tree, 16 bodies       | inverse dynamics                 |       4.27 |
+| revolute tree, 16 bodies       | forward dynamics                 |       7.21 |
+| revolute tree, 32 bodies       | positions and velocities         |       5.62 |
+| revolute tree, 32 bodies       | mass matrix                      |      11.55 |
+| revolute tree, 32 bodies       | inverse dynamics                 |       8.67 |
+| revolute tree, 32 bodies       | forward dynamics                 |      13.99 |
+| revolute tree, 64 bodies       | positions and velocities         |      11.17 |
+| revolute tree, 64 bodies       | mass matrix                      |      25.48 |
+| revolute tree, 64 bodies       | inverse dynamics                 |      17.42 |
+| revolute tree, 64 bodies       | forward dynamics                 |      27.85 |
+| double-wishbone sedan          | positions and velocities         |       2.65 |
+| double-wishbone sedan          | constraint equations             |       8.53 |
+| double-wishbone sedan          | mass matrix                      |       4.63 |
+| double-wishbone sedan          | bias forces                      |       3.96 |
+| double-wishbone sedan          | constrained forward dynamics     |      23.65 |
+| double-wishbone sedan          | accelerations, with the forces   |      25.79 |
+| double-wishbone sedan          | constraint projection            |      24.21 |
+| double-wishbone sedan          | one RK4 step of 1 ms, everything |     127.79 |
+

@@ -149,15 +149,25 @@ int main()
         sim.run(0.2, 0.001);   // moving, wheels loaded
 
         const std::string name = "double-wishbone sedan";
-        kernel::Data data(sys.model);
-        kernel::ConstraintSolver solver(sys.model, sys.constraints);
-        const VecX zero = VecX::Zero(sys.model.nv);
+        const kernel::Model& model = sys.model;
+        kernel::Data data(model);
+        kernel::ConstraintSolver solver(model, sys.constraints);
+        const VecX zero = VecX::Zero(model.nv);
         VecX q = sim.q, v = sim.v;
+        row(name, "positions and velocities", time_per_call_us([&] {
+            kernel::forward_kinematics(model, data, q, v); }));
+        row(name, "constraint equations", time_per_call_us([&] { solver.evaluate(data, q, v, 0.0); }));
         row(name, "mass matrix", time_per_call_us([&] {
-            volatile double x = kernel::crba(sys.model, data, q)(0, 0); (void)x; }));
+            volatile double x = kernel::crba(model, data, q)(0, 0); (void)x; }));
+        row(name, "bias forces", time_per_call_us([&] {
+            volatile double x = kernel::rnea(model, data, q, v, zero)(0); (void)x; }));
         row(name, "constrained forward dynamics", time_per_call_us([&] {
             volatile double x = solver.forward_dynamics(data, q, v, zero, 0.0)(0); (void)x; }));
-        row(name, "constraint projection", time_per_call_us([&] { solver.project(data, q, v, 0.0); }));
+        row(name, "accelerations, with the forces", time_per_call_us([&] {
+            volatile double x = sim.acceleration(q, v, sim.time)(0); (void)x; }));
+        row(name, "constraint projection", time_per_call_us([&] {
+            VecX qp = q, vp = v;
+            solver.project(data, qp, vp, 0.0); }));
         row(name, "one RK4 step of 1 ms, everything", time_per_call_us([&] { sim.step(0.001); }));
     }
     return 0;

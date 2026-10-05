@@ -57,7 +57,9 @@ public:
     Real projection_tolerance{1e-10};
     VecX tau;                           ///< Generalized forces for the next step; cleared after it
 
-    /// Called at every evaluation, before the force elements.
+    /// Called at every evaluation, before the force elements. These two may
+    /// read states() and data(), but must not call acceleration() or
+    /// refresh(): the evaluation in progress uses the kinematics in data().
     std::function<void(Simulator&, Real t)> pre_force_callback;
     /// Adds generalized forces at every evaluation.
     std::function<void(Simulator&, Real t, VecX& tau)> force_callback;

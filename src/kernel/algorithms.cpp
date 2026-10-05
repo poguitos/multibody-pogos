@@ -61,6 +61,21 @@ Vec6 add_gravity(const Model& model, const Data& data, int i, const Vec6& a_gf)
     return a;
 }
 
+/// The backward pass of RNEA: the joint forces data.f, each a body's own,
+/// accumulated from the leaves, and their projections onto the joints in
+/// data.tau.
+void transmit_forces(const Model& model, Data& data)
+{
+    for (int i = model.nbodies() - 1; i > 0; --i) {
+        if (model.nvs[i] > 0) {
+            data.tau.segment(model.idx_v[i], model.nvs[i]).noalias()
+                = data.S[i].transpose() * data.f[i];
+        }
+        const int p = model.parent[i];
+        if (p > 0) data.f[p] += force_act(data.liMi[i], data.f[i]);
+    }
+}
+
 } // namespace
 
 // --- Kinematics ----------------------------------------------------------------
@@ -172,15 +187,25 @@ const VecX& rnea(const Model& model, Data& data,
         const Vec6 h = model.I[i] * data.v[i];
         data.f[i] = model.I[i] * a_gf + motion_cross_force(data.v[i], h);
     }
+    transmit_forces(model, data);
+    return data.tau;
+}
 
-    for (int i = nb - 1; i > 0; --i) {
-        if (model.nvs[i] > 0) {
-            data.tau.segment(model.idx_v[i], model.nvs[i]).noalias()
-                = data.S[i].transpose() * data.f[i];
-        }
-        const int p = model.parent[i];
-        if (p > 0) data.f[p] += force_act(data.liMi[i], data.f[i]);
+const VecX& bias_forces(const Model& model, Data& data)
+{
+    checks::data("kernel::bias_forces", model, data);
+    const int nb = model.nbodies();
+    data.a_gf[0] = ground_acceleration_minus_gravity(model);
+    for (int i = 1; i < nb; ++i) {
+        // Gravity is a uniform field, so rnea's acceleration minus gravity is
+        // the physical acceleration less gravity in the body's axes.
+        Vec6 a_gf = data.a[i];
+        a_gf.tail<3>() -= data.oMi[i].q.conjugate() * model.gravity;
+        data.a_gf[i] = a_gf;
+        const Vec6 h = model.I[i] * data.v[i];
+        data.f[i] = model.I[i] * a_gf + motion_cross_force(data.v[i], h);
     }
+    transmit_forces(model, data);
     return data.tau;
 }
 
@@ -189,6 +214,12 @@ const MatX& crba(const Model& model, Data& data, const VecX& q)
     checks::data("kernel::crba", model, data);
     checks::q("kernel::crba", model, q);
     forward_kinematics(model, data, q);
+    return mass_matrix(model, data);
+}
+
+const MatX& mass_matrix(const Model& model, Data& data)
+{
+    checks::data("kernel::mass_matrix", model, data);
     const int nb = model.nbodies();
     for (int i = 1; i < nb; ++i) data.Ic[i] = model.I[i];
     data.M.setZero();

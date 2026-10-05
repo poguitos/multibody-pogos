@@ -69,6 +69,13 @@ mbd_add_test_exe(test_kernel
 find_package(Threads REQUIRED)
 target_link_libraries(test_kernel PRIVATE Threads::Threads)
 
+# Allocation counts (plan task 2.10). Its own executable, because it replaces
+# the global operator new to count what stepping a simulation allocates.
+mbd_add_test_exe(test_alloc
+    alloc/alloc_counter.cpp
+    alloc/test_step_allocations.cpp
+)
+
 mbd_add_test_exe(test_forces
     forces/test_aerodynamics.cpp
     forces/test_anti_roll_bar.cpp

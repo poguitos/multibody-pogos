@@ -52,7 +52,7 @@ ConstraintSolver::ConstraintSolver(const Model& model,
     rhs_m_.setZero(m_);
     mu_.setZero(m_);
     J_.setZero(m_, nv);
-    Y_.setZero(nv, m_);
+    Z_.setZero(nv, m_);
     A_.setZero(m_, m_);
     q_save_.setZero(model.nq);
     v_dot_.setZero(nv);
@@ -60,6 +60,7 @@ ConstraintSolver::ConstraintSolver(const Model& model,
     rhs_v_.setZero(nv);
     dv_.setZero(nv);
     zero_v_.setZero(nv);
+    work_v_.setZero(nv);
     info_.equations = m_;
 }
 
@@ -71,6 +72,11 @@ void ConstraintSolver::evaluate(Data& data, const VecX& q, const VecX& v, Real t
     // Zero joint accelerations: the body accelerations are then the
     // velocity-product terms the constraints need for gamma.
     forward_kinematics(model_, data, q, v, zero_v_);
+    calc_constraints(data, t);
+}
+
+void ConstraintSolver::calc_constraints(const Data& data, Real t)
+{
     Index r = 0;
     for (const auto& c : constraints_) {
         const Index m = c->size();
@@ -80,11 +86,20 @@ void ConstraintSolver::evaluate(Data& data, const VecX& q, const VecX& v, Real t
     }
 }
 
+void ConstraintSolver::add_constraint_motion(const VecX& x, VecX& out)
+{
+    work_v_.noalias() = Z_ * x;
+    llt_M_.matrixU().solveInPlace(work_v_);
+    out += work_v_;
+}
+
 void ConstraintSolver::factorize_constraint_matrix()
 {
-    Y_ = J_.transpose();
-    llt_M_.solveInPlace(Y_);
-    A_.noalias() = J_ * Y_;
+    // With M = L L^T, J M^-1 J^T = (L^-1 J^T)^T (L^-1 J^T): one triangular
+    // solve, and M^-1 J^T is never needed as a matrix.
+    Z_ = J_.transpose();
+    llt_M_.matrixL().solveInPlace(Z_);
+    A_.noalias() = Z_.transpose() * Z_;
     ldlt_A_.compute(A_);
 
     // Diagonal pivoting puts the largest pivots first; the equations behind
@@ -119,12 +134,26 @@ const VecX& ConstraintSolver::forward_dynamics(Data& data, const VecX& q, const 
     checks::q("kernel::ConstraintSolver::forward_dynamics", model_, q);
     checks::v("kernel::ConstraintSolver::forward_dynamics", model_, v);
     checks::v("kernel::ConstraintSolver::forward_dynamics", model_, tau, "tau");
-    evaluate(data, q, v, t);
+    checks::data("kernel::ConstraintSolver::forward_dynamics", model_, data);
+    // Zero joint accelerations: the body accelerations are then the
+    // velocity-product terms the constraints need for gamma.
+    forward_kinematics(model_, data, q, v, zero_v_);
+    return forward_dynamics_from_kinematics(data, v, tau, t);
+}
 
-    // Unconstrained accelerations.
-    crba(model_, data, q);
-    rnea(model_, data, q, v, zero_v_);
+const VecX& ConstraintSolver::forward_dynamics_from_kinematics(Data& data, const VecX& v,
+                                                               const VecX& tau, Real t)
+{
+    checks::data("kernel::ConstraintSolver::forward_dynamics_from_kinematics", model_, data);
+    checks::v("kernel::ConstraintSolver::forward_dynamics_from_kinematics", model_, v);
+    checks::v("kernel::ConstraintSolver::forward_dynamics_from_kinematics", model_, tau, "tau");
+    calc_constraints(data, t);
+
+    // Unconstrained accelerations, from the one kinematics pass.
+    mass_matrix(model_, data);
+    bias_forces(model_, data);
     llt_M_.compute(data.M);
+    mass_matrix_factorized_ = true;
     rhs_v_ = tau - data.tau;
     v_dot_free_ = rhs_v_;
     llt_M_.solveInPlace(v_dot_free_);
@@ -145,7 +174,7 @@ const VecX& ConstraintSolver::forward_dynamics(Data& data, const VecX& q, const 
     solve_constraint_matrix(rhs_m_, lambda_);
 
     v_dot_ = v_dot_free_;
-    v_dot_.noalias() += Y_ * lambda_;
+    add_constraint_motion(lambda_, v_dot_);
     return v_dot_;
 }
 
@@ -161,9 +190,13 @@ ProjectionInfo ConstraintSolver::project(Data& data, VecX& q, VecX& v, Real t,
         return out;
     }
 
-    // One mass matrix for the whole projection.
-    crba(model_, data, q);
-    llt_M_.compute(data.M);
+    // One mass matrix for the whole projection: that of q, or the one the
+    // last forward_dynamics factorized (see reuse_mass_matrix).
+    if (!(reuse_mass_matrix && mass_matrix_factorized_)) {
+        crba(model_, data, q);
+        llt_M_.compute(data.M);
+        mass_matrix_factorized_ = true;
+    }
 
     // Positions: Gauss-Newton steps dq = -M^-1 J^T (J M^-1 J^T)^-1 phi, each
     // halved until |phi| decreases, for starts far from the solution.
@@ -172,7 +205,8 @@ ProjectionInfo ConstraintSolver::project(Data& data, VecX& q, VecX& v, Real t,
     while (out.position_residual > tolerance && out.iterations < max_iterations) {
         factorize_constraint_matrix();
         solve_constraint_matrix(phi_, mu_);
-        dv_.noalias() = Y_ * mu_;
+        dv_.setZero();
+        add_constraint_motion(mu_, dv_);
         q_save_ = q;
         const Real before = out.position_residual;
         Real step = 1.0;
@@ -187,13 +221,13 @@ ProjectionInfo ConstraintSolver::project(Data& data, VecX& q, VecX& v, Real t,
     }
     out.converged = out.position_residual <= tolerance;
 
-    // Velocities: v += M^-1 J^T (J M^-1 J^T)^-1 (nu - J v).
-    evaluate(data, q, v, t);
+    // Velocities: v += M^-1 J^T (J M^-1 J^T)^-1 (nu - J v). J and nu at the
+    // final q are those of its last evaluation: nu does not depend on v.
     factorize_constraint_matrix();
     rhs_m_ = nu_;
     rhs_m_.noalias() -= J_ * v;
     solve_constraint_matrix(rhs_m_, mu_);
-    v.noalias() += Y_ * mu_;
+    add_constraint_motion(mu_, v);
     rhs_m_ = nu_;
     rhs_m_.noalias() -= J_ * v;
     out.velocity_residual = rhs_m_.norm();

@@ -30,6 +30,9 @@ Simulator::Simulator(System& sys)
                              + std::to_string(model.nbodies() - 1) + ".");
         }
     }
+    // The projection after each step weighs by the mass matrix of the step's
+    // last stage instead of computing another.
+    solver_.reuse_mass_matrix = true;
     q = model.neutral_configuration();
     v = VecX::Zero(model.nv);
     tau = VecX::Zero(model.nv);
@@ -69,7 +72,10 @@ const VecX& Simulator::acceleration(const VecX& q_at, const VecX& v_at, Real t)
     const Model& model = system.model;
     checks::q("kernel::Simulator::acceleration", model, q_at);
     checks::v("kernel::Simulator::acceleration", model, v_at);
-    forward_kinematics(model, data_, q_at, v_at);
+    // One kinematics pass serves the forces and the dynamics: with zero joint
+    // accelerations it also gives the velocity-product terms the constraints
+    // need.
+    forward_kinematics(model, data_, q_at, v_at, data_.zero_v);
     body_states(model, data_, states_);
 
     if (pre_force_callback) pre_force_callback(*this, t);
@@ -84,7 +90,7 @@ const VecX& Simulator::acceleration(const VecX& q_at, const VecX& v_at, Real t)
     tau_total_ = tau + tau_forces_;
     if (force_callback) force_callback(*this, t, tau_total_);
 
-    const VecX& v_dot = solver_.forward_dynamics(data_, q_at, v_at, tau_total_, t);
+    const VecX& v_dot = solver_.forward_dynamics_from_kinematics(data_, v_at, tau_total_, t);
     if (solver_.info().redundant() && !redundancy_reported_) {
         redundancy_reported_ = true;
         report_warning("Redundant constraints: " + std::to_string(solver_.info().equations)

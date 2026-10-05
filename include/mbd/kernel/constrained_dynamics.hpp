@@ -73,12 +73,25 @@ public:
     const VecX& forward_dynamics(Data& data, const VecX& q, const VecX& v,
                                  const VecX& tau, Real t);
 
+    /// The same, at the state of the last forward_kinematics(q, v, 0) into
+    /// `data`, without a kinematics pass of its own: for a caller that needed
+    /// the kinematics already (the simulator, for the forces).
+    const VecX& forward_dynamics_from_kinematics(Data& data, const VecX& v,
+                                                 const VecX& tau, Real t);
+
     /// Move q onto phi(q, t) = 0, then v onto J v = nu, each by the change of
     /// least kinetic-energy norm (M-weighted). Gauss-Newton on q with the mass
     /// matrix of the starting point, each step halved until |phi| decreases.
     /// q and v are changed in place.
     ProjectionInfo project(Data& data, VecX& q, VecX& v, Real t,
                            Real tolerance = 1e-10, int max_iterations = 20);
+
+    /// When set, project() weighs by the mass matrix that the last
+    /// forward_dynamics factorized, if there was one, instead of computing it
+    /// at q. Right after a time step that matrix belongs to a nearby state;
+    /// any positive definite weight gives a valid projection, and only which
+    /// point of the constraint manifold is chosen changes, to second order.
+    bool reuse_mass_matrix{false};
 
     const VecX& phi() const { return phi_; }
     const MatX& J() const { return J_; }
@@ -94,23 +107,30 @@ public:
     }
 
 private:
-    /// With llt_M_ holding M: Y_ = M^-1 J^T, A_ = J Y_, factorized; sets
-    /// info_.rank.
+    /// phi, J, nu and gamma from `data`, which holds forward_kinematics(q, v, 0).
+    void calc_constraints(const Data& data, Real t);
+
+    /// With llt_M_ holding M = L L^T: Z_ = L^-1 J^T and A_ = J M^-1 J^T =
+    /// Z_^T Z_, factorized; sets info_.rank.
     void factorize_constraint_matrix();
 
     /// x with A x = r, dropping the pivots of redundant equations.
     void solve_constraint_matrix(const VecX& r, VecX& x);
+
+    /// out += M^-1 J^T x = L^-T (Z_ x), without forming M^-1 J^T.
+    void add_constraint_motion(const VecX& x, VecX& out);
 
     const Model& model_;
     std::vector<std::shared_ptr<const ConstraintModel>> constraints_;
     int m_{0};
 
     VecX phi_, nu_, gamma_, lambda_, rhs_m_, mu_;
-    MatX J_, Y_, A_;
-    VecX q_save_, v_dot_, v_dot_free_, rhs_v_, dv_, zero_v_;
+    MatX J_, Z_, A_;
+    VecX q_save_, v_dot_, v_dot_free_, rhs_v_, dv_, zero_v_, work_v_;
     Eigen::LLT<MatX> llt_M_;
     Eigen::LDLT<MatX> ldlt_A_;
     Real pivot_cut_{0.0};
+    bool mass_matrix_factorized_{false};
     SolveInfo info_;
 };
 

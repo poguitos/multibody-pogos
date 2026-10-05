@@ -53,6 +53,17 @@ const VecX& rnea(const Model& model, Data& data,
 /// both triangles filled).
 const MatX& crba(const Model& model, Data& data, const VecX& q);
 
+// Without a kinematics pass of their own, for a caller that has just run
+// forward_kinematics for something else (the simulator, for the forces).
+
+/// crba at the placements of the last forward_kinematics. Returns data.M.
+const MatX& mass_matrix(const Model& model, Data& data);
+
+/// The bias forces rnea(q, v, 0), velocity products and gravity, at the state
+/// of the last forward_kinematics(q, v, 0): its body accelerations are those
+/// of zero joint accelerations. Returns data.tau.
+const VecX& bias_forces(const Model& model, Data& data);
+
 /// Forward dynamics, articulated-body algorithm: the accelerations produced
 /// by generalized forces `tau` at (q, v), under gravity. Returns data.ddq;
 /// also leaves the kinematics and the body accelerations in data.
