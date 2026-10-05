@@ -19,6 +19,7 @@
 #include "mbd/core/core.hpp"
 #include "mbd/forces/force_element.hpp"
 #include "mbd/kernel/algorithms.hpp"
+#include "mbd/kernel/constraints.hpp"
 #include "mbd/kernel/forces.hpp"
 #include "mbd/kernel/simulator.hpp"
 
@@ -253,4 +254,57 @@ TEST_CASE("Kernel simulator: a projection that cannot converge is counted and re
     CHECK(std::abs(sim.last_projection().position_residual - 0.5) < 1e-9);
     CHECK(sim.q.allFinite());
     CHECK(sim.v.allFinite());
+}
+
+TEST_CASE("Kernel simulator: a point driven along a circle follows it and reports the force",
+          "[kernel][simulator]")
+{
+    // Plan task 3.2, a driven point. A free body's centre of mass is held on a
+    // horizontal circle of radius R at height h, traversed at rate w, by three
+    // dot-2 drivers on its coordinates. The point follows the circle exactly,
+    // the body does not turn (the constraint force acts through the centre of
+    // mass), and the constraint force is what the motion needs:
+    // F = m a - m g = (-m w^2 R cos wt, -m w^2 R sin wt, m g).
+    const Real m = 2.0, R = 0.5, w = 3.0, h = 1.0;
+    System sys;
+    sys.model.add_body(0, std::make_shared<FreeJointModel>(), Transform3(), Transform3(),
+                       RigidBodyInertia::from_solid_box(m, Vec3(0.1, 0.2, 0.3)));
+    const TimeFunction x([=](Real t) { return R * std::cos(w * t); },
+                         [=](Real t) { return -R * w * std::sin(w * t); },
+                         [=](Real t) { return -R * w * w * std::cos(w * t); });
+    const TimeFunction y([=](Real t) { return R * std::sin(w * t); },
+                         [=](Real t) { return R * w * std::cos(w * t); },
+                         [=](Real t) { return -R * w * w * std::sin(w * t); });
+    const TimeFunction z = TimeFunction::constant(h);
+    int axis = 0;
+    for (const TimeFunction& s : {x, y, z}) {
+        sys.constraints.push_back(std::make_shared<Dot2>(Marker{0, Transform3()}, axis++,
+                                                         Marker{1, Transform3()}, s));
+    }
+
+    Simulator sim(sys);
+    sim.q.head<3>() = Vec3(R, 0.0, h);
+    sim.v.tail<3>() = Vec3(0.0, R * w, 0.0);   // body axes are world axes at the start
+    sim.initialize();
+
+    Real worst_point = 0.0, worst_force = 0.0, worst_spin = 0.0;
+    for (int step = 0; step < 1000; ++step) {
+        sim.step(1e-3);
+        const Real t = sim.time;
+        const Vec3 target(R * std::cos(w * t), R * std::sin(w * t), h);
+        worst_point = std::max(worst_point, (sim.states()[1].p_WB - target).norm());
+        worst_spin = std::max(worst_spin, sim.v.head<3>().norm());
+        if (step % 100 == 99) {
+            sim.acceleration(sim.q, sim.v, t);
+            const VecX f = sim.solver().J().transpose() * sim.solver().lambda();
+            const Vec3 expected(-m * w * w * R * std::cos(w * t), -m * w * w * R * std::sin(w * t),
+                                m * g_accel);
+            // Generalized force of the free joint: the force at the body
+            // origin in body axes, here the world's.
+            worst_force = std::max(worst_force, (Vec3(f.tail<3>()) - expected).norm());
+        }
+    }
+    CHECK(worst_point <= 1e-10);   // the projection holds |phi| <= 1e-10, and phi is the error
+    CHECK(worst_spin < 1e-10);
+    CHECK(worst_force < 1e-8 * m * g_accel);
 }

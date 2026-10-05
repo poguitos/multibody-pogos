@@ -28,6 +28,8 @@ examples:
 | Build a mechanism with loops | `tests/kernel/test_kernel_constrained.cpp` (four-bar), `tests/kernel/test_kernel_validate.cpp` |
 | Simulate it | `tests/kernel/test_kernel_simulator.cpp`, `tests/kernel/test_kernel_joints_physics.cpp` |
 | Drive a joint along a prescribed motion | `tests/kernel/test_kernel_simulator.cpp` (driven pendulum) |
+| Drive a point along a path | `tests/kernel/test_kernel_simulator.cpp` (point driven along a circle) |
+| Velocities and accelerations of a mechanism along its motion (motion ratios) | `Kinematics::velocities()`, `accelerations()`; `tests/test_suspension_kinematics.cpp` |
 | Check a model before simulating it | [The kernel, checks](../kernel.md#checks); `validate()` |
 | Build and run a vehicle | `tests/vehicle/test_vehicle_template_dynamic.cpp`, `bench/bench_dynamics.cpp` |
 | Sweep a suspension through bump travel | `tests/test_suspension_kinematics.cpp` |

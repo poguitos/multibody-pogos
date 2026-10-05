@@ -44,6 +44,8 @@ Kinematics::Kinematics(const kernel::System& sys)
     , data_(sys.model)
     , solver_(sys.model, sys.constraints)
     , v_zero_(VecX::Zero(sys.model.nv))
+    , v_(VecX::Zero(sys.model.nv))
+    , a_(VecX::Zero(sys.model.nv))
     , q(sys.model.neutral_configuration())
 {
     update();
@@ -62,6 +64,26 @@ const VecX& Kinematics::phi()
 {
     solver_.evaluate(data_, q, v_zero_, t);
     return solver_.phi();
+}
+
+const VecX& Kinematics::velocities()
+{
+    // J v = nu, nu = -d(phi)/dt. The complete orthogonal decomposition gives
+    // the exact solution when J has full column rank, even with redundant
+    // rows, and the least-norm one otherwise.
+    solver_.evaluate(data_, q, v_zero_, t);
+    v_ = solver_.J().completeOrthogonalDecomposition().solve(solver_.nu());
+    update();
+    return v_;
+}
+
+const VecX& Kinematics::accelerations()
+{
+    // J a = gamma, whose velocity-product terms need v.
+    solver_.evaluate(data_, q, v_, t);
+    a_ = solver_.J().completeOrthogonalDecomposition().solve(solver_.gamma());
+    update();
+    return a_;
 }
 
 KinematicSweepResult sweep_bump_travel(Kinematics& k, int upright_body,

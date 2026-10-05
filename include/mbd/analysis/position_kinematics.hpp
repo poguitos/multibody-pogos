@@ -87,6 +87,18 @@ public:
     /// The constraint values phi(q, t).
     const VecX& phi();
 
+    /// Velocities at (q, t) that keep the constraints satisfied, J v = nu.
+    /// For a mechanism with no degrees of freedom left, these are the
+    /// derivatives of the motion with respect to t, in velocity coordinates
+    /// (a suspension's motion ratios, for instance); where freedom is left,
+    /// the least-norm solution. Call after solve().
+    const VecX& velocities();
+
+    /// Accelerations at (q, v, t), J a = gamma, with v from velocities(): for
+    /// a mechanism with no degrees of freedom left, the second derivatives of
+    /// the motion with respect to t. Call after velocities().
+    const VecX& accelerations();
+
     /// Recompute the body placements after changing q by hand.
     void update() { kernel::forward_kinematics(system_.model, data_, q, v_zero_); }
 
@@ -100,6 +112,7 @@ private:
     kernel::Data data_;
     kernel::ConstraintSolver solver_;
     VecX v_zero_;
+    VecX v_, a_;
 
 public:
     VecX q;          ///< Coordinates
@@ -110,7 +123,7 @@ public:
 /// wheel-centre height to its nominal value plus t, so t is the bump travel.
 /// Each point starts from the last converged one; k ends at the last point.
 KinematicSweepResult sweep_bump_travel(Kinematics& k, int upright_body,
-                                              Real bump_min, Real bump_max, int n_steps = 41);
+                                       Real bump_min, Real bump_max, int n_steps = 41);
 
 /// A driver that holds the coordinate `axis` of a body point (in world axes)
 /// at nominal + t: the bump prescription of a kinematic corner.

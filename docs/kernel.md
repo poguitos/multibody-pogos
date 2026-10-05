@@ -296,7 +296,12 @@ multiplier is the force or torque the drive needs (plan task 3.2's driven
 pendulum is a test). In kinematic analysis t is a parameter rather than a
 time: a suspension's bump driver holds the wheel centre at its nominal
 height plus t, so `Kinematics` (in `analysis/position_kinematics.hpp`)
-sweeps bump travel by solving `phi(q, t) = 0` for successive t.
+sweeps bump travel by solving `phi(q, t) = 0` for successive t. Its
+`velocities()` and `accelerations()` solve `J v = nu` and `J a = gamma` at the
+solved configuration: for a mechanism with no freedom left, the first and
+second derivatives of the motion with respect to t, from which a
+suspension's motion ratios follow. A point is driven along a path by one
+`Dot2` per coordinate, each with its own target function.
 
 **Steering.** A steered axle with linkage suspension has a steering rack: a
 light body sliding along the chassis's lateral axis, carrying the tie rods'

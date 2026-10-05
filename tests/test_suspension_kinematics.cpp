@@ -1,10 +1,14 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <Eigen/Geometry>
+#include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <memory>
 #include <string>
 
+#include "mbd/kernel/algorithms.hpp"
+#include "mbd/kernel/constraints.hpp"
 #include "mbd/vehicle/suspension/double_wishbone.hpp"
 
 // Kinematics of the double-wishbone corner, on the kernel (plan task 2.7).
@@ -302,4 +306,94 @@ TEST_CASE("DWB: CSV export writes a file", "[dwb][csv]")
         ++line_count;
     }
     REQUIRE(line_count == 5);
+}
+
+// ============================================================================
+// Kinematic analysis along a prescribed motion (plan task 3.6)
+// ============================================================================
+
+TEST_CASE("Kinematic analysis: a sweep gives the configurations of solving with a fixed target",
+          "[dwb][kinematics]")
+{
+    // Before the kernel, a bump sweep edited the bump constraint's target
+    // between solves. Now the target is nominal + t and the sweep varies t.
+    // The old way is rebuilt here, a target held in a variable and edited
+    // before each solve, and from the same starting point it must reach the
+    // same configuration: the position equations are the same, so the
+    // iterations are too.
+    using namespace mbd;
+    const DoubleWishboneParams p;
+
+    kernel::System swept;
+    const auto dwb = build_double_wishbone_corner(swept, p);
+    Kinematics k(swept);
+
+    kernel::System edited;
+    build_double_wishbone_corner(edited, p);
+    Real target = p.wheel_center.y();
+    edited.constraints[dwb.bump_constraint_idx] = std::make_shared<kernel::Dot2>(
+        kernel::Marker{0, Transform3::Identity()}, 1,
+        kernel::Marker{dwb.upright_body, Transform3::Identity()},
+        kernel::TimeFunction([&target](Real) { return target; },
+                             [](Real) { return 0.0; },
+                             [](Real) { return 0.0; }));
+    Kinematics old_way(edited);
+
+    VecX q_start = k.q;
+    Real worst = 0.0;
+    for (int i = 0; i <= 10; ++i) {
+        const Real bump = -0.05 + 0.01 * i;
+        k.t = bump;
+        k.q = q_start;
+        REQUIRE(k.solve());
+
+        target = p.wheel_center.y() + bump;
+        old_way.q = q_start;
+        REQUIRE(old_way.solve());
+
+        worst = std::max(worst, (k.q - old_way.q).cwiseAbs().maxCoeff());
+        q_start = k.q;
+    }
+    CHECK(worst < 1e-12);
+}
+
+TEST_CASE("Kinematic analysis: velocities and accelerations along the bump motion",
+          "[dwb][kinematics]")
+{
+    // With t the bump travel, the wheel centre rises at exactly 1 per unit of
+    // t, with no acceleration. The joint velocities must also be the
+    // derivatives of the configurations with respect to t: central
+    // differences with h = 1e-4 have a truncation error of order
+    // h^2 = 1e-8 times the third derivative, and the solves are converged to
+    // 1e-14, which adds 1e-14 / (2 h) = 5e-11.
+    using namespace mbd;
+    kernel::System sys;
+    const auto dwb = build_double_wishbone_corner(sys);
+    Kinematics k(sys);
+
+    const Real t0 = 0.02, h = 1e-4;
+    k.t = t0;
+    REQUIRE(k.solve(100, 1e-14));
+    const VecX q_mid = k.q;
+    const VecX v = k.velocities();
+    const VecX a = k.accelerations();
+
+    kernel::Data data(sys.model);
+    kernel::forward_kinematics(sys.model, data, q_mid, v, a);
+    const Vec6 wheel_velocity = kernel::body_velocity_world(data, dwb.upright_body);
+    const Vec6 wheel_acceleration = kernel::body_acceleration_world(data, dwb.upright_body);
+    CHECK(std::abs(wheel_velocity(4) - 1.0) < 1e-9);    // world Y, linear part
+    CHECK(std::abs(wheel_acceleration(4)) < 1e-8);
+
+    k.t = t0 + h;
+    REQUIRE(k.solve(100, 1e-14));
+    const VecX q_plus = k.q;
+    k.t = t0 - h;
+    k.q = q_mid;
+    REQUIRE(k.solve(100, 1e-14));
+    const VecX q_minus = k.q;
+    VecX dq;
+    kernel::difference(sys.model, q_minus, q_plus, dq);
+    INFO("velocities " << v.transpose() << ", differences " << (dq / (2.0 * h)).transpose());
+    CHECK((dq / (2.0 * h) - v).norm() < 1e-6 * v.norm());
 }
