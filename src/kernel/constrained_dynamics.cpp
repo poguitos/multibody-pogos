@@ -21,10 +21,10 @@ int total_size(const Model& model,
     int m = 0;
     for (std::size_t k = 0; k < constraints.size(); ++k) {
         const auto& c = constraints[k];
-        MBD_THROW_IF(!c, "kernel::ConstraintSolver: constraint " + std::to_string(k) + " is empty");
+        MBD_THROW_IF(!c, "MBD-K030: kernel::ConstraintSolver: constraint " + std::to_string(k) + " is empty");
         for (int b : c->bodies()) {
             MBD_THROW_IF(b < 0 || b >= model.nbodies(),
-                         "kernel::ConstraintSolver: constraint " + std::to_string(k) + " ("
+                         "MBD-K031: kernel::ConstraintSolver: constraint " + std::to_string(k) + " ("
                              + c->name() + ") refers to body " + std::to_string(b)
                              + ", but the model's bodies are 0 to "
                              + std::to_string(model.nbodies() - 1) + ".");

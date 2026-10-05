@@ -14,9 +14,9 @@ TireContactForce::TireContactForce(BodyIndex wheel_idx,
     , R_free(free_radius)
     , road_height(ground_y)
 {
-    MBD_THROW_IF(k_z < 0.0, "TireContactForce: stiffness must be >= 0");
-    MBD_THROW_IF(c_z < 0.0, "TireContactForce: damping must be >= 0");
-    MBD_THROW_IF(R_free <= 0.0, "TireContactForce: free radius must be > 0");
+    MBD_THROW_IF(k_z < 0.0, "MBD-F010: TireContactForce: stiffness must be >= 0");
+    MBD_THROW_IF(c_z < 0.0, "MBD-F010: TireContactForce: damping must be >= 0");
+    MBD_THROW_IF(R_free <= 0.0, "MBD-F010: TireContactForce: free radius must be > 0");
 }
 
 void TireContactForce::apply(const std::vector<RigidBodyState>& states,
@@ -89,9 +89,9 @@ FullTireForce::FullTireForce(BodyIndex wheel_idx,
     , road_height(ground_y)
     , pacejka(tire_params)
 {
-    MBD_THROW_IF(R_free <= 0.0, "FullTireForce: free radius must be > 0");
-    MBD_THROW_IF(k_z < 0.0, "FullTireForce: vertical stiffness must be >= 0");
-    MBD_THROW_IF(c_z < 0.0, "FullTireForce: vertical damping must be >= 0");
+    MBD_THROW_IF(R_free <= 0.0, "MBD-F011: FullTireForce: free radius must be > 0");
+    MBD_THROW_IF(k_z < 0.0, "MBD-F011: FullTireForce: vertical stiffness must be >= 0");
+    MBD_THROW_IF(c_z < 0.0, "MBD-F011: FullTireForce: vertical damping must be >= 0");
 }
 
 void FullTireForce::apply(const std::vector<RigidBodyState>& states,

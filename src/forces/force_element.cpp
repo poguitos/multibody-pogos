@@ -10,7 +10,7 @@ LinearSpringDamper::LinearSpringDamper(BodyIndex b1, BodyIndex b2,
     , k(stiffness), c(damping), rest_length(length_0)
 {
     MBD_THROW_IF(k < 0 || c < 0 || rest_length < 0,
-        "SpringDamper parameters must be non-negative");
+        "MBD-F001: SpringDamper parameters must be non-negative");
 }
 
 void LinearSpringDamper::apply(const std::vector<RigidBodyState>& states,

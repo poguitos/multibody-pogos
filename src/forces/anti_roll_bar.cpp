@@ -13,8 +13,8 @@ AntiRollBar::AntiRollBar(BodyIndex chassis,
     , k_arb(stiffness)
     , c_arb(damping)
 {
-    MBD_THROW_IF(stiffness < 0.0, "AntiRollBar: stiffness must be >= 0");
-    MBD_THROW_IF(damping < 0.0, "AntiRollBar: damping must be >= 0");
+    MBD_THROW_IF(stiffness < 0.0, "MBD-F030: AntiRollBar: stiffness must be >= 0");
+    MBD_THROW_IF(damping < 0.0, "MBD-F030: AntiRollBar: damping must be >= 0");
 }
 
 void AntiRollBar::capture_reference(const std::vector<RigidBodyState>& states)

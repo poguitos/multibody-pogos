@@ -33,7 +33,7 @@ void generalized_forces(const Model& model, Data& data,
 {
     checks::data("kernel::generalized_forces", model, data);
     MBD_THROW_IF(forces.size() != static_cast<std::size_t>(model.nbodies()),
-                 "kernel::generalized_forces: " + std::to_string(forces.size())
+                 "MBD-K005: kernel::generalized_forces: " + std::to_string(forces.size())
                      + " forces given, but the model has " + std::to_string(model.nbodies())
                      + " bodies.");
     if (tau.size() != model.nv) tau.resize(model.nv);

@@ -4,6 +4,8 @@ A C++20 multibody dynamics engine aimed at vehicle and suspension simulation: jo
 
 The project is in active development and its core is being revised. The roadmap, the findings of the October 2026 review, and the status of each task are in [documentation/Master_plan.md](documentation/Master_plan.md). Frames, units and sign conventions are in [docs/conventions.md](docs/conventions.md). The multibody kernel (spatial algebra, joint models, recursive algorithms, constraints, the simulator) is described in [docs/kernel.md](docs/kernel.md), and timings in [docs/performance.md](docs/performance.md).
 
+**Help** for using and debugging the program is in [docs/help/](docs/help/README.md): every error and warning starts with a code (`MBD-K001` and so on) explained in the [message catalogue](docs/help/messages.md).
+
 How the project has been developed, and why it is built the way it is, is recorded as the work happens: a journal of every task in [documentation/journal/](documentation/journal/README.md), the design decisions in [documentation/decisions.md](documentation/decisions.md), and the outline of a book about the project in [documentation/book/](documentation/book/outline.md).
 
 ## Layout

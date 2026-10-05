@@ -4,7 +4,7 @@ namespace mbd {
 
 void Track::add_straight(Real length, Real delta_z, Real bank)
 {
-    MBD_THROW_IF(length <= 0.0, "Track::add_straight: length must be positive");
+    MBD_THROW_IF(length <= 0.0, "MBD-A001: Track::add_straight: length must be positive");
 
     Segment seg;
     seg.type     = SegmentType::Straight;
@@ -20,9 +20,9 @@ void Track::add_straight(Real length, Real delta_z, Real bank)
 
 void Track::add_arc(Real length, Real signed_radius, Real delta_z, Real bank)
 {
-    MBD_THROW_IF(length <= 0.0, "Track::add_arc: length must be positive");
+    MBD_THROW_IF(length <= 0.0, "MBD-A001: Track::add_arc: length must be positive");
     MBD_THROW_IF(std::abs(signed_radius) < 1e-9,
-                 "Track::add_arc: |radius| must be > 0");
+                 "MBD-A001: Track::add_arc: |radius| must be > 0");
 
     Segment seg;
     seg.type   = SegmentType::Arc;
@@ -40,9 +40,9 @@ void Track::add_arc_by_angle(Real sweep_rad, Real radius_magnitude,
                              Real delta_z, Real bank)
 {
     MBD_THROW_IF(radius_magnitude <= 0.0,
-                 "Track::add_arc_by_angle: radius must be positive");
+                 "MBD-A001: Track::add_arc_by_angle: radius must be positive");
     MBD_THROW_IF(std::abs(sweep_rad) < 1e-12,
-                 "Track::add_arc_by_angle: sweep must be nonzero");
+                 "MBD-A001: Track::add_arc_by_angle: sweep must be nonzero");
 
     const Real signed_radius = (sweep_rad > 0.0) ? radius_magnitude
                                                  : -radius_magnitude;
@@ -53,7 +53,7 @@ void Track::add_arc_by_angle(Real sweep_rad, Real radius_magnitude,
 void Track::add_clothoid(Real length, Real kappa_start, Real kappa_end,
                          Real delta_z, Real bank)
 {
-    MBD_THROW_IF(length <= 0.0, "Track::add_clothoid: length must be positive");
+    MBD_THROW_IF(length <= 0.0, "MBD-A001: Track::add_clothoid: length must be positive");
 
     Segment seg;
     seg.type      = SegmentType::Clothoid;
@@ -71,7 +71,7 @@ void Track::add_clothoid(Real length, Real kappa_start, Real kappa_end,
 Track Track::from_polyline(const std::vector<Vec2>& points)
 {
     MBD_THROW_IF(points.size() < 2,
-                 "Track::from_polyline: need at least 2 points");
+                 "MBD-A002: Track::from_polyline: need at least 2 points");
 
     Track t;
 
@@ -79,7 +79,7 @@ Track Track::from_polyline(const std::vector<Vec2>& points)
         const Vec2 d = points[i + 1] - points[i];
         const Real len = d.norm();
         MBD_THROW_IF(len < 1e-9,
-                     "Track::from_polyline: zero-length segment");
+                     "MBD-A002: Track::from_polyline: zero-length segment");
 
         // Straight segment with length = chord; curvature stored separately
         t.add_straight(len);
@@ -97,7 +97,7 @@ Track Track::from_polyline(const std::vector<Vec2>& points)
 
 TrackPoint Track::query(Real s) const
 {
-    MBD_THROW_IF(segments_.empty(), "Track::query: empty track");
+    MBD_THROW_IF(segments_.empty(), "MBD-A003: Track::query: empty track");
 
     // Clamp to track bounds
     if (s <= 0.0) {

@@ -37,7 +37,7 @@ Real lap_vmax_at(const TrackPoint& pt, const LapVehicle& lv,
 SpeedProfile sample_vmax_profile(const Track& track, const LapVehicle& lv,
                                  int n_samples)
 {
-    MBD_THROW_IF(n_samples < 2, "sample_vmax_profile: n_samples must be >= 2");
+    MBD_THROW_IF(n_samples < 2, "MBD-A010: sample_vmax_profile: n_samples must be >= 2");
 
     SpeedProfile prof;
     prof.s.reserve(n_samples);
@@ -107,7 +107,7 @@ LapResult simulate_lap(const Track& track, const LapVehicle& lv,
                        int n_samples,
                        bool is_closed_lap)
 {
-    MBD_THROW_IF(n_samples < 2, "simulate_lap: n_samples must be >= 2");
+    MBD_THROW_IF(n_samples < 2, "MBD-A010: simulate_lap: n_samples must be >= 2");
 
     LapResult result;
     result.total_length = track.total_length();

@@ -32,14 +32,14 @@ int Model::add_body(int parent_body,
                     std::string body_name)
 {
     MBD_THROW_IF(parent_body < 0 || parent_body >= nbodies(),
-                 "kernel::Model::add_body: parent body does not exist");
-    MBD_THROW_IF(!joint_model, "kernel::Model::add_body: no joint model");
-    MBD_THROW_IF(body_inertia.mass < 0.0, "kernel::Model::add_body: negative mass");
+                 "MBD-K010: kernel::Model::add_body: parent body does not exist");
+    MBD_THROW_IF(!joint_model, "MBD-K010: kernel::Model::add_body: no joint model");
+    MBD_THROW_IF(body_inertia.mass < 0.0, "MBD-K011: kernel::Model::add_body: negative mass");
 
     const int nq_joint = joint_model->nq();
     const int nv_joint = joint_model->nv();
     MBD_THROW_IF(nv_joint < 0 || nv_joint > 6 || nq_joint < nv_joint,
-                 "kernel::Model::add_body: joint has an invalid number of coordinates");
+                 "MBD-K010: kernel::Model::add_body: joint has an invalid number of coordinates");
 
     parent.push_back(parent_body);
     joint.push_back(std::move(joint_model));

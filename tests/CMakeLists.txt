@@ -43,6 +43,7 @@ mbd_add_test_exe(test_core
     test_core_types.cpp
     core/test_math.cpp
     core/test_transform3.cpp
+    core/test_message_catalogue.cpp
 )
 
 mbd_add_test_exe(test_model

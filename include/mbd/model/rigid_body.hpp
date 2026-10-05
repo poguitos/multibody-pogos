@@ -65,14 +65,14 @@ struct RigidBodyInertia
     static RigidBodyInertia from_solid_box(Real mass, const Vec3& half_extents_B)
     {
         MBD_THROW_IF(mass <= Real(0.0),
-                     "RigidBodyInertia::from_solid_box: mass must be > 0");
+                     "MBD-K012: RigidBodyInertia::from_solid_box: mass must be > 0");
 
         const Real hx = half_extents_B.x();
         const Real hy = half_extents_B.y();
         const Real hz = half_extents_B.z();
 
         MBD_THROW_IF(hx <= Real(0.0) || hy <= Real(0.0) || hz <= Real(0.0),
-                     "RigidBodyInertia::from_solid_box: half extents must be > 0");
+                     "MBD-K012: RigidBodyInertia::from_solid_box: half extents must be > 0");
 
         // For a box of size (2hx, 2hy, 2hz) about COM:
         //   Ixx = (1/3) * m * (hy^2 + hz^2), etc.

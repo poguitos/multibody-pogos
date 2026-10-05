@@ -5,9 +5,9 @@ namespace mbd {
 AerodynamicForce::AerodynamicForce(BodyIndex chassis, const AeroParams& p)
     : chassis_idx(chassis), params(p)
 {
-    MBD_THROW_IF(p.CdA < 0.0, "AerodynamicForce: CdA must be non-negative");
-    MBD_THROW_IF(p.ClA < 0.0, "AerodynamicForce: ClA must be non-negative");
-    MBD_THROW_IF(p.air_density <= 0.0, "AerodynamicForce: air_density must be positive");
+    MBD_THROW_IF(p.CdA < 0.0, "MBD-F020: AerodynamicForce: CdA must be non-negative");
+    MBD_THROW_IF(p.ClA < 0.0, "MBD-F020: AerodynamicForce: ClA must be non-negative");
+    MBD_THROW_IF(p.air_density <= 0.0, "MBD-F020: AerodynamicForce: air_density must be positive");
 }
 
 void AerodynamicForce::apply(const std::vector<RigidBodyState>& states,

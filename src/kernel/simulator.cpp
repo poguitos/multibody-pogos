@@ -21,10 +21,10 @@ Simulator::Simulator(System& sys)
     // otherwise index the states out of bounds.
     for (std::size_t k = 0; k < system.force_elements.size(); ++k) {
         const auto& f = system.force_elements[k];
-        MBD_THROW_IF(!f, "kernel::Simulator: force element " + std::to_string(k) + " is empty");
+        MBD_THROW_IF(!f, "MBD-K040: kernel::Simulator: force element " + std::to_string(k) + " is empty");
         for (BodyIndex b : f->bodies()) {
             MBD_THROW_IF(b < 0 || b >= model.nbodies(),
-                         "kernel::Simulator: force element " + std::to_string(k) + " ("
+                         "MBD-K041: kernel::Simulator: force element " + std::to_string(k) + " ("
                              + f->name() + ") refers to body " + std::to_string(b)
                              + ", but the model's bodies are 0 to "
                              + std::to_string(model.nbodies() - 1) + ".");
@@ -93,7 +93,7 @@ const VecX& Simulator::acceleration(const VecX& q_at, const VecX& v_at, Real t)
     const VecX& v_dot = solver_.forward_dynamics_from_kinematics(data_, v_at, tau_total_, t);
     if (solver_.info().redundant() && !redundancy_reported_) {
         redundancy_reported_ = true;
-        report_warning("Redundant constraints: " + std::to_string(solver_.info().equations)
+        report_warning("MBD-K050: Redundant constraints: " + std::to_string(solver_.info().equations)
                        + " equations of rank " + std::to_string(solver_.info().rank)
                        + ". The motion is unaffected; the multipliers of the redundant "
                          "equations are set to zero.");
@@ -147,7 +147,7 @@ void Simulator::step(Real dt)
             ++projection_failures_;
             if (!projection_failure_reported_) {
                 projection_failure_reported_ = true;
-                report_warning("Constraint projection did not converge at t = " + std::to_string(time)
+                report_warning("MBD-K051: Constraint projection did not converge at t = " + std::to_string(time)
                                + " s: residual " + std::to_string(last_projection_.position_residual)
                                + " after " + std::to_string(last_projection_.iterations)
                                + " iterations. Further failures are counted, not reported.");

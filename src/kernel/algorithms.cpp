@@ -366,7 +366,7 @@ void q_dot(const Model& model, const VecX& q, const VecX& v, VecX& qd)
 {
     checks::q("kernel::q_dot", model, q);
     checks::v("kernel::q_dot", model, v);
-    MBD_THROW_IF(&qd == &q, "kernel::q_dot: qd must not be q itself");
+    MBD_THROW_IF(&qd == &q, "MBD-K004: kernel::q_dot: qd must not be q itself");
     qd.resize(model.nq);
     for (int i = 1; i < model.nbodies(); ++i) {
         model.joint[i]->q_dot(q.segment(model.idx_q[i], model.nqs[i]),

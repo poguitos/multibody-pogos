@@ -339,6 +339,10 @@ of the constraint Jacobian as the solver itself sees it (the pivots of
 `J M^-1 J^T`, with the same tolerance). `summary()` gives the counts and
 every message as text.
 
+Every message, from the checks, the solver, the simulator or `validate()`,
+starts with a code (`MBD-K001`, `MBD-M021`, ...) explained in the message
+catalogue, [docs/help/messages.md](help/messages.md).
+
 ## Tests
 
 `tests/kernel/test_spatial.cpp` checks the identities of the spatial algebra

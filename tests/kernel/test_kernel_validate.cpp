@@ -119,7 +119,7 @@ TEST_CASE("Validate: the summary gives the counts and every message", "[kernel][
     sys.model.inertia[1].mass = 3.0;   // changed after add_body: an error
     const std::string s = validate(sys).summary();
     CHECK_THAT(s, ContainsSubstring("bodies 1, coordinates 1, velocities 1"));
-    CHECK_THAT(s, ContainsSubstring("Error: body 1 (arm)"));
+    CHECK_THAT(s, ContainsSubstring("Error: MBD-M015: body 1 (arm)"));
 }
 
 // --- Malformed models ------------------------------------------------------------------

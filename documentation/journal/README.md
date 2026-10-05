@@ -55,4 +55,5 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 4 Oct 2026 | [Phase 2: the simulator, and the vehicles on the kernel](2026-10-04_phase-2-simulator-and-vehicles.md) | 2.7 | `24faade` | Reconstructed 5 Oct 2026 |
 | 5 Oct 2026 | [Phase 2: the legacy core goes, one library, checks](2026-10-05_phase-2-library-and-checks.md) | 2.7b, 2.8, 2.9 | `860b264`, `32f2075`, `253e788` | At the time |
 | 5 Oct 2026 | [Phase 2: performance and allocations](2026-10-05_phase-2-performance.md) | 2.10 | `9472d8d` | At the time |
-| 5 Oct 2026 | [Phase 2 retrospective, and how the record is kept](2026-10-05_phase-2-retrospective.md) | Phase 2 gate, tag `v0.3.0` | `9472d8d` | At the time |
+| 5 Oct 2026 | [Phase 2 retrospective, and how the record is kept](2026-10-05_phase-2-retrospective.md) | Phase 2 gate, tag `v0.3.0` | `9472d8d`, `49b96bc` | At the time |
+| 5 Oct 2026 | [Help folder and message codes](2026-10-05_help-and-message-codes.md) | H.1, H.2 | see git log | At the time |

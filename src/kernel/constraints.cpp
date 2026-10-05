@@ -30,7 +30,7 @@ Vec6 wrench(const Vec3& c_w, const Vec3& c_p, const Vec3& p)
 
 void check_axis(int axis)
 {
-    MBD_THROW_IF(axis < 0 || axis > 2, "kernel constraint: axis must be 0 (X), 1 (Y) or 2 (Z)");
+    MBD_THROW_IF(axis < 0 || axis > 2, "MBD-K020: kernel constraint: axis must be 0 (X), 1 (Y) or 2 (Z)");
 }
 
 /// a_i . a_j for axis_i of marker i and axis_j of marker j. Adds sign times its
@@ -110,7 +110,7 @@ TimeFunction::TimeFunction(std::function<Real(Real)> s,
                            std::function<Real(Real)> dds)
     : s_(std::move(s)), ds_(std::move(ds)), dds_(std::move(dds))
 {
-    MBD_THROW_IF(!s_ || !ds_ || !dds_, "TimeFunction: the function and both derivatives are needed");
+    MBD_THROW_IF(!s_ || !ds_ || !dds_, "MBD-K021: TimeFunction: the function and both derivatives are needed");
 }
 
 // --- Primitives ------------------------------------------------------------------
@@ -183,7 +183,7 @@ Distance::Distance(Marker i, Marker j, Real length)
 Distance::Distance(Marker i, Marker j, TimeFunction length, Real nominal_length)
     : i_(i), j_(j), L_(std::move(length)), L0_(nominal_length)
 {
-    MBD_THROW_IF(!(nominal_length > 0.0), "kernel::Distance: the nominal length must be positive");
+    MBD_THROW_IF(!(nominal_length > 0.0), "MBD-K022: kernel::Distance: the nominal length must be positive");
 }
 
 void Distance::calc(const Model& model, const Data& data, Real t,
@@ -219,10 +219,10 @@ void NoTwist::calc(const Model& model, const Data& data, Real /*t*/,
 JointDriver::JointDriver(const Model& model, int body, TimeFunction s)
     : body_(body), iv_(0), revolute_(false), s_(std::move(s))
 {
-    MBD_THROW_IF(body < 1 || body >= model.nbodies(), "kernel::JointDriver: no such body");
+    MBD_THROW_IF(body < 1 || body >= model.nbodies(), "MBD-K023: kernel::JointDriver: no such body");
     const std::string kind = model.joint[body]->name();
     MBD_THROW_IF(kind != "revolute" && kind != "prismatic",
-                 "kernel::JointDriver: the joint must be revolute or prismatic");
+                 "MBD-K023: kernel::JointDriver: the joint must be revolute or prismatic");
     revolute_ = kind == "revolute";
     iv_ = model.idx_v[body];
 }
@@ -251,7 +251,7 @@ void JointDriver::calc(const Model& /*model*/, const Data& data, Real t,
 
 void ConstraintSet::add(std::shared_ptr<const ConstraintModel> c)
 {
-    MBD_THROW_IF(!c, "kernel::ConstraintSet::add: no constraint");
+    MBD_THROW_IF(!c, "MBD-K024: kernel::ConstraintSet::add: no constraint");
     size_ += c->size();
     parts_.push_back(std::move(c));
 }
