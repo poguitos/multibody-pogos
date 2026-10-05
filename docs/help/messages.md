@@ -400,6 +400,41 @@ Report note: `Newton could not reduce the accelerations <n> time(s); dynamic rel
 - **What to do:** nothing; it is information. Starting nearer to the
   equilibrium avoids it and is faster.
 
+### MBD-K080
+
+Warning in a linearisation: `The operating point is not at rest in equilibrium (largest acceleration <a>, largest velocity <v>): A describes the motion near it, but its eigenvalues are not modes of vibration about it. Run static_equilibrium first.`
+
+- **Means:** `linearize` was called at a state that is moving or accelerating.
+  The matrices are still the derivatives of the state equations there, which
+  is what an implicit integrator or a controller design about a trajectory
+  needs; but "natural frequency" and "damping ratio" describe oscillations
+  about a state the system stays at, and this one it does not.
+- **What to do:** for modes, call `static_equilibrium(sim)` first and
+  linearise the state it leaves.
+
+### MBD-K081
+
+Note in a linearisation: `<n> of the <d> undamped modes have zero frequency: directions without stiffness (a vehicle's position and heading on a flat road). In A they appear as zero or real eigenvalues.`
+
+- **Means:** nothing pulls the system back along these directions. In A,
+  each appears as a zero eigenvalue, or as a real negative one when
+  something damps motion along it (a tyre's slip at low speed acts as a
+  viscous damper sideways).
+- **What to do:** nothing, when that is the physics. Otherwise check the
+  element that should provide the stiffness (MBD-K073 in statics says the
+  same).
+
+### MBD-K082
+
+Warning in a linearisation: `<n> eigenvalue(s) of A have a positive real part: motion near the operating point grows. At an equilibrium, it is unstable.`
+
+- **Means:** a small disturbance grows exponentially, at the rate of the
+  eigenvalue's real part. At an equilibrium, this is an unstable one
+  (statics reports it as MBD-K072 when the cause is negative stiffness; a
+  negative damping, from a force that feeds energy in, shows here only).
+- **What to do:** look at the modes with `eigenvalue.real() > 0` and their
+  shapes, which name the coordinates involved.
+
 ## M: findings of `validate()`
 
 `validate(system)` checks a system at its neutral configuration, or

@@ -38,6 +38,7 @@ and the journal entry of the work refers to them by number
 | D25 | Work in cloud sessions through git: rules in `CLAUDE.md`, a branch per session, the record unchanged | 5 Oct 2026 | In force |
 | D26 | Assembly holds coordinates by masking J and the metric; the least correction is in the kinetic-energy metric, refined to optimality | 5 Oct 2026 | In force, task 3.4 |
 | D27 | Statics by Newton on the constraint surface with a finite-difference stiffness, residual measured as accelerations at rest, kinetic-damping relaxation as fallback | 5 Oct 2026 | In force, task 3.5 |
+| D28 | Linearisation in the coordinates of the constraint surface, by central differences fitted against the points' actual coordinates | 5 Oct 2026 | In force, task 3.7 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -409,3 +410,40 @@ and the journal entry of the work refers to them by number
   of D26 had the same mistake).
 - **Record.** Journal: Phase 3, statics. `docs/kernel.md`, "Static
   equilibrium".
+
+## D28. Linearisation in the coordinates of the constraint surface
+
+- **Context.** Task 3.7 asks for state matrices about an operating point and
+  the modes they give. A constrained system's state (q, v) has more entries
+  than degrees of freedom; its Jacobian in those coordinates mixes the
+  physical modes with the constraints' own directions (zero eigenvalues of
+  drift), and quaternions add a coordinate per rotation.
+- **Decision.** Reduce first: with N the orthonormal basis of allowed motions
+  that statics already computes, the state is `y = N^T (q (-) q0)`,
+  `z = N^T v`, and A is `d(y', z') / d(y, z)` by central differences. Each
+  point is placed by moving along N and projecting back onto the
+  constraints (positions, then velocities); A is then fitted against the
+  reduced coordinates the projected points actually have, `A = dF dX^-1`,
+  so that the projection's small displacements do not bias it. `dy/dt` is
+  `N^T v` where that is exact (scalar coordinates, rotations at q0 or at
+  rest) and a central difference in time of `q (-) q0` otherwise. B is the
+  exact affine response to generalized forces. The second-order matrices
+  and the undamped modes are formed at equilibrium; the modes of A are
+  reported with natural frequency, damping ratio and shape in the velocity
+  coordinates. An operating point that is not at rest in equilibrium is
+  linearised all the same and reported.
+- **Alternatives.** Linearise the full state and project out the
+  constraint directions afterwards: twice the evaluations and an eigenvalue
+  problem polluted with zero eigenvalues that look like rigid-body modes.
+  Analytic Jacobians: D24's decision stands; the differences cost 4d + nv
+  evaluations, 8 ms for the sedan. A minimal set of independent coordinates
+  chosen among q (as some codes do, by pivoting J): coordinates that change
+  meaning when the pivoting changes, and fail near singular positions; an
+  orthonormal basis does neither.
+- **Consequences.** Mode shapes come out in the velocity coordinates, where a
+  suspension arm's angle and the chassis height share one vector; the
+  coordinate labels say which is which. Linearisation about steady motions
+  in a moving frame (cornering, Phase 9) is a vehicle-level task built on
+  this.
+- **Record.** Journal: Phase 3, linearisation. `docs/kernel.md`,
+  "Linearisation".

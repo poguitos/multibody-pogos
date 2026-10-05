@@ -15,6 +15,7 @@
 
 #include "held.hpp"
 #include "labels.hpp"
+#include "motions.hpp"
 
 namespace mbd::kernel {
 
@@ -23,9 +24,6 @@ namespace {
 // Tolerances of the projections inside statics: those of the simulator.
 constexpr Real kProjectionTolerance = 1e-10;
 constexpr int kProjectionIterations = 50;
-// Singular values of the constraint and hold rows below this fraction of the
-// largest belong to dependent rows.
-constexpr Real kRowRankTolerance = 1e-8;
 // Stiffness eigenvalues within this fraction of the largest are taken as
 // zero: the finite-difference noise of K is about eps |F| / h, some 1e-10 of
 // the stiffest element's stiffness with h = 1e-6.
@@ -120,26 +118,7 @@ public:
     /// allow at q: J dq = 0 and dq_k = 0 for every held k.
     MatX allowed_motions(const VecX& q)
     {
-        const int n = model_.nv;
-        const int m = solver_.size();
-        const int h = static_cast<int>(held_.size());
-        if (m + h == 0) return MatX::Identity(n, n);
-        MatX rows = MatX::Zero(m + h, n);
-        if (m > 0) {
-            solver_.evaluate(data_, q, zero_, t_);
-            rows.topRows(m) = solver_.J();
-        }
-        for (int i = 0; i < h; ++i) {
-            rows.row(m + i).setZero();
-            rows(m + i, held_[static_cast<std::size_t>(i)]) = 1.0;
-        }
-        const Eigen::JacobiSVD<MatX> svd(rows, Eigen::ComputeFullV);
-        const VecX& s = svd.singularValues();
-        int rank = 0;
-        for (Index k = 0; k < s.size(); ++k) {
-            if (s(k) > kRowRankTolerance * s(0)) ++rank;
-        }
-        return svd.matrixV().rightCols(n - rank);
+        return motions::allowed(solver_, data_, q, t_, held_, model_.nv);
     }
 
     const VecX& a() const { return a_; }

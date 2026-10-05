@@ -18,6 +18,7 @@ description.
 | `include/mbd/kernel/constrained_dynamics.hpp`, `src/kernel/constrained_dynamics.cpp` | The constrained solve: accelerations, multipliers, redundancy, projection |
 | `include/mbd/kernel/assembly.hpp`, `src/kernel/assembly.cpp` | Assembly of initial conditions: positions, velocities and accelerations onto the constraints, with chosen coordinates held |
 | `include/mbd/kernel/statics.hpp`, `src/kernel/statics.cpp` | Static equilibrium: Newton on the constraint surface, dynamic relaxation as a fallback, stability of the result |
+| `include/mbd/kernel/linearization.hpp`, `src/kernel/linearization.cpp` | Linearisation about an operating point: state matrices, natural frequencies, damping, mode shapes |
 | `include/mbd/kernel/forces.hpp`, `src/kernel/forces.cpp` | Body states for the force elements, and their generalized forces |
 | `include/mbd/kernel/simulator.hpp`, `src/kernel/simulator.cpp` | `System` (model, constraints, force elements) and `Simulator` |
 | `include/mbd/kernel/validate.hpp`, `src/kernel/validate.cpp` | `validate()`: checks of a system before it is simulated, and its degrees of freedom |
@@ -370,6 +371,49 @@ unstable (MBD-K072: Newton finds the nearest equilibrium, stable or not). A
 failure is MBD-K070, a start off the constraints MBD-K071, a fall back on
 relaxation MBD-K074. `StaticsOptions::hold` holds coordinates as assembly
 does.
+
+## Linearisation
+
+`kernel::linearize(sim, options)` (task 3.7, `kernel/linearization.hpp`,
+decision D28) gives the state matrices of the simulator's system about its
+present state. The system moves on its constraint surface, so it is
+linearised in coordinates of that surface: with N an orthonormal basis of
+the allowed motions at the operating point (`J N = 0`, from an SVD; the
+same basis statics uses), the reduced state is `y = N^T (q (-) q0)`,
+`z = N^T v`, and
+
+    d/dt [y; z] = A [y; z] + B tau,
+
+with tau the generalized forces added to `Simulator::tau`. A is found by
+central differences of step 1e-5: each reduced coordinate is moved by +-h,
+the configuration projected back onto the constraints and the velocities
+onto `J v = nu`, and the accelerations evaluated by the simulator with
+everything applied. Since the projection moves each point slightly, A is
+fitted against the reduced coordinates the points actually have,
+`A = dF dX^-1`, which makes the result independent of how the points were
+placed. B is exact: the accelerations are affine in tau. The state is left
+as it was.
+
+At an operating point at rest in equilibrium, `z = dy/dt` and the
+second-order form follows: `M_r = N^T M N`, `K_r = -M_r dz'/dy`,
+`C_r = -M_r dz'/dz`. The stiffness includes the constraint forces' share: a
+pendulum held by a revolute closure on a free body has no stiffness in its
+tree, and its frequency `sqrt(m g d / I)` comes out to 1e-11 all the same.
+`modes` are the eigenvalues of A (natural frequency `|lambda| / 2 pi`, damping
+ratio `-Re lambda / |lambda|`, shape in the velocity coordinates, `N` times
+the eigenvector), and `undamped` those of `K_r phi = omega^2 M_r phi` with
+the symmetric part of `K_r`. For the quarter car the undamped frequencies
+match the closed form to 12 digits; for the double-wishbone sedan, settled
+by `static_equilibrium`, it gives three zero modes (its position and heading
+on the road, MBD-K081), body modes near 1.1 to 1.9 Hz and wheel hop near
+17.7 Hz, in 8 ms.
+
+For a moving state the derivative `dy/dt = N^T d/dt (q (-) q0)` equals `N^T
+v` for scalar coordinates and for rotations at q0 or at rest; otherwise the
+curvature of the rotation chart enters, and a central difference in time
+gives it. A moving or accelerating operating point is reported (MBD-K080):
+its A is the derivative of the state equations there, but its eigenvalues
+are not modes. A growing mode is MBD-K082.
 
 ## Forces and simulation
 

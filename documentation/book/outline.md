@@ -96,7 +96,13 @@ to a validated engine.*
     simulation does not settle a car (it keeps rolling). Figure: the
     sedan's `|a|` per iteration, quadratic. *J: statics. D27.*
 
-To come in this part: linearisation, contact, events.
+21. **Linearisation and modes.** Coordinates of the constraint surface;
+    fitting the Jacobian against the points' actual coordinates; the
+    geometric stiffness of constraint forces (the pendulum held only by a
+    closure); from A to frequencies, damping ratios and shapes; the quarter
+    car to twelve digits; the sedan's modes. *J: linearisation. D28.*
+
+To come in this part: contact, events.
 
 (Part X, *Keeping a record*, gains the move to cloud sessions through git:
 rules that lived in an assistant's memory moved into the repository. *D25.*)
