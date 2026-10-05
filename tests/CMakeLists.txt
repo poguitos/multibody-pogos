@@ -66,6 +66,7 @@ mbd_add_test_exe(test_kernel
     kernel/test_kernel_simulator.cpp
     kernel/test_kernel_joints_physics.cpp
     kernel/test_kernel_validate.cpp
+    kernel/test_kernel_outputs.cpp
 )
 find_package(Threads REQUIRED)
 target_link_libraries(test_kernel PRIVATE Threads::Threads)

@@ -71,11 +71,47 @@ Curve Curve::table(std::vector<Real> x, std::vector<Real> y)
         m[n - 1] = end_slope(h[n - 2], h[n - 3], d[n - 2], d[n - 3]);
     }
 
+    // Integral of each cubic piece: h (y_k + y_k+1) / 2 + h^2 (m_k - m_k+1) / 12.
+    std::vector<Real> cum(n, 0.0);
+    for (std::size_t k = 0; k + 1 < n; ++k) {
+        cum[k + 1] = cum[k] + h[k] * (y[k] + y[k + 1]) / 2.0 + h[k] * h[k] * (m[k] - m[k + 1]) / 12.0;
+    }
+
     Curve c;
     c.xs_ = std::move(x);
     c.ys_ = std::move(y);
     c.ms_ = std::move(m);
+    c.cum_ = std::move(cum);
     return c;
+}
+
+Real Curve::primitive(Real x) const
+{
+    if (xs_.empty()) return offset_ * x + 0.5 * slope_ * x * x;
+    if (x <= xs_.front()) {
+        const Real d = x - xs_.front();
+        return ys_.front() * d + 0.5 * ms_.front() * d * d;
+    }
+    if (x >= xs_.back()) {
+        const Real d = x - xs_.back();
+        return cum_.back() + ys_.back() * d + 0.5 * ms_.back() * d * d;
+    }
+    const std::size_t k = static_cast<std::size_t>(
+        std::upper_bound(xs_.begin(), xs_.end(), x) - xs_.begin()) - 1;
+    const Real h = xs_[k + 1] - xs_[k];
+    const Real s = (x - xs_[k]) / h;
+    // Integrals from 0 to s of the cubic Hermite basis.
+    const Real s2 = s * s, s3 = s2 * s, s4 = s3 * s;
+    const Real a00 = 0.5 * s4 - s3 + s;
+    const Real a10 = 0.25 * s4 - 2.0 * s3 / 3.0 + 0.5 * s2;
+    const Real a01 = -0.5 * s4 + s3;
+    const Real a11 = 0.25 * s4 - s3 / 3.0;
+    return cum_[k] + h * (a00 * ys_[k] + a10 * h * ms_[k] + a01 * ys_[k + 1] + a11 * h * ms_[k + 1]);
+}
+
+Real Curve::integral(Real a, Real b) const
+{
+    return primitive(b) - primitive(a);
 }
 
 Real Curve::value(Real x) const

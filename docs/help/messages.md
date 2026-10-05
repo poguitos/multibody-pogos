@@ -73,6 +73,13 @@ and warning in the sources carries a code.
 - **Means:** the force list needs one `RigidBodyForces` per body, the ground
   (index 0) included.
 
+### MBD-K006
+
+`kernel::joint_reactions: <n> external wrenches given, but the model has <m> bodies.`
+
+- **Means:** the external wrenches need one entry per body, the ground (index
+  0) included. `compute_loads(sim)` assembles them for a simulator.
+
 ### MBD-K010
 
 `kernel::Model::add_body: parent body does not exist` or `no joint model` or
@@ -457,3 +464,28 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
 ### MBD-A010
 
 `sample_vmax_profile: n_samples must be >= 2` or `simulate_lap: n_samples must be >= 2`
+
+### MBD-A020
+
+`Recorder::add: channel "<name>" needs a name not used before, and a function`
+
+### MBD-A021
+
+`Recorder::add: channel "<name>" added after sampling began; add every channel first`
+
+- **Means:** every channel must have a value at every sample, so all channels
+  are added before the first `sample()`.
+
+### MBD-A022
+
+`Recorder::column: no channel named "<name>"`
+
+- **What to do:** `names()` lists the channels.
+
+### MBD-A023
+
+`Recorder::write_csv: cannot open "<path>" for writing` or `writing "<path>" failed`
+
+- **Usual causes:** a folder in the path that does not exist, a file open in
+  another program (a spreadsheet keeps CSV files locked on Windows), or a full
+  disk.

@@ -48,6 +48,10 @@ public:
     /// its derivatives.
     LawValue law(Real angle, Real rate) const;
 
+    /// Energy stored at a twist by the spring and the preload, zero at the
+    /// reference: the conservative torque is -dV/d(angle).
+    Real potential_energy(Real angle) const;
+
 private:
     BodyIndex body1_, body2_;
     Transform3 X_1M_, X_2M_;

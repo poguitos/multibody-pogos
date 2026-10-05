@@ -14,6 +14,7 @@ add_library(multibody_core
     kernel/checks.cpp
     kernel/validate.cpp
     kernel/joint_forces.cpp
+    kernel/outputs.cpp
     forces/force_element.cpp
     forces/curve.cpp
     forces/spring_damper.cpp
@@ -36,6 +37,7 @@ add_library(multibody_core
     analysis/lap_vehicle.cpp
     analysis/lap_speed_profile.cpp
     analysis/optimization.cpp
+    analysis/recorder.cpp
 )
 
 # Public headers live in the top-level include directory

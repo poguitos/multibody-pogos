@@ -38,13 +38,21 @@ public:
     Real value(Real x) const;
     Real slope(Real x) const;
 
+    /// The integral of the curve from a to b, exact for the cubic pieces and
+    /// the straight continuations: a spring's stored energy.
+    Real integral(Real a, Real b) const;
+
     bool is_zero() const { return xs_.empty() && slope_ == 0.0 && offset_ == 0.0; }
 
 private:
-    // Linear: offset_ + slope_ x. Tabulated: xs_, ys_ and the Hermite slopes ms_.
+    /// The integral from the first point (tabulated) or from 0 (linear) to x.
+    Real primitive(Real x) const;
+
+    // Linear: offset_ + slope_ x. Tabulated: xs_, ys_, the Hermite slopes ms_
+    // and the integral from xs_[0] to each point, cum_.
     Real slope_{0.0};
     Real offset_{0.0};
-    std::vector<Real> xs_, ys_, ms_;
+    std::vector<Real> xs_, ys_, ms_, cum_;
 };
 
 } // namespace mbd

@@ -33,25 +33,104 @@ void check_axis(int axis)
     MBD_THROW_IF(axis < 0 || axis > 2, "MBD-K020: kernel constraint: axis must be 0 (X), 1 (Y) or 2 (Z)");
 }
 
-/// a_i . a_j for axis_i of marker i and axis_j of marker j. Adds sign times its
-/// Jacobian to row r of J; returns the value and the velocity-product part of
-/// its second derivative.
+/// Where the world wrenches of a constraint's rows go: into the Jacobian
+/// (calc), or, weighted by the multipliers, onto the bodies (add_wrenches).
+/// Each primitive states its rows once, in a function that takes a sink.
+class RowSink {
+public:
+    virtual void add(int body, const Vec6& wrench_W, Index row) = 0;
+
+protected:
+    ~RowSink() = default;
+};
+
+class JacobianSink final : public RowSink {
+public:
+    JacobianSink(const Model& model, const Data& data, MatRef J) : model_(model), data_(data), J_(J) {}
+    void add(int body, const Vec6& wrench_W, Index row) override
+    {
+        add_wrench_row(model_, data_, body, wrench_W, J_, row);
+    }
+
+private:
+    const Model& model_;
+    const Data& data_;
+    MatRef J_;
+};
+
+class WrenchSink final : public RowSink {
+public:
+    WrenchSink(ConstVecRef lambda, std::vector<Vec6>& wrenches) : lambda_(lambda), wrenches_(wrenches) {}
+    void add(int body, const Vec6& wrench_W, Index row) override
+    {
+        wrenches_[static_cast<std::size_t>(body)] += lambda_(row) * wrench_W;
+    }
+
+private:
+    ConstVecRef lambda_;
+    std::vector<Vec6>& wrenches_;
+};
+
+void point_coincidence_rows(const Marker& mi, const MarkerKinematics& ki,
+                            const Marker& mj, const MarkerKinematics& kj, RowSink& sink)
+{
+    for (int k = 0; k < 3; ++k) {
+        const Vec3 e = Vec3::Unit(k);
+        sink.add(mj.body, wrench(Vec3::Zero(), e, kj.p), k);
+        sink.add(mi.body, wrench(Vec3::Zero(), -e, ki.p), k);
+    }
+}
+
+/// Row r of a_i . a_j, for axis_i of marker i and axis_j of marker j, times
+/// sign: d/dt (a_i . a_j) = (w_i x a_i) . a_j + a_i . (w_j x a_j) = n . (w_i - w_j).
+void dot1_rows(const Marker& mi, const MarkerKinematics& ki, int axis_i,
+               const Marker& mj, const MarkerKinematics& kj, int axis_j,
+               Real sign, Index r, RowSink& sink)
+{
+    const Vec3 n = ki.R.col(axis_i).cross(kj.R.col(axis_j));
+    sink.add(mi.body, wrench(sign * n, Vec3::Zero(), Vec3::Zero()), r);
+    sink.add(mj.body, wrench(-sign * n, Vec3::Zero(), Vec3::Zero()), r);
+}
+
+/// d/dt (a_i . d) = (a_i x d) . w_i + a_i . (v_j - v_i)
+void dot2_rows(const Marker& mi, const MarkerKinematics& ki, int axis_i,
+               const Marker& mj, const MarkerKinematics& kj, RowSink& sink)
+{
+    const Vec3 ai = ki.R.col(axis_i);
+    const Vec3 d  = kj.p - ki.p;
+    sink.add(mi.body, wrench(ai.cross(d), -ai, ki.p), 0);
+    sink.add(mj.body, wrench(Vec3::Zero(), ai, kj.p), 0);
+}
+
+/// d/dt phi = d . (v_j - v_i) / L0 - L L_dot / L0
+void distance_rows(const Marker& mi, const MarkerKinematics& ki,
+                   const Marker& mj, const MarkerKinematics& kj, Real L0, RowSink& sink)
+{
+    const Vec3 d = kj.p - ki.p;
+    sink.add(mj.body, wrench(Vec3::Zero(), d / L0, kj.p), 0);
+    sink.add(mi.body, wrench(Vec3::Zero(), -d / L0, ki.p), 0);
+}
+
+/// x_i . y_j - y_i . x_j
+void no_twist_rows(const Marker& mi, const MarkerKinematics& ki,
+                   const Marker& mj, const MarkerKinematics& kj, RowSink& sink)
+{
+    dot1_rows(mi, ki, 0, mj, kj, 1, 1.0, 0, sink);
+    dot1_rows(mi, ki, 1, mj, kj, 0, -1.0, 0, sink);
+}
+
+/// a_i . a_j: the value and the velocity-product part of its second
+/// derivative.
 struct DotTerms {
     Real value;
     Real bias;
 };
 
-DotTerms dot1_terms(const Model& model, const Data& data,
-                    const Marker& mi, const MarkerKinematics& ki, int axis_i,
-                    const Marker& mj, const MarkerKinematics& kj, int axis_j,
-                    Real sign, MatRef J, Index r)
+DotTerms dot1_terms(const MarkerKinematics& ki, int axis_i, const MarkerKinematics& kj, int axis_j)
 {
     const Vec3 ai = ki.R.col(axis_i);
     const Vec3 aj = kj.R.col(axis_j);
     const Vec3 n  = ai.cross(aj);
-    // d/dt (a_i . a_j) = (w_i x a_i) . a_j + a_i . (w_j x a_j) = n . (w_i - w_j)
-    add_wrench_row(model, data, mi.body, wrench(sign * n, Vec3::Zero(), Vec3::Zero()), J, r);
-    add_wrench_row(model, data, mj.body, wrench(-sign * n, Vec3::Zero(), Vec3::Zero()), J, r);
     const Vec3 n_dot = ki.w.cross(ai).cross(aj) + ai.cross(kj.w.cross(aj));
     return {ai.dot(aj), n_dot.dot(ki.w - kj.w) + n.dot(ki.alpha - kj.alpha)};
 }
@@ -121,14 +200,18 @@ void PointCoincidence::calc(const Model& model, const Data& data, Real /*t*/,
     const MarkerKinematics ki = marker_kinematics(data, i_);
     const MarkerKinematics kj = marker_kinematics(data, j_);
     J.topRows(3).setZero();
-    for (int k = 0; k < 3; ++k) {
-        const Vec3 e = Vec3::Unit(k);
-        add_wrench_row(model, data, j_.body, wrench(Vec3::Zero(), e, kj.p), J, k);
-        add_wrench_row(model, data, i_.body, wrench(Vec3::Zero(), -e, ki.p), J, k);
-    }
+    JacobianSink sink(model, data, J);
+    point_coincidence_rows(i_, ki, j_, kj, sink);
     phi.head<3>()   = kj.p - ki.p;
     nu.head<3>().setZero();
     gamma.head<3>() = ki.a - kj.a;
+}
+
+void PointCoincidence::add_wrenches(const Model& /*model*/, const Data& data, Real /*t*/,
+                                    ConstVecRef lambda, std::vector<Vec6>& wrenches) const
+{
+    WrenchSink sink(lambda, wrenches);
+    point_coincidence_rows(i_, marker_kinematics(data, i_), j_, marker_kinematics(data, j_), sink);
 }
 
 Dot1::Dot1(Marker i, int axis_i, Marker j, int axis_j, TimeFunction s)
@@ -144,10 +227,20 @@ void Dot1::calc(const Model& model, const Data& data, Real t,
     const MarkerKinematics ki = marker_kinematics(data, i_);
     const MarkerKinematics kj = marker_kinematics(data, j_);
     J.topRows(1).setZero();
-    const DotTerms d = dot1_terms(model, data, i_, ki, axis_i_, j_, kj, axis_j_, 1.0, J, 0);
+    JacobianSink sink(model, data, J);
+    dot1_rows(i_, ki, axis_i_, j_, kj, axis_j_, 1.0, 0, sink);
+    const DotTerms d = dot1_terms(ki, axis_i_, kj, axis_j_);
     phi(0)   = d.value - s_.value(t);
     nu(0)    = s_.rate(t);
     gamma(0) = -d.bias + s_.acceleration(t);
+}
+
+void Dot1::add_wrenches(const Model& /*model*/, const Data& data, Real /*t*/,
+                        ConstVecRef lambda, std::vector<Vec6>& wrenches) const
+{
+    WrenchSink sink(lambda, wrenches);
+    dot1_rows(i_, marker_kinematics(data, i_), axis_i_, j_, marker_kinematics(data, j_), axis_j_,
+              1.0, 0, sink);
 }
 
 Dot2::Dot2(Marker i, int axis_i, Marker j, TimeFunction s)
@@ -163,10 +256,9 @@ void Dot2::calc(const Model& model, const Data& data, Real t,
     const MarkerKinematics kj = marker_kinematics(data, j_);
     const Vec3 ai = ki.R.col(axis_i_);
     const Vec3 d  = kj.p - ki.p;
-    // d/dt (a_i . d) = (a_i x d) . w_i + a_i . (v_j - v_i)
     J.topRows(1).setZero();
-    add_wrench_row(model, data, i_.body, wrench(ai.cross(d), -ai, ki.p), J, 0);
-    add_wrench_row(model, data, j_.body, wrench(Vec3::Zero(), ai, kj.p), J, 0);
+    JacobianSink sink(model, data, J);
+    dot2_rows(i_, ki, axis_i_, j_, kj, sink);
     const Vec3 ai_dot = ki.w.cross(ai);
     const Real bias = (ki.alpha.cross(ai) + ki.w.cross(ai_dot)).dot(d)
                     + 2.0 * ai_dot.dot(kj.v - ki.v)
@@ -174,6 +266,13 @@ void Dot2::calc(const Model& model, const Data& data, Real t,
     phi(0)   = ai.dot(d) - s_.value(t);
     nu(0)    = s_.rate(t);
     gamma(0) = -bias + s_.acceleration(t);
+}
+
+void Dot2::add_wrenches(const Model& /*model*/, const Data& data, Real /*t*/,
+                        ConstVecRef lambda, std::vector<Vec6>& wrenches) const
+{
+    WrenchSink sink(lambda, wrenches);
+    dot2_rows(i_, marker_kinematics(data, i_), axis_i_, j_, marker_kinematics(data, j_), sink);
 }
 
 Distance::Distance(Marker i, Marker j, Real length)
@@ -194,13 +293,19 @@ void Distance::calc(const Model& model, const Data& data, Real t,
     const Vec3 d  = kj.p - ki.p;
     const Vec3 dv = kj.v - ki.v;
     const Real L = L_.value(t), L_dot = L_.rate(t), L_ddot = L_.acceleration(t);
-    // d/dt phi = d . (v_j - v_i) / L0 - L L_dot / L0
     J.topRows(1).setZero();
-    add_wrench_row(model, data, j_.body, wrench(Vec3::Zero(), d / L0_, kj.p), J, 0);
-    add_wrench_row(model, data, i_.body, wrench(Vec3::Zero(), -d / L0_, ki.p), J, 0);
+    JacobianSink sink(model, data, J);
+    distance_rows(i_, ki, j_, kj, L0_, sink);
     phi(0)   = (d.squaredNorm() - L * L) / (2.0 * L0_);
     nu(0)    = L * L_dot / L0_;
     gamma(0) = (L_dot * L_dot + L * L_ddot - dv.squaredNorm() - d.dot(kj.a - ki.a)) / L0_;
+}
+
+void Distance::add_wrenches(const Model& /*model*/, const Data& data, Real /*t*/,
+                            ConstVecRef lambda, std::vector<Vec6>& wrenches) const
+{
+    WrenchSink sink(lambda, wrenches);
+    distance_rows(i_, marker_kinematics(data, i_), j_, marker_kinematics(data, j_), L0_, sink);
 }
 
 void NoTwist::calc(const Model& model, const Data& data, Real /*t*/,
@@ -209,12 +314,25 @@ void NoTwist::calc(const Model& model, const Data& data, Real /*t*/,
     const MarkerKinematics ki = marker_kinematics(data, i_);
     const MarkerKinematics kj = marker_kinematics(data, j_);
     J.topRows(1).setZero();
-    const DotTerms xy = dot1_terms(model, data, i_, ki, 0, j_, kj, 1, 1.0, J, 0);
-    const DotTerms yx = dot1_terms(model, data, i_, ki, 1, j_, kj, 0, -1.0, J, 0);
+    JacobianSink sink(model, data, J);
+    no_twist_rows(i_, ki, j_, kj, sink);
+    const DotTerms xy = dot1_terms(ki, 0, kj, 1);
+    const DotTerms yx = dot1_terms(ki, 1, kj, 0);
     phi(0)   = xy.value - yx.value;
     nu(0)    = 0.0;
     gamma(0) = yx.bias - xy.bias;
 }
+
+void NoTwist::add_wrenches(const Model& /*model*/, const Data& data, Real /*t*/,
+                           ConstVecRef lambda, std::vector<Vec6>& wrenches) const
+{
+    WrenchSink sink(lambda, wrenches);
+    no_twist_rows(i_, marker_kinematics(data, i_), j_, marker_kinematics(data, j_), sink);
+}
+
+void ConstraintModel::add_wrenches(const Model& /*model*/, const Data& /*data*/, Real /*t*/,
+                                   ConstVecRef /*lambda*/, std::vector<Vec6>& /*wrenches*/) const
+{}
 
 JointDriver::JointDriver(const Model& model, int body, TimeFunction s)
     : body_(body), iv_(0), revolute_(false), s_(std::move(s))
@@ -274,6 +392,17 @@ void ConstraintSet::calc(const Model& model, const Data& data, Real t,
         const Index m = c->size();
         c->calc(model, data, t, phi.segment(r, m), J.middleRows(r, m),
                 nu.segment(r, m), gamma.segment(r, m));
+        r += m;
+    }
+}
+
+void ConstraintSet::add_wrenches(const Model& model, const Data& data, Real t,
+                                 ConstVecRef lambda, std::vector<Vec6>& wrenches) const
+{
+    Index r = 0;
+    for (const auto& c : parts_) {
+        const Index m = c->size();
+        c->add_wrenches(model, data, t, lambda.segment(r, m), wrenches);
         r += m;
     }
 }

@@ -37,6 +37,12 @@ LawValue RotationalSpringDamper::law(Real angle, Real rate) const
     return out;
 }
 
+Real RotationalSpringDamper::potential_energy(Real angle) const
+{
+    const RotationalSpringDamperParams& p = params_;
+    return p.spring.integral(0.0, angle - p.reference) - p.preload * (angle - p.reference);
+}
+
 void RotationalSpringDamper::apply(const std::vector<RigidBodyState>& states,
                                    std::vector<RigidBodyForces>& forces) const
 {

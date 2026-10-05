@@ -77,6 +77,9 @@ to a validated engine.*
     spring-damper with stops; forces on joint coordinates and regularised
     friction; rotational springs and bushings; force laws with their
     derivatives. *J: the force library. D24.*
+    *Outputs: J: output requests.* Joint reactions by recursive Newton-Euler
+    with external forces; constraint forces per body from the rows that build
+    the Jacobian; energies; the recorder.
 
 To come in this part: output requests, assembly of initial conditions,
 statics, linearisation, contact, events.

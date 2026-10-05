@@ -92,6 +92,14 @@ public:
     virtual void calc(const Model& model, const Data& data, Real t,
                       VecRef phi, MatRef J, VecRef nu, VecRef gamma) const = 0;
 
+    /// The forces of the multipliers lambda (one per equation, as solved) on
+    /// the bodies: adds to wrenches[b] the world wrench [moment about the world
+    /// origin; force] on each body b the constraint acts on. Needs data after
+    /// forward_kinematics(q). A joint driver acts on its joint's coordinate,
+    /// not on bodies, and adds nothing: its multiplier is the drive's force.
+    virtual void add_wrenches(const Model& model, const Data& data, Real t,
+                              ConstVecRef lambda, std::vector<Vec6>& wrenches) const;
+
 protected:
     ConstraintModel() = default;
 };
@@ -109,6 +117,8 @@ public:
     int size() const override { return 3; }
     void calc(const Model& model, const Data& data, Real t,
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
+    void add_wrenches(const Model& model, const Data& data, Real t,
+                      ConstVecRef lambda, std::vector<Vec6>& wrenches) const override;
 
 private:
     Marker i_, j_;
@@ -125,6 +135,8 @@ public:
     int size() const override { return 1; }
     void calc(const Model& model, const Data& data, Real t,
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
+    void add_wrenches(const Model& model, const Data& data, Real t,
+                      ConstVecRef lambda, std::vector<Vec6>& wrenches) const override;
 
 private:
     Marker i_, j_;
@@ -143,6 +155,8 @@ public:
     int size() const override { return 1; }
     void calc(const Model& model, const Data& data, Real t,
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
+    void add_wrenches(const Model& model, const Data& data, Real t,
+                      ConstVecRef lambda, std::vector<Vec6>& wrenches) const override;
 
 private:
     Marker i_, j_;
@@ -165,6 +179,8 @@ public:
     int size() const override { return 1; }
     void calc(const Model& model, const Data& data, Real t,
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
+    void add_wrenches(const Model& model, const Data& data, Real t,
+                      ConstVecRef lambda, std::vector<Vec6>& wrenches) const override;
 
 private:
     Marker i_, j_;
@@ -184,6 +200,8 @@ public:
     int size() const override { return 1; }
     void calc(const Model& model, const Data& data, Real t,
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
+    void add_wrenches(const Model& model, const Data& data, Real t,
+                      ConstVecRef lambda, std::vector<Vec6>& wrenches) const override;
 
 private:
     Marker i_, j_;
@@ -228,6 +246,8 @@ public:
     int size() const override { return size_; }
     void calc(const Model& model, const Data& data, Real t,
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
+    void add_wrenches(const Model& model, const Data& data, Real t,
+                      ConstVecRef lambda, std::vector<Vec6>& wrenches) const override;
 
     const std::vector<std::shared_ptr<const ConstraintModel>>& parts() const { return parts_; }
 

@@ -306,6 +306,20 @@ constrained dynamics with `ConstraintSolver`, from the same kinematics pass. RK4
 `q_dot` and normalizes once per step; semi-implicit Euler moves q through
 `integrate`. After each step the state is projected onto the constraints.
 
+**Outputs** (task 3.3, `kernel/outputs.hpp`). `compute_loads(sim)` evaluates
+the accelerations at the simulator's state and returns them with the
+multipliers, each constraint's wrench on each body, and each joint's reaction.
+The constraint wrenches come from `ConstraintModel::add_wrenches`, which uses
+the very rows the Jacobian is built from, weighted by the multipliers. A
+joint's reaction is the spatial force it transmits to its child body, in the
+child-side joint frame about its origin (`joint_reactions`: recursive
+Newton-Euler with the external forces); it includes the joint's actuation,
+whose component along the joint's motion is the generalized force there.
+Energies: `kinetic_energy`, `potential_energy` (gravity), and the
+`potential_energy` of each spring element. `Recorder`
+(`analysis/recorder.hpp`) samples named channels, functions of anything, and
+writes them as CSV.
+
 **Drivers.** A constraint whose target depends on t drives a mechanism.
 `JointDriver` holds a revolute or prismatic coordinate at s(t); its
 multiplier is the force or torque the drive needs (plan task 3.2's driven

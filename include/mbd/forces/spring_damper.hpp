@@ -52,6 +52,11 @@ public:
     /// derivatives with respect to both.
     LawValue law(Real length, Real rate) const;
 
+    /// Energy stored at length L by the spring, the preload and the stops,
+    /// zero at the free length: the conservative part of the force is
+    /// -dV/dL.
+    Real potential_energy(Real length) const;
+
     const SpringDamperParams& params() const { return params_; }
 
 private:

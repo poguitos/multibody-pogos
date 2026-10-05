@@ -36,6 +36,7 @@
 #include "mbd/kernel/constrained_dynamics.hpp"
 #include "mbd/kernel/forces.hpp"
 #include "mbd/kernel/joint_forces.hpp"
+#include "mbd/kernel/outputs.hpp"
 #include "mbd/kernel/simulator.hpp"
 #include "mbd/kernel/validate.hpp"
 
@@ -65,3 +66,4 @@
 #include "mbd/analysis/lap_vehicle.hpp"
 #include "mbd/analysis/lap_speed_profile.hpp"
 #include "mbd/analysis/optimization.hpp"
+#include "mbd/analysis/recorder.hpp"

@@ -69,6 +69,11 @@ public:
     /// The generalized force at coordinate q and rate v, with its derivatives.
     LawValue law(Real q, Real v) const;
 
+    /// Energy stored at coordinate q by the spring, the preload and the stop
+    /// springs, zero at the reference: the conservative part of the force is
+    /// -dV/dq. Damping and friction are not conservative.
+    Real potential_energy(Real q) const;
+
     const JointCoordinateForceParams& params() const { return params_; }
 
 private:

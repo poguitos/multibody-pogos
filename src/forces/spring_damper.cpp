@@ -37,6 +37,19 @@ LawValue SpringDamper::law(Real length, Real rate) const
     return out;
 }
 
+Real SpringDamper::potential_energy(Real length) const
+{
+    const SpringDamperParams& p = params_;
+    const Real compression = p.free_length - length;
+    // Force pushing apart f(L) = -dV/dL, with d(compression)/dL = -1.
+    Real V = p.spring.integral(0.0, compression) + p.preload * compression;
+    const Real bump = compression - p.bump_clearance;
+    if (bump > 0.0) V += p.bump_stop.integral(0.0, bump);
+    const Real rebound = -compression - p.rebound_clearance;
+    if (rebound > 0.0) V += p.rebound_stop.integral(0.0, rebound);
+    return V;
+}
+
 void SpringDamper::apply(const std::vector<RigidBodyState>& states,
                          std::vector<RigidBodyForces>& forces) const
 {

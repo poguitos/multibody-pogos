@@ -57,6 +57,15 @@ LawValue JointCoordinateForce::law(Real q, Real v) const
     return out;
 }
 
+Real JointCoordinateForce::potential_energy(Real q) const
+{
+    const JointCoordinateForceParams& p = params_;
+    Real V = p.spring.integral(0.0, q - p.reference) - p.preload * (q - p.reference);
+    if (q > p.upper_limit) V += 0.5 * p.limit_stiffness * (q - p.upper_limit) * (q - p.upper_limit);
+    if (q < p.lower_limit) V += 0.5 * p.limit_stiffness * (p.lower_limit - q) * (p.lower_limit - q);
+    return V;
+}
+
 void JointCoordinateForce::apply(const VecX& q, const VecX& v, VecX& tau) const
 {
     tau(iv_) += law(q(iq_), v(iv_)).force;
