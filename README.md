@@ -47,6 +47,14 @@ scripts\build.ps1 -Test -Filter "Drivetrain"    # tests whose name matches
 
 The script loads the Visual Studio environment and then uses the presets in `CMakePresets.json`. From a "x64 Native Tools" prompt the same steps are `cmake --preset dev`, `cmake --build --preset dev` and `ctest --preset dev`.
 
+On Linux with GCC 13 or later (as in CI and in cloud sessions):
+
+```sh
+cmake -S . -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DMBD_COMPILE_JOBS=3 -DMBD_BUILD_PYTHON=OFF
+cmake --build build-linux
+ctest --test-dir build-linux --output-on-failure -j3
+```
+
 A test executable can also be run directly, with Catch2's own filters:
 
 ```powershell

@@ -39,6 +39,18 @@ thesis about the project is written from this record.
    notes), and mark what only the author can complete.
 7. **The book outline is updated** when an entry adds a topic worth a section.
 
+## Where the work happens
+
+Until 5 October 2026 every session ran on the author's laptop (Windows,
+MSVC), on the branches `core-revision`, `phase-2` and `phase-3`. From then on
+work is also done in cloud sessions (decision D25): each starts from a fresh
+clone, works on a branch of its own (`claude/...`) started from the latest
+work branch, builds and tests with GCC on Linux, and pushes at the end of
+every task; CI then builds it with MSVC as well. The rules a session needs are
+in [`CLAUDE.md`](../../CLAUDE.md) at the repository root, which every session
+reads, so none of them depends on a session's memory. Entries say which kind
+of session wrote them, and timings which machine took them.
+
 Entries follow [TEMPLATE.md](TEMPLATE.md). File names start with the date the
 work began, `YYYY-MM-DD_short-title.md`.
 
@@ -59,4 +71,4 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 5 Oct 2026 | [Help folder and message codes](2026-10-05_help-and-message-codes.md) | H.1, H.2 | `47315ba` | At the time |
 | 5 Oct 2026 | [Phase 3: prescribed motion and kinematic analysis](2026-10-05_phase-3-prescribed-motion-and-kinematics.md) | 3.2, 3.6 | `30e6f08` | At the time |
 | 5 Oct 2026 | [Phase 3: the force library](2026-10-05_phase-3-force-library.md) | 3.1 | `e1e3863` | At the time |
-| 5 Oct 2026 | [Phase 3: output requests](2026-10-05_phase-3-outputs.md) | 3.3 | see git log | At the time |
+| 5 Oct 2026 | [Phase 3: output requests](2026-10-05_phase-3-outputs.md) | 3.3 | `8243549` | At the time, on the laptop |

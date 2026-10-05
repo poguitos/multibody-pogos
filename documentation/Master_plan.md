@@ -463,7 +463,7 @@ Goal: the help every program has, written while the program is built (D23): how 
 2. **Every joint, constraint and force passes the invariant tests** before anything is built on it.
 3. **Tests assert derived values.** A threshold comes with the hand calculation that justifies it. A test that only records what the code did is not a test.
 4. **One place per formula.** If two routines need the same quantity, one computes it and the other reads it.
-5. **Commit every session.** `main` stays green. Work happens on branches.
+5. **Commit every session.** `main` stays green. Work happens on branches. A cloud session works on its own branch, started from the latest work branch, and pushes at the end of every task; the rules every session needs are in `CLAUDE.md` (D25).
 6. **Each phase ends at its gate.** The next phase starts when the "done when" conditions hold, not when the code exists.
 7. **Keep the record** (D22). Every task ends with an entry in `documentation/journal/`, in the commit that finishes the task. Decisions go to `documentation/decisions.md` when they are taken; every number keeps its raw data and the command that produced it; every phase ends with a retrospective entry. This is the material for the book about the project.
 8. **Keep the help current** (D23). A task that adds or changes a message, an option or a behaviour updates `docs/help/` in the same commit; every error and warning carries a code documented in the message catalogue.

@@ -35,6 +35,7 @@ and the journal entry of the work refers to them by number
 | D22 | A development record kept in the repository, for the book | 5 Oct 2026 | In force |
 | D23 | Help documentation grown with each phase, with message codes | 5 Oct 2026 | In force (H.1, H.2 done) |
 | D24 | Force laws in each element's own coordinates, with their derivatives; joint-coordinate forces act on generalized forces directly | 5 Oct 2026 | In force, task 3.1 |
+| D25 | Work in cloud sessions through git: rules in `CLAUDE.md`, a branch per session, the record unchanged | 5 Oct 2026 | In force |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -293,3 +294,32 @@ and the journal entry of the work refers to them by number
   assembly. Phase 4 decides whether the analytic tangent matrices are worth
   their cost.
 - **Record.** Journal: the force library.
+
+## D25. Working in cloud sessions, through git
+
+- **Context.** Until 5 October 2026 the work was done in sessions on the
+  author's laptop: the assistant had the working tree, a memory that outlived
+  each session, and the MSVC build. From then on it is also done in cloud
+  sessions, each starting from a fresh clone of the GitHub repository on a
+  Linux container, allowed to push only to a branch of its own
+  (`claude/...`), with no access to the laptop's memory. The rule "every task
+  ends with its journal entry" had been saved to that memory; a cloud session
+  would never have seen it. The first cloud session also found that the
+  latest work (Phase 3 so far) was on the branch `phase-3`, not on `main`.
+- **Decision.** Everything a session must know is committed: the working rules
+  are in `CLAUDE.md` at the repository root, which every Claude Code session
+  reads, and in the plan (section 7). Each cloud session starts its branch
+  from the latest work branch and pushes at the end of every task. The record
+  itself (journal, decisions, data, help) is kept exactly as before, in the
+  commit that finishes each task. Journal entries say whether they were
+  written on the laptop or in a cloud session; timings say which machine.
+  Merging to `main` and tagging at a phase gate stay with the author.
+- **Alternatives.** Keep the rules in session memory (invisible to cloud
+  sessions); rely on the user to repeat them at the start of each session
+  (easy to forget, and the reason the rules are written down at all).
+- **Consequences.** A cloud session builds with GCC only, so CI on the pushed
+  branch is the first MSVC build of its work and must be checked. Timings
+  taken in a container are not compared with the laptop's (D21). A journal
+  entry cannot cite its own commit's hash; the index gets it in the next
+  commit.
+- **Record.** `CLAUDE.md`; journal README, "Where the work happens".
