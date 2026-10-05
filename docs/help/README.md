@@ -20,27 +20,22 @@ task that adds or changes a message, an option or a behaviour updates it.
 
 ## How-to guides
 
-Planned with each phase (task H.6). Until then, the tests are the worked
-examples:
+[The how-to guides](howto/README.md): one task per page, each with an example
+that is compiled and run as a test (`tests/examples/`), so the code on the
+page is the code that works:
+[forces](howto/forces.md), [prescribed motion and kinematics](howto/motion.md),
+[outputs](howto/outputs.md), [assembly](howto/assembly.md),
+[statics](howto/statics.md), [modes](howto/modes.md),
+[contact](howto/contact.md), [events](howto/events.md),
+[what went wrong](howto/trace.md).
+
+For what has no page yet, the tests are the worked examples:
 
 | To do this | See |
 |---|---|
 | Build a mechanism with loops | `tests/kernel/test_kernel_constrained.cpp` (four-bar), `tests/kernel/test_kernel_validate.cpp` |
 | Simulate it | `tests/kernel/test_kernel_simulator.cpp`, `tests/kernel/test_kernel_joints_physics.cpp` |
-| Drive a joint along a prescribed motion | `tests/kernel/test_kernel_simulator.cpp` (driven pendulum) |
-| Drive a point along a path | `tests/kernel/test_kernel_simulator.cpp` (point driven along a circle) |
-| Velocities and accelerations of a mechanism along its motion (motion ratios) | `Kinematics::velocities()`, `accelerations()`; `tests/test_suspension_kinematics.cpp` |
-| Add a spring or damper with a tabulated curve, preload or stops | `tests/forces/test_force_library.cpp` |
-| Add a torsion spring, friction or a limit stop on a joint | `tests/forces/test_force_library.cpp` (`JointCoordinateForce`) |
 | Add a bushing, a rotational spring between bodies, or a force of your own | `tests/forces/test_force_connectors.cpp` |
-| Put a body in contact with the ground or another body's face: points, spheres, friction | `PlaneContact`; [the kernel, contact](../kernel.md#forces-and-simulation); `tests/forces/test_plane_contact.cpp` |
-| Stop at, or act on, an event: an impact, a switch, a limit reached | `Simulator::events`, `Event`; [the kernel, events](../kernel.md#forces-and-simulation); `tests/kernel/test_kernel_events.cpp` |
-| Read joint reactions, constraint forces and energies | `compute_loads(sim)`; `tests/kernel/test_kernel_outputs.cpp` |
-| Record channels over a run and write them as CSV | `Recorder`; `tests/kernel/test_kernel_outputs.cpp` |
-| Start from values that do not satisfy the constraints: close a loop, hold the coordinates that matter | `kernel::assemble`, `AssemblySpec`; [the kernel, assembly](../kernel.md#assembly-of-initial-conditions); `tests/kernel/test_kernel_assembly.cpp` |
-| Find the static equilibrium: a vehicle settled on its springs and tyres, a mechanism at rest under load | `kernel::static_equilibrium`, `StaticsOptions`; [the kernel, static equilibrium](../kernel.md#static-equilibrium); `tests/kernel/test_kernel_statics.cpp` |
-| Natural frequencies, damping ratios and mode shapes; state matrices for control | `kernel::linearize` after `static_equilibrium`; [the kernel, linearisation](../kernel.md#linearisation); `tests/kernel/test_kernel_linearization.cpp` |
-| Find out what went wrong in a simulation: a step trace and its diagnosis | `Simulator::trace`, `diagnose`; [troubleshooting](troubleshooting.md#8-the-debugging-tools); `tests/kernel/test_kernel_diagnostics.cpp` |
 | Check a model before simulating it | [The kernel, checks](../kernel.md#checks); `validate()` |
 | Build and run a vehicle | `tests/vehicle/test_vehicle_template_dynamic.cpp`, `bench/bench_dynamics.cpp` |
 | Sweep a suspension through bump travel | `tests/test_suspension_kinematics.cpp` |

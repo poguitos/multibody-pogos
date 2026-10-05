@@ -44,6 +44,7 @@ mbd_add_test_exe(test_core
     core/test_math.cpp
     core/test_transform3.cpp
     core/test_message_catalogue.cpp
+    core/test_howto_examples.cpp
 )
 
 mbd_add_test_exe(test_model
@@ -107,6 +108,15 @@ mbd_add_test_exe(test_vehicle
     test_mcpherson_dynamic.cpp
     test_multilink.cpp
     test_quarter_car.cpp
+)
+
+# The examples quoted by the how-to pages of docs/help/howto (task H.6):
+# compiled and run, so that the pages cannot go stale.
+mbd_add_test_exe(test_examples
+    examples/ex_forces.cpp
+    examples/ex_motion.cpp
+    examples/ex_outputs.cpp
+    examples/ex_phase3.cpp
 )
 
 mbd_add_test_exe(test_analysis
