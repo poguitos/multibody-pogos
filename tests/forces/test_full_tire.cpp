@@ -334,8 +334,8 @@ TEST_CASE("FullTireForce: rotated wheel produces correct force directions",
     sys.q << 0.0, R_free - defl, 0.0, 0.0, pi / 2.0, 0.0;
 
     // We want the wheel to move along world +X (perpendicular to tire forward).
-    // After the FreeCoordJoint fix, q_dot(0:2) is parent-frame (world) linear
-    // velocity. So q_dot(0) = 20 gives 20 m/s along world X directly.
+    // FreeWheel's q_dot(0:2) is the world velocity of the wheel centre, so
+    // q_dot(0) = 20 gives 20 m/s along world X directly.
     sys.q_dot << 20.0, 0.0, 0.0, 0.0, 0.0, 0.0;
     sys.compute_kinematics();
 

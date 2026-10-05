@@ -32,28 +32,32 @@ A joint connects a parent body to a child body and supplies the generalized coor
 
 - Each joint has two fixed frames: `X_PJ` (joint frame in the parent body) and `X_CJ` (joint frame in the child body). The motion across the joint is `X_J(q)`, and the child pose is `X_PC = X_PJ * X_J(q) * X_CJ^-1`.
 - The joint axis is the local Z axis of the joint frame. A joint about another direction is obtained by rotating `X_PJ` and `X_CJ`.
-- The motion subspace `S(q)` maps `q_dot` to the relative velocity of the child, as a six-vector `[angular; linear]`, **expressed in the child-side joint frame** (the frame after `X_J(q)` has been applied). Every algorithm rotates `S` to the world with `R_WP * R_PJ * R_J(q)`.
-- `bias_acceleration(q, q_dot)` returns the time derivative of `S` times `q_dot`, in the same frame.
+- Coordinates `q` and velocities `v` need not have the same size (a quaternion has four coordinates for three velocities); `q_dot = G(q) v`.
+- Velocities are **body-fixed**: the motion subspace `S(q)` maps `v` to the velocity of the child-side joint frame relative to the parent-side one, as a six-vector `[angular; linear]` **expressed in the child-side joint frame**. `c(q, v)` is the time derivative of `S` times `v`, in the same frame.
 
-| Joint | Coordinates |
-|---|---|
-| Revolute | angle about joint Z |
-| Prismatic | displacement along joint Z |
-| Universal | angle about joint Z, then angle about the rotated X |
-| Spherical | rotation vector (exponential map), kept at norm ≤ π |
-| Free | translation in the parent-side joint frame, then rotation vector |
-| Fixed | none |
+| Joint | Coordinates | Velocities |
+|---|---|---|
+| Revolute | angle about joint Z | its rate |
+| Prismatic | displacement along joint Z | its rate |
+| Universal | angle about joint Z, then angle about the rotated X | their rates |
+| Cylindrical | angle about and displacement along joint Z | their rates |
+| Planar | x and y in the parent-side joint frame, then angle about Z | their rates |
+| Spherical | unit quaternion, stored `(x, y, z, w)` | angular velocity in the child-side joint frame |
+| Free | translation in the parent-side joint frame, then unit quaternion | angular velocity, then velocity of the frame's origin, both in the child-side joint frame |
+| Fixed | none | none |
+
+[kernel.md](kernel.md) gives `X_J`, `S` and `c` for each joint.
 
 ## Constraints
 
-A constraint closes a loop that the joint tree cannot represent.
+A constraint closes a loop that the joint tree cannot represent. It acts between markers, frames fixed on bodies (body 0 for the ground).
 
-- `evaluate` returns the position-level residual `Phi`, zero when satisfied.
-- `jacobian` returns two blocks, one per body, each with six columns ordered `[linear, angular]`, such that `dPhi/dt = J1 * [v1; w1] + J2 * [v2; w2]` with the body-origin velocities above.
-- `velocity_bias` returns the part of `d2Phi/dt2` that does not multiply the body accelerations, so that `d2Phi/dt2 = J1 * [a1; alpha1] + J2 * [a2; alpha2] + gamma`.
+- `phi(q, t)` is the position-level residual, zero when satisfied.
+- `J` is its Jacobian with respect to the generalized velocities: `d(phi)/dt = J v - nu` with `nu = -d(phi)/dt` at fixed `q`.
+- `gamma = -(dJ/dt) v - d2(phi)/dt2` at fixed `q`, so that the accelerations satisfy `J v_dot = gamma`.
 - The equations of one constraint must be independent. A constraint that removes two degrees of freedom has two equations, not three of rank two.
 
-Note the ordering: joints use `[angular; linear]`, constraints use `[linear, angular]`. This is historical and will be unified when the kernel is rewritten (plan, Phase 2).
+Spatial vectors are ordered `[angular; linear]` everywhere (decision D1).
 
 ## World axes and vehicle axes
 
@@ -83,7 +87,7 @@ Signs in the ISO 8855 frame, which the migration will establish:
 
 - Types are `PascalCase`, functions and variables are `snake_case`, constants start with `k`.
 - A quantity carries its frames in its name: `p_WB`, `R_WJ`, `X_PJ`.
-- Classes ending in `CoordJoint` are joints of the tree. Classes derived from `Constraint` are loop closures, and their names end in `Constraint`.
+- Joints of the tree are joint models, `kernel::*JointModel`. Loop closures derive from `kernel::ConstraintModel` and are named after the relation they hold (`PointCoincidence`, `Distance`, `JointDriver`); the closures of whole joints are made by functions named `*_closure`.
 
 ## Decisions on record
 

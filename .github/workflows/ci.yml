@@ -48,7 +48,7 @@ jobs:
           "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer"
 
       - name: Build the core test executables
-        run: cmake --build build-linux --target test_core test_model test_algorithms test_invariants test_kernel
+        run: cmake --build build-linux --target test_core test_model test_kernel
 
       - name: Run tests
         run: ctest --test-dir build-linux --output-on-failure -E "_NOT_BUILT"

@@ -8,7 +8,6 @@
 //
 // This is the simplest possible formulation: 6 DOF - 6 constraints = 0 net DOF.
 
-#include "mbd/model/system.hpp"
 #include "mbd/analysis/position_kinematics.hpp"
 
 #include <array>
@@ -68,60 +67,6 @@ struct MultilinkCorner {
 
 // ============================================================================
 // Builder
-// ============================================================================
-
-inline MultilinkCorner build_multilink_corner(
-    MultibodySystem& sys,
-    const MultilinkParams& p = MultilinkParams{})
-{
-    MultilinkCorner ml;
-    ml.params = p;
-
-    // --- Upright body (origin at wheel center) ---
-    auto I_upright = RigidBodyInertia::from_solid_box(
-        p.upright_mass, Vec3(0.05, 0.12, 0.05));
-    ml.upright_body = sys.add_body(I_upright, RigidBodyState{}, "ML_upright", kGroundIndex);
-
-    ml.free_joint_idx = sys.add_joint(std::make_unique<FreeCoordJoint>(
-        Transform3::Identity(),
-        Transform3::FromTranslation(-p.wheel_center),
-        kGroundIndex, ml.upright_body));
-
-    // --- 5 link distance constraints ---
-    for (int i = 0; i < 5; ++i) {
-        const Vec3 outer_B = p.outer[i] - p.wheel_center;
-        const Real link_length = (p.outer[i] - p.inner[i]).norm();
-
-        ml.link_constraint_indices[i] = sys.constraints.size();
-        sys.constraints.push_back(std::make_shared<DistanceConstraint>(
-            kGroundIndex, ml.upright_body,
-            p.inner[i], outer_B, link_length));
-    }
-
-    // --- Bump prescription ---
-    ml.bump_constraint_idx = sys.constraints.size();
-    sys.constraints.push_back(std::make_shared<PointCoordinateConstraint>(
-        ml.upright_body, Vec3::Zero(), 1, p.wheel_center.y()));
-
-    return ml;
-}
-
-inline void set_multilink_reference(MultibodySystem& sys, const MultilinkCorner& ml)
-{
-    sys.q.setZero();
-
-    // FreeCoordJoint q = [tx, ty, tz, rx, ry, rz]
-    // At reference, upright origin = wheel_center in world.
-    // With X_CJ = T(-wheel_center), parent_to_child at q=0 gives:
-    //   X_PC = I * I * T(+wheel_center) = T(wheel_center)
-    // So body origin = ground_origin + wheel_center = wheel_center. Correct.
-
-    sys.q_dot.setZero();
-    sys.compute_forward_kinematics();
-}
-
-// ============================================================================
-// On the kernel (plan task 2.7)
 // ============================================================================
 
 /// Kinematic multilink corner: a free upright held by five links, with its

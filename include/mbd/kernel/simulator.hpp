@@ -1,8 +1,7 @@
 #pragma once
 
-// Time integration on the kinematics kernel: the replacement for
-// integrators/simulator.hpp (plan task 2.7). Phase 4 builds the integrator
-// interface proper on top of this.
+// Time integration on the multibody kernel (plan task 2.7). Phase 4 builds
+// the integrator interface proper on top of this.
 //
 // Each evaluation of the accelerations at (q, v, t):
 //   1. kinematics, and the world states of the bodies;

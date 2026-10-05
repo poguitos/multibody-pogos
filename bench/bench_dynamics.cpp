@@ -4,8 +4,7 @@
 // Run:                    build\bench\mbd_bench.exe
 //
 // Prints a Markdown table of the time per call, the median of several
-// rounds, for the legacy algorithms and for the Phase 2 kernel on the same
-// models. Numbers are machine-dependent: compare runs on the same machine.
+// rounds. Numbers are machine-dependent: compare runs on the same machine.
 
 #include <algorithm>
 #include <chrono>
@@ -16,9 +15,6 @@
 #include <string>
 #include <vector>
 
-#include "mbd/model/system.hpp"
-#include "mbd/algorithms/dynamics.hpp"
-#include "mbd/integrators/simulator.hpp"
 #include "mbd/kernel/algorithms.hpp"
 #include "mbd/kernel/constrained_dynamics.hpp"
 #include "mbd/kernel/simulator.hpp"
@@ -76,10 +72,10 @@ namespace
                                rng.range(-offset, offset)));
     }
 
-    // n bodies on revolute joints with generic axes, built identically in
-    // both engines. `tree` makes body i a child of body i / 2 (a binary
-    // tree); otherwise each body is a child of the previous one.
-    void build_revolute_system(MultibodySystem& sys, kernel::Model& model, int n, bool tree)
+    // n bodies on revolute joints with generic axes, and a random state.
+    // `tree` makes body i a child of body i / 2 (a binary tree); otherwise
+    // each body is a child of the previous one.
+    void build_revolute_system(kernel::Model& model, VecX& q, VecX& v, int n, bool tree)
     {
         Lcg rng;
         const auto revolute = std::make_shared<kernel::RevoluteJointModel>();
@@ -90,69 +86,52 @@ namespace
             inertia.com_B = Vec3(rng.range(-0.1, 0.1), rng.range(-0.1, 0.1), rng.range(-0.1, 0.1));
             const Transform3 X_PJ = generic_frame(rng, 0.4);
             const Transform3 X_CJ = generic_frame(rng, 0.3);
-            const BodyIndex b = sys.add_body(inertia, RigidBodyState{}, "b", parent);
-            sys.add_joint(std::make_unique<RevoluteCoordJoint>(X_PJ, X_CJ, parent, b));
             model.add_body(parent, revolute, X_PJ, X_CJ, inertia);
         }
-        for (int i = 0; i < sys.total_dof; ++i) {
-            sys.q(i) = rng.range(-0.6, 0.6);
-            sys.q_dot(i) = rng.range(-1.2, 1.2);
+        q.resize(model.nq);
+        v.resize(model.nv);
+        for (int i = 0; i < model.nv; ++i) {
+            q(i) = rng.range(-0.6, 0.6);
+            v(i) = rng.range(-1.2, 1.2);
         }
-        sys.compute_kinematics();
     }
 
-    void row(const std::string& model, const std::string& op, double legacy_us, double kernel_us)
+    void row(const std::string& model, const std::string& op, double us)
     {
-        if (legacy_us <= 0.0) {
-            std::printf("| %-30s | %-32s |            | %10.2f |        |\n", model.c_str(),
-                        op.c_str(), kernel_us);
-        } else if (kernel_us > 0.0) {
-            std::printf("| %-30s | %-32s | %10.2f | %10.2f | %6.1f |\n", model.c_str(), op.c_str(),
-                        legacy_us, kernel_us, legacy_us / kernel_us);
-        } else {
-            std::printf("| %-30s | %-32s | %10.2f |            |        |\n", model.c_str(), op.c_str(),
-                        legacy_us);
-        }
+        std::printf("| %-30s | %-32s | %10.2f |\n", model.c_str(), op.c_str(), us);
     }
 }
 
 int main()
 {
-    std::printf("| Model | Operation | Legacy [us] | Kernel [us] | Ratio |\n");
-    std::printf("|---|---|---|---|---|\n");
-
-    const Vec3 g(0.0, -g_accel, 0.0);
+    std::printf("| Model | Operation | Time [us] |\n");
+    std::printf("|---|---|---|\n");
 
     for (bool tree : {false, true}) {
         for (int n : {2, 4, 8, 16, 32, 64}) {
-            MultibodySystem sys;
             kernel::Model model;
-            build_revolute_system(sys, model, n, tree);
-            model.gravity = g;
+            VecX q, v;
+            build_revolute_system(model, q, v, n, tree);
+            model.gravity = Vec3(0.0, -g_accel, 0.0);
             kernel::Data data(model);
-            const VecX q = sys.q, v = sys.q_dot;
-            const VecX zero = VecX::Zero(sys.total_dof);
+            const VecX zero = VecX::Zero(model.nv);
             const std::string name = std::string(tree ? "revolute tree, " : "revolute chain, ")
                                    + std::to_string(n) + " bodies";
 
             row(name, "positions and velocities",
-                time_per_call_us([&] { sys.compute_kinematics(); }),
                 time_per_call_us([&] { kernel::forward_kinematics(model, data, q, v); }));
             row(name, "mass matrix",
-                time_per_call_us([&] { volatile double x = compute_mass_matrix(sys)(0, 0); (void)x; }),
                 time_per_call_us([&] { volatile double x = kernel::crba(model, data, q)(0, 0); (void)x; }));
             row(name, "inverse dynamics",
-                time_per_call_us([&] { volatile double x = inverse_dynamics(sys, zero, g)(0); (void)x; }),
                 time_per_call_us([&] { volatile double x = kernel::rnea(model, data, q, v, zero)(0); (void)x; }));
             row(name, "forward dynamics",
-                time_per_call_us([&] { volatile double x = forward_dynamics(sys, zero, g)(0); (void)x; }),
                 time_per_call_us([&] { volatile double x = kernel::aba(model, data, q, v, zero)(0); (void)x; }));
         }
     }
 
-    // The detailed vehicle, on the kernel: chassis on a free joint, steering
-    // rack, four double-wishbone corners closed by constraints, springs,
-    // dampers and tyres, driven through the drivetrain.
+    // The detailed vehicle: chassis on a free joint, steering rack, four
+    // double-wishbone corners closed by constraints, springs, dampers and
+    // tyres, driven through the drivetrain.
     {
         auto tmpl = VehicleTemplate::DefaultSedan();
         tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
@@ -169,17 +148,17 @@ int main()
         dt.throttle = 0.3;
         sim.run(0.2, 0.001);   // moving, wheels loaded
 
-        const std::string name = "double-wishbone sedan, kernel";
+        const std::string name = "double-wishbone sedan";
         kernel::Data data(sys.model);
         kernel::ConstraintSolver solver(sys.model, sys.constraints);
         const VecX zero = VecX::Zero(sys.model.nv);
         VecX q = sim.q, v = sim.v;
-        row(name, "mass matrix", 0.0, time_per_call_us([&] {
+        row(name, "mass matrix", time_per_call_us([&] {
             volatile double x = kernel::crba(sys.model, data, q)(0, 0); (void)x; }));
-        row(name, "constrained forward dynamics", 0.0, time_per_call_us([&] {
+        row(name, "constrained forward dynamics", time_per_call_us([&] {
             volatile double x = solver.forward_dynamics(data, q, v, zero, 0.0)(0); (void)x; }));
-        row(name, "constraint projection", 0.0, time_per_call_us([&] { solver.project(data, q, v, 0.0); }));
-        row(name, "one RK4 step of 1 ms, everything", 0.0, time_per_call_us([&] { sim.step(0.001); }));
+        row(name, "constraint projection", time_per_call_us([&] { solver.project(data, q, v, 0.0); }));
+        row(name, "one RK4 step of 1 ms, everything", time_per_call_us([&] { sim.step(0.001); }));
     }
     return 0;
 }

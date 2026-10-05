@@ -26,7 +26,7 @@ using ConstraintIndex = int;
 /// Sentinel value for "no parent" (used by the ground body).
 inline constexpr BodyIndex kNoParent = -1;
 
-/// The ground body always occupies index 0 in MultibodySystem.
+/// The ground body always occupies index 0 in a kernel::Model.
 inline constexpr BodyIndex kGroundIndex = 0;
 //------------------------------------------------------------------------------
 // Units and constants (global conventions)

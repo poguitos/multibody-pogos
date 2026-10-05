@@ -2,25 +2,25 @@
 
 A C++20 multibody dynamics engine aimed at vehicle and suspension simulation: joint-coordinate rigid-body dynamics with loop-closing constraints, tyre and suspension models, and the analyses built on them.
 
-The project is in active development and its core is being revised. The roadmap, the findings of the October 2026 review, and the status of each task are in [documentation/Master_plan.md](documentation/Master_plan.md). Frames, units and sign conventions are in [docs/conventions.md](docs/conventions.md). The new kinematics kernel (spatial algebra, joint models, recursive algorithms) is described in [docs/kernel.md](docs/kernel.md), and timings in [docs/performance.md](docs/performance.md).
+The project is in active development and its core is being revised. The roadmap, the findings of the October 2026 review, and the status of each task are in [documentation/Master_plan.md](documentation/Master_plan.md). Frames, units and sign conventions are in [docs/conventions.md](docs/conventions.md). The multibody kernel (spatial algebra, joint models, recursive algorithms, constraints, the simulator) is described in [docs/kernel.md](docs/kernel.md), and timings in [docs/performance.md](docs/performance.md).
 
 ## Layout
 
 | Path | Contents |
 |---|---|
 | `include/mbd/core` | Math types, transforms, errors, logging |
-| `include/mbd/model` | Bodies, joints, constraints, the system container |
-| `include/mbd/algorithms` | Mass matrix, inverse and forward dynamics, constraint solve and projection |
-| `include/mbd/integrators` | The simulator and its time-stepping schemes |
+| `include/mbd/spatial` | Spatial vectors, frame changes, spatial inertia |
+| `include/mbd/kernel`, `src/kernel` | Joint models, model and data, recursive algorithms, constraints, constrained dynamics, simulator |
+| `include/mbd/model` | Rigid-body inertia, state and forces |
 | `include/mbd/forces` | Springs, tyres, aerodynamics, anti-roll bar |
 | `include/mbd/vehicle` | Suspension corners, vehicle builders, drivetrain |
 | `include/mbd/analysis` | Suspension kinematics, bicycle model, track, lap simulation, optimisation |
-| `tests` | One executable per folder above, plus `tests/invariants` |
+| `tests` | One executable per folder above |
 | `documentation` | Plans, review evidence, reference notes |
 | `docs` | Project documentation |
 | `scripts` | Build helper |
 
-The engine is header-only for now. Moving it into a compiled library is task 2.8 of the plan.
+The kernel is compiled (`src/kernel`); the force, vehicle and analysis layers are still header-only. Moving them into the compiled library is task 2.8 of the plan.
 
 ## Requirements
 
@@ -47,7 +47,7 @@ A test executable can also be run directly, with Catch2's own filters:
 
 ```powershell
 build\tests\test_vehicle.exe "Drivetrain*"
-build\tests\test_invariants.exe "[constraints]"
+build\tests\test_kernel.exe "[constraints]"
 ```
 
 ## Build limits
@@ -83,9 +83,9 @@ Ninja learns which headers a source file includes from notes that the compiler p
 
 ## Tests
 
-`ctest --preset dev` runs every Catch2 test case as its own test. The executables mirror the source folders: `test_core`, `test_model`, `test_algorithms`, `test_forces`, `test_vehicle`, `test_analysis`.
+`ctest --preset dev` runs every Catch2 test case as its own test. The executables mirror the source folders: `test_core`, `test_model`, `test_kernel`, `test_forces`, `test_vehicle`, `test_analysis`.
 
-`test_invariants` is different in kind. It checks relations that must hold for every joint and constraint at any state, by comparing the engine with finite differences of its own position-level quantities and with conservation laws:
+The invariant tests in `test_kernel` are different in kind. They check relations that must hold for every joint and constraint at any state, by comparing the engine with finite differences of its own position-level quantities and with conservation laws:
 
 - body velocities are the time derivative of body poses;
 - the mass matrix, the inverse dynamics and Lagrange's equations describe the same system;
@@ -94,5 +94,5 @@ Ninja learns which headers a source file includes from notes that the compiler p
 
 Two rules follow from the October 2026 review, and are part of the plan:
 
-1. A new joint, constraint or force is added to `tests/invariants` and passes there before anything is built on it.
+1. A new joint, constraint or force is added to the invariant tests in `tests/kernel` and passes there before anything is built on it.
 2. A test asserts a value that was derived, with the derivation in a comment. A threshold that only records what the code happened to do is not a test.

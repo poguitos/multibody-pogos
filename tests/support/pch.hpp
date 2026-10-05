@@ -32,14 +32,12 @@
 #include "mbd/kernel/joint_model.hpp"
 #include "mbd/kernel/model.hpp"
 #include "mbd/kernel/algorithms.hpp"
+#include "mbd/kernel/constraints.hpp"
+#include "mbd/kernel/constrained_dynamics.hpp"
+#include "mbd/kernel/forces.hpp"
+#include "mbd/kernel/simulator.hpp"
 
 #include "mbd/model/rigid_body.hpp"
-#include "mbd/model/joint.hpp"
-#include "mbd/model/system.hpp"
-#include "mbd/model/constraint.hpp"
-
-#include "mbd/algorithms/dynamics.hpp"
-#include "mbd/integrators/simulator.hpp"
 
 #include "mbd/forces/force_element.hpp"
 #include "mbd/forces/pacejka.hpp"

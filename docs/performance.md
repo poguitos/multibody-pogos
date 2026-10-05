@@ -9,6 +9,8 @@ build\bench\mbd_bench.exe
 
 Each figure is the median of seven rounds, single thread, on the development laptop (Intel i7-13700H, Windows, MSVC 14.50, `/O2`). Compare runs on the same machine only. Timings on this laptop vary by up to a factor of two from one run to the next, so differences smaller than that need repeated runs.
 
+The legacy code was removed in task 2.7b, so the benchmark now times the kernel only; the comparisons below were measured before that.
+
 ## Baseline: the Phase 1 kernel, 3 October 2026
 
 The systems are chains and binary trees of revolute joints with generic axes and offsets, and the all-double-wishbone sedan from the vehicle template (26 coordinates, 16 constraint equations, moving at 0.2 s into a drive).

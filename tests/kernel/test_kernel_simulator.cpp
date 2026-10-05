@@ -11,10 +11,12 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <Eigen/Dense>
 
+#include "mbd/core/core.hpp"
 #include "mbd/forces/force_element.hpp"
 #include "mbd/kernel/algorithms.hpp"
 #include "mbd/kernel/forces.hpp"
@@ -209,4 +211,46 @@ TEST_CASE("Kernel simulator: a driven pendulum follows a sine and reports the dr
     }
     CHECK(worst_q < 1e-10);
     CHECK(worst_tau < 1e-8);
+}
+
+namespace {
+int g_warnings = 0;
+void count_warning(const std::string&) { ++g_warnings; }
+}
+
+TEST_CASE("Kernel simulator: a projection that cannot converge is counted and reported once",
+          "[kernel][simulator]")
+{
+    // The same body point held at height 0 and at height 0.5: no
+    // configuration satisfies both. The two equations have the same
+    // Jacobian, so the solver keeps the first and drops the second as
+    // redundant: the point stays at height 0, and the projection cannot
+    // bring the second residual (0.5) down.
+    System sys;
+    sys.model.add_body(0, std::make_shared<FreeJointModel>(), Transform3(), Transform3(),
+                       RigidBodyInertia::from_solid_box(1.0, Vec3(0.1, 0.1, 0.1)));
+    for (const Real height : {0.0, 0.5}) {
+        sys.constraints.push_back(std::make_shared<Dot2>(
+            Marker{0, Transform3()}, 2, Marker{1, Transform3()}, TimeFunction::constant(height)));
+    }
+
+    const DiagnosticSink previous_sink = diagnostic_sink();
+    diagnostic_sink() = &count_warning;
+    g_warnings = 0;
+
+    kernel::Simulator sim(sys);
+    sim.initialize();
+    sim.run(0.05, 1e-3);
+    diagnostic_sink() = previous_sink;
+
+    CHECK_FALSE(sim.last_projection().converged);
+    CHECK(sim.projection_failures() == 50);   // every step
+    // One report for the redundancy, one for the first failed projection.
+    CHECK(g_warnings == 2);
+
+    // The first equation holds; the state stays finite.
+    CHECK(std::abs(sim.states()[1].p_WB.z()) < 1e-9);
+    CHECK(std::abs(sim.last_projection().position_residual - 0.5) < 1e-9);
+    CHECK(sim.q.allFinite());
+    CHECK(sim.v.allFinite());
 }

@@ -51,37 +51,14 @@ mbd_add_test_exe(test_core
 
 mbd_add_test_exe(test_model
     model/test_rigid_body.cpp
-    model/test_joints.cpp
-    model/test_freejoint_conventions.cpp
-    test_forward_kinematics.cpp
-    test_revolute_joint.cpp
-    test_prismatic_joint.cpp
-    test_other_joints.cpp
-    test_constraints.cpp
 )
 
-mbd_add_test_exe(test_algorithms
-    algorithms/test_multibody_basics.cpp
-    algorithms/test_multibody_chains.cpp
-    test_algorithms.cpp
-    test_simulator.cpp
-    test_constrained_dynamics.cpp
-    test_loop_constraints.cpp
-    test_orientation_canonicalization.cpp
-)
-
-# Checks every joint and constraint type against finite differences and
-# conservation laws. New joints, constraints and forces must pass these before
-# anything is built on them (see documentation/Master_plan.md, working rule 2).
-mbd_add_test_exe(test_invariants
-    invariants/test_joint_invariants.cpp
-    invariants/test_constraint_invariants.cpp
-    invariants/test_conservation.cpp
-)
-
-# The kinematics kernel (plan Phase 2): spatial algebra, joint models, recursive
-# algorithms, constraints and the constrained solve, checked against invariants
-# and the legacy path.
+# The multibody kernel (plan Phase 2): spatial algebra, joint models, recursive
+# algorithms, constraints, the constrained solve and the simulator. Every joint
+# and constraint type is checked against finite differences, conservation laws
+# and closed-form solutions; new joints, constraints and forces must pass these
+# before anything is built on them (see documentation/Master_plan.md, working
+# rule 2).
 mbd_add_test_exe(test_kernel
     kernel/test_spatial.cpp
     kernel/test_kernel_analytic.cpp
@@ -90,7 +67,7 @@ mbd_add_test_exe(test_kernel
     kernel/test_kernel_constraints.cpp
     kernel/test_kernel_constrained.cpp
     kernel/test_kernel_simulator.cpp
-    kernel/test_kernel_vs_legacy.cpp
+    kernel/test_kernel_joints_physics.cpp
 )
 find_package(Threads REQUIRED)
 target_link_libraries(test_kernel PRIVATE Threads::Threads)

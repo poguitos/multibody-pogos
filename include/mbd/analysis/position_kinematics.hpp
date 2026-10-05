@@ -3,71 +3,19 @@
 // Kinematic analysis tools: position-level solver, geometric extraction,
 // suspension sweep infrastructure.
 
-#include "mbd/model/system.hpp"
-#include "mbd/model/constraint.hpp"
-#include "mbd/algorithms/dynamics.hpp"
 #include "mbd/kernel/algorithms.hpp"
 #include "mbd/kernel/constrained_dynamics.hpp"
 #include "mbd/kernel/forces.hpp"
 #include "mbd/kernel/simulator.hpp"
 
-#include <Eigen/QR>
-#include <vector>
-#include <string>
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace mbd {
-
-// ============================================================================
-// Position-level constraint solver (Newton-Raphson)
-// ============================================================================
-//
-// The constraint evaluation (evaluate_all_constraints) and joint-space
-// constraint Jacobian (build_constraint_jacobian) live in
-// mbd/algorithms/dynamics.hpp and are reused here.
-
-/// Solve for joint coordinates q such that all constraints Phi(q) = 0.
-///
-/// Uses Newton-Raphson with QR decomposition and backtracking line search
-/// for robustness with nonlinear geometries (e.g., multi-link suspension).
-///
-/// Returns true if converged within tolerance.
-inline bool solve_position_kinematics(MultibodySystem& sys,
-                                      int max_iter = 100,
-                                      Real tol = 1e-10)
-{
-    for (int iter = 0; iter < max_iter; ++iter) {
-        sys.compute_forward_kinematics();
-
-        VecX phi = evaluate_all_constraints(sys);
-        Real err = phi.norm();
-        if (err < tol) return true;
-
-        MatX J_q = build_constraint_jacobian(sys);
-
-        Eigen::ColPivHouseholderQR<MatX> qr(J_q);
-        VecX dq = qr.solve(-phi);
-
-        // Backtracking line search: halve step until residual decreases
-        VecX q_save = sys.q;
-        Real step = 1.0;
-        for (int ls = 0; ls < 12; ++ls) {
-            sys.q = q_save + step * dq;
-            sys.compute_forward_kinematics();
-            VecX phi_new = evaluate_all_constraints(sys);
-            if (phi_new.norm() < err) {
-                break;
-            }
-            step *= 0.5;
-        }
-    }
-
-    // Final check
-    sys.compute_forward_kinematics();
-    VecX phi = evaluate_all_constraints(sys);
-    return phi.norm() < tol;
-}
 
 // ============================================================================
 // Geometric extraction from wheel body pose
@@ -146,64 +94,6 @@ struct KinematicSweepResult {
         return (last.camber - first.camber) / dbump;
     }
 };
-
-/// Sweep a suspension corner through vertical travel and record kinematics.
-///
-/// \param sys            The MultibodySystem (must have the suspension built).
-/// \param bump_constraint Index into sys.constraints of the PointCoordinateConstraint
-///                        that prescribes the wheel center Y position.
-/// \param upright_body   BodyIndex of the upright/wheel whose pose is measured.
-/// \param nominal_y      Wheel center Y at zero bump [m].
-/// \param bump_min       Most negative bump (droop) [m], e.g. -0.05.
-/// \param bump_max       Most positive bump (compression) [m], e.g. +0.05.
-/// \param n_steps        Number of sweep points.
-///
-/// Assumes the system is at a valid configuration (q near the reference).
-inline KinematicSweepResult sweep_bump_travel(
-    MultibodySystem& sys,
-    size_t bump_constraint_idx,
-    BodyIndex upright_body,
-    Real nominal_y,
-    Real bump_min,
-    Real bump_max,
-    int n_steps = 41)
-{
-    KinematicSweepResult result;
-    result.points.reserve(n_steps);
-
-    VecX q_save = sys.q;
-
-    auto* height_con = dynamic_cast<PointCoordinateConstraint*>(
-        sys.constraints[bump_constraint_idx].get());
-    MBD_THROW_IF(!height_con, "sweep_bump_travel: constraint is not PointCoordinateConstraint");
-
-    for (int i = 0; i < n_steps; ++i) {
-        Real bump = bump_min + (bump_max - bump_min) * i / std::max(n_steps - 1, 1);
-
-        // Set target height: nominal_y - bump (bump>0 = wheel moves up = y decreases)
-        height_con->target = nominal_y + bump;
-        // Start from saved configuration for robustness
-        sys.q = q_save;
-
-        bool ok = solve_position_kinematics(sys);
-
-        KinematicSweepPoint pt;
-        pt.bump = bump;
-        pt.converged = ok;
-        pt.wheel_y = sys.states[upright_body].p_WB.y();
-        pt.camber = extract_camber(sys.states[upright_body]);
-        pt.toe = extract_toe(sys.states[upright_body]);
-
-        result.points.push_back(pt);
-
-        // Use this solution as starting point for the next step
-        if (ok) {
-            q_save = sys.q;
-        }
-    }
-
-    return result;
-}
 
 // ============================================================================
 // Kinematic analysis on the kernel (plan task 2.7)

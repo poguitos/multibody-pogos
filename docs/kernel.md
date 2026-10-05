@@ -1,11 +1,12 @@
-# The kinematics kernel
+# The multibody kernel
 
-Plan Phase 2 (`documentation/Master_plan.md`). The kernel replaces the legacy
-`MultibodySystem` algorithms with one implementation of each joint's
-kinematics and one recursive algorithm per quantity. Defects F1 to F4 of the
-review all came from the same joint kinematics being written out by hand in
-several places; in the kernel each joint is described once, by its joint
-model, and every algorithm uses that description.
+Plan Phase 2 (`documentation/Master_plan.md`). The kernel is the engine's
+multibody core: one implementation of each joint's kinematics and one
+recursive algorithm per quantity. It replaced the original `MultibodySystem`
+(removed in task 2.7b), whose defects F1 to F4 all came from the same joint
+kinematics being written out by hand in several places. In the kernel each
+joint is described once, by its joint model, and every algorithm uses that
+description.
 
 | File | Contents |
 |---|---|
@@ -17,7 +18,7 @@ model, and every algorithm uses that description.
 | `include/mbd/kernel/constrained_dynamics.hpp`, `src/kernel/constrained_dynamics.cpp` | The constrained solve: accelerations, multipliers, redundancy, projection |
 | `include/mbd/kernel/forces.hpp`, `src/kernel/forces.cpp` | Body states for the force elements, and their generalized forces |
 | `include/mbd/kernel/simulator.hpp`, `src/kernel/simulator.cpp` | `System` (model, constraints, force elements) and `Simulator` |
-| `tests/kernel/` | Identities, invariants, and the cross-check against the legacy path |
+| `tests/kernel/` | Identities, invariants and closed-form cases |
 
 The reference is R. Featherstone, *Rigid Body Dynamics Algorithms*, Springer
 2008 (RBDA below). The layout of `Model` and `Data` follows Pinocchio.
@@ -328,12 +329,19 @@ symmetric top; a pendulum rod's force and the elliptic-integral period of a
 large swing; a hinged bar's reaction. `tests/kernel/test_kernel_simulator.cpp`
 checks the force bridge against `J^T f`, a spring-mass oscillator and the
 convergence orders of both integrators, a constrained pendulum, the callbacks,
-and a driven pendulum's torque.
+a driven pendulum's torque, and that a projection which cannot converge is
+counted at every step and reported once.
 
-`tests/kernel/test_kernel_vs_legacy.cpp` builds the same random models in the
-kernel and in the legacy `MultibodySystem` and compares poses, velocities,
-mass matrices, energies and the accelerations of forward dynamics. The legacy
-path parameterizes spherical and free joints by a rotation vector r with
-`w = E(r) r_dot`; with `qd_legacy = T v` the mass matrices satisfy
-`M = T^T M_legacy T` and the forces `tau = T^T tau_legacy`. This test goes
-with the legacy path (task 2.7).
+`tests/kernel/test_kernel_joints_physics.cpp` gives each joint type a
+closed-form case: the periods of pendulums on revolute, spherical and
+universal joints and of a slider on a spring, a slider's acceleration on
+inclines, the steady spin of a symmetric body, a fixed joint's placement, the
+slow normal mode of a double pendulum, two bodies held together at a point
+under a balanced load, and a height driver holding a point of a falling
+body.
+
+Until task 2.7b, `tests/kernel/test_kernel_vs_legacy.cpp` compared the kernel
+with the original `MultibodySystem` on random chains and trees: poses,
+velocities, mass matrices, energies and forward dynamics agreed to 5e-13.
+Both were removed together; the analytic tests of the old joints and
+algorithms live on in the files above.
