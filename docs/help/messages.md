@@ -232,6 +232,109 @@ Warning: `Constraint projection did not converge at t = <t> s: residual <r> afte
   at the state of the first failure; check the drivers' targets and their
   derivatives (MBD-K021); try a shorter step.
 
+### MBD-K060
+
+`kernel::assemble: the held <level> include <k>, but the velocity coordinates are 0 to <nv - 1>.` Also from `AssemblySpec::hold`, for a body without a joint or a coordinate its joint does not have.
+
+- **Means:** an assembly was asked to hold a coordinate that does not exist.
+- **Usual causes:** a coordinate index counted in `q` rather than in `v`
+  (they differ after a spherical or free joint, whose quaternion is four
+  coordinates for three velocities); body 0, the ground, which has no joint.
+- **What to do:** hold by body with `AssemblySpec::hold(model, body)` or
+  `hold(model, body, k)`, which find the indices; by hand, the coordinates of
+  body `i` are `model.idx_v[i]` to `model.idx_v[i] + model.nvs[i] - 1`.
+
+### MBD-K061
+
+`kernel::assemble: the held <level> hold part of the <spherical or free> joint of <body> (<n> of its 3 angular coordinates, <m> of its linear ones). Hold its rotation whole, or not at all; ...`
+
+- **Means:** a rotation's three angular velocity coordinates are not
+  independent angles: a correction applied about one axis and not the others
+  does not leave "the held angle" unchanged. Assembly therefore holds a
+  rotation whole or not at all. A free joint's translation is measured in its
+  child-side axes, which turn with the body, so it can be held in part only
+  while the rotation is held.
+- **What to do:** hold all three angular coordinates, or none. To fix a body's
+  height while it may rotate, use a constraint (a `Dot2` driver on the height)
+  instead of a hold.
+
+### MBD-K062
+
+Report error: `The positions could not be assembled: |phi| is <r> after <n> Gauss-Newton steps (tolerance <tol>); the largest residual is in <constraint>, <value>. The velocities were left as given.`
+
+- **Means:** no configuration near the given one satisfies the constraints
+  with the held coordinates at their values. The state returned is the
+  closest the iteration reached (the least `|phi|`); velocities and
+  accelerations were not assembled.
+- **Usual causes:** held coordinates that contradict the constraints (see
+  MBD-K065, which then appears too); a loop that cannot close at all (links
+  too short for the distance between their ends); a driver whose target is
+  out of reach; a start so far from any closed configuration that the
+  iteration stalls.
+- **What to do:** hold fewer coordinates, or give the held ones consistent
+  values; check the named constraint's markers; start from values nearer the
+  intended configuration; `validate(system, q)` lists the constraints that are
+  not satisfied.
+
+### MBD-K063
+
+Report error: `The velocities could not be assembled: |J v - nu| is <r> with the velocities held (tolerance <tol>).`
+
+- **Means:** the held velocities ask for a motion the constraints do not
+  allow, for instance two rates of a loop with one degree of freedom whose
+  ratio is fixed by its geometry.
+- **What to do:** hold as many velocities as the mechanism has degrees of
+  freedom (`AssemblyReport::degrees_of_freedom`), and only ones that are
+  independent; MBD-K065 names the conflict.
+
+### MBD-K064
+
+Report error: `The accelerations could not be assembled: |J a - gamma| is <r> with the accelerations held (tolerance <tol>).`
+
+- **Means and what to do:** as MBD-K063, for the accelerations.
+
+### MBD-K065
+
+Report warning: `The <n> held <level> take <k> of the <r> independent constraint directions away from the coordinates left free: the held values must satisfy <k> constraint equation(s) by themselves.`
+
+- **Means:** the coordinates left free cannot satisfy every constraint
+  equation on their own. The held values must then satisfy the rest exactly,
+  which they do only by chance or by construction. If they do not, MBD-K062,
+  K063 or K064 follows.
+- **Usual causes:** more coordinates held than the mechanism has degrees of
+  freedom (all the angles of a closed loop, say); a held coordinate whose
+  value the constraints alone determine (the angle of a driven joint).
+- **What to do:** hold no more coordinates than `degrees_of_freedom`, chosen
+  so that together they fix the mechanism (the crank of a four-bar, not its
+  crank and rocker). When the held values come from a consistent
+  configuration, the warning can be ignored.
+
+### MBD-K066
+
+Report note: `The held <level> leave <f> degree(s) of freedom; along them the assembly changed the given <level> as little as possible, in the kinetic-energy metric.`
+
+- **Means:** the held coordinates do not fix the mechanism completely, so the
+  assembly chose, among all the configurations (or velocities, or
+  accelerations) that satisfy the constraints, the one nearest to the given
+  values, weighted by the mass matrix. Light parts are moved more than heavy
+  ones: a four-bar given all its angles slightly wrong may have its light
+  crank turned furthest.
+- **What to do:** nothing, if that is what was meant. Otherwise hold the
+  coordinates that define the intended state (as many as
+  `degrees_of_freedom`).
+
+### MBD-K067
+
+Warning: `Simulator assembly at t = <t> s did not succeed; the state is the closest it reached. <the report's errors>`
+
+- **Means:** `assemble(sim, spec)` could not assemble the simulator's state;
+  the codes that follow say which level failed and why. A simulation started
+  from this state begins with a jump, as the first projection pulls it onto
+  the constraints.
+- **What to do:** as for the codes it contains. The full report, with the
+  coordinate that changed most at each level, is the return value of
+  `assemble`, and its `summary(model)` prints it.
+
 ## M: findings of `validate()`
 
 `validate(system)` checks a system at its neutral configuration, or

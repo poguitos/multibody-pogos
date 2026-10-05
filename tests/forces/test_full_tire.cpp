@@ -17,13 +17,6 @@ namespace
 {
     constexpr mbd::Real eps = 1e-9;
 
-    void require_vec3_near(const mbd::Vec3& a, const mbd::Vec3& b, double tol)
-    {
-        REQUIRE_THAT(a.x(), WithinAbs(b.x(), tol));
-        REQUIRE_THAT(a.y(), WithinAbs(b.y(), tol));
-        REQUIRE_THAT(a.z(), WithinAbs(b.z(), tol));
-    }
-
     /// A single wheel for testing the tyre force element, which reads only the
     /// wheel's world state. q holds the position and a rotation vector, q_dot
     /// the world velocity of the wheel centre (its last three entries, rotation

@@ -16,6 +16,7 @@ description.
 | `include/mbd/kernel/algorithms.hpp`, `src/kernel/algorithms.cpp` | Kinematics, RNEA, CRBA, ABA, Jacobians, momentum, energy, configuration space |
 | `include/mbd/kernel/constraints.hpp`, `src/kernel/constraints.cpp` | Markers, constraint primitives and joint closures |
 | `include/mbd/kernel/constrained_dynamics.hpp`, `src/kernel/constrained_dynamics.cpp` | The constrained solve: accelerations, multipliers, redundancy, projection |
+| `include/mbd/kernel/assembly.hpp`, `src/kernel/assembly.cpp` | Assembly of initial conditions: positions, velocities and accelerations onto the constraints, with chosen coordinates held |
 | `include/mbd/kernel/forces.hpp`, `src/kernel/forces.cpp` | Body states for the force elements, and their generalized forces |
 | `include/mbd/kernel/simulator.hpp`, `src/kernel/simulator.cpp` | `System` (model, constraints, force elements) and `Simulator` |
 | `include/mbd/kernel/validate.hpp`, `src/kernel/validate.cpp` | `validate()`: checks of a system before it is simulated, and its degrees of freedom |
@@ -247,7 +248,14 @@ definite weight gives a valid projection; the weight only decides which
 nearby point of the constraint manifold is chosen. It then moves v onto
 `J v = nu` the same way, with the J and nu of the last position evaluation
 (nu does not depend on v). Starting a centimetre off, three steps reach
-1e-16.
+1e-16. A step that no halving makes reduce `|phi|` ends the iteration at the
+best point found, instead of carrying on from a worse one. With dependent
+equations the step solves only the independent ones, as the dynamics do, so
+contradictory constraints leave the dropped equations unsatisfied in both
+(MBD-K051 reports it). Assembly, whose aim is the closest state it can reach,
+then also tries the least-squares step `L^-T (Z^T)^+ phi` (Moore-Penrose
+inverse), which reduces `|phi|` unless it is already at its least; that step
+allocates, and the simulator's projection never takes it.
 
 **Baumgarte stabilization** (`baumgarte_alpha`, `baumgarte_beta`) is off by
 default; with it the constraint error obeys `phi'' + 2 alpha phi' + beta^2
@@ -269,6 +277,52 @@ through a temporary shaped like `y`, so when `y` is a block of a dynamic
 vector the temporary goes on the heap. Write `x = y; x.noalias() -= A * b;`
 instead. Temporaries whose maximum size is fixed (`Mat6X`, vectors of at most
 six) live on the stack.
+
+## Assembly of initial conditions
+
+`kernel::assemble` (task 3.4, `kernel/assembly.hpp`) moves given positions,
+velocities and, if asked, accelerations onto the constraints, keeping the
+coordinates the `AssemblySpec` holds exactly as given and changing the others
+as little as possible in the kinetic-energy metric:
+
+    positions      phi(q, t) = 0          least |q (-) q_given|_M
+    velocities     J v = nu               least |v - v_given|_M
+    accelerations  J a = gamma(q, v, t)   least |a - a_given|_M
+
+M is the mass matrix at the given configuration for positions and at the
+assembled one for the rates. A held coordinate k is removed by zeroing
+column k of J and replacing row and column k of M by those of the identity;
+every correction `M^-1 J^T mu` then leaves it untouched, bit for bit, and
+the solve is the same range-space solve as everywhere else
+(`ConstraintSolver::assemble_positions`, `assemble_velocities`,
+`assemble_accelerations`). The rates are linear problems, solved in one step.
+The positions take two stages. Gauss-Newton steps reach the constraints.
+Refinements then move along them to the least correction: linearizing at the
+current point, the least-norm correction d satisfying `J d = J d_k - phi` is
+`d = M^-1 J^T (J M^-1 J^T)^-1 (J d_k - phi)`; the configuration `q_given (+)
+d` is projected back, and the fixed point satisfies `M d = J^T mu`, the
+condition for the least correction. A plain projection meets that condition
+only to first order: for a four-bar given all three angles wrong, its
+correction costs 13 % more than the least one, and the cosine between `M d`
+and the loop's tangent is 0.08 against 6e-11 after refinement.
+
+Holding is by velocity coordinate, `AssemblySpec::hold(model, body)` holding
+a joint's coordinates at every level. A rotation is held whole (MBD-K061),
+because a correction about one body axis but not the others does not keep
+"one angle" fixed; a free joint's translation, in its child-side axes, may be
+held in part when its rotation is held.
+
+The `AssemblyReport` gives, per level, the residual before and after, the
+iterations, the coordinate that changed most, the rank of the constraints in
+the coordinates left free, and the degrees of freedom the held coordinates
+leave. It warns when the held coordinates take independent constraint
+directions away from the free ones (MBD-K065: the held values must then
+satisfy those equations themselves), notes when freedom is left to the least
+correction (MBD-K066), and gives an error for a level that could not be
+assembled (MBD-K062 to K064). `summary(model)` prints it.
+`assemble(sim, spec)` assembles a simulator's state at its time and warns
+(MBD-K067) when it cannot. Drivers are constraints like any other, so a
+driven coordinate is assembled at its target and its rate.
 
 ## Forces and simulation
 

@@ -7,16 +7,6 @@
 
 using Catch::Matchers::WithinAbs;
 
-namespace
-{
-    void require_vec3_near(const mbd::Vec3& a, const mbd::Vec3& b, double tol)
-    {
-        REQUIRE_THAT(a.x(), WithinAbs(b.x(), tol));
-        REQUIRE_THAT(a.y(), WithinAbs(b.y(), tol));
-        REQUIRE_THAT(a.z(), WithinAbs(b.z(), tol));
-    }
-}
-
 // ============================================================================
 // Ackermann geometry (pure math, no simulation)
 // ============================================================================

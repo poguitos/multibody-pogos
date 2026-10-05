@@ -81,8 +81,18 @@ to a validated engine.*
     with external forces; constraint forces per body from the rows that build
     the Jacobian; energies; the recorder.
 
-To come in this part: output requests, assembly of initial conditions,
-statics, linearisation, contact, events.
+19. **Assembly of initial conditions.** Assembly as a constrained
+    least-squares problem in the kinetic-energy metric; held coordinates as
+    identity rows in the metric and zero columns in J; Gauss-Newton is the
+    least correction only to first order, and the re-linearized iteration
+    whose fixed point is the optimum; why light parts move most; the
+    pivot-dropping solve against least squares when held values contradict
+    the constraints. *J: assembly. D26.*
+
+To come in this part: statics, linearisation, contact, events.
+
+(Part X, *Keeping a record*, gains the move to cloud sessions through git:
+rules that lived in an assistant's memory moved into the repository. *D25.*)
 
 ## Part VI onwards: one part per phase still to come
 

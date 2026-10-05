@@ -36,6 +36,7 @@ and the journal entry of the work refers to them by number
 | D23 | Help documentation grown with each phase, with message codes | 5 Oct 2026 | In force (H.1, H.2 done) |
 | D24 | Force laws in each element's own coordinates, with their derivatives; joint-coordinate forces act on generalized forces directly | 5 Oct 2026 | In force, task 3.1 |
 | D25 | Work in cloud sessions through git: rules in `CLAUDE.md`, a branch per session, the record unchanged | 5 Oct 2026 | In force |
+| D26 | Assembly holds coordinates by masking J and the metric; the least correction is in the kinetic-energy metric, refined to optimality | 5 Oct 2026 | In force, task 3.4 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -323,3 +324,43 @@ and the journal entry of the work refers to them by number
   entry cannot cite its own commit's hash; the index gets it in the next
   commit.
 - **Record.** `CLAUDE.md`; journal README, "Where the work happens".
+
+## D26. Assembly: held coordinates masked, least correction in the kinetic-energy metric
+
+- **Context.** Task 3.4 asks for positions, velocities and accelerations
+  solved onto the constraints with chosen coordinates held and the smallest
+  correction to the rest. The projection of task 2.6 already moved q onto the
+  constraints by Gauss-Newton steps in the kinetic-energy metric, but held
+  nothing, gave the least correction only to first order, and reported only
+  a residual.
+- **Decision.** A held coordinate k is removed from the problem by zeroing
+  column k of J and replacing row and column k of the metric by those of the
+  identity. Every correction `W^-1 J^T mu` then has a zero in k exactly, and
+  the one range-space solve with its rank-revealing factorization serves
+  projection and assembly alike. The metric is the mass matrix: at the given
+  configuration for positions, at the assembled one for the rates. Positions
+  are first brought onto the constraints by Gauss-Newton, then refined to the
+  least correction by re-linearized least-norm steps whose fixed point
+  satisfies `W d = J^T mu`. A rotation is held whole. Everything is reported:
+  per level, residuals, iterations, the coordinate changed most, the rank
+  left to the free coordinates, and the freedom left, with codes.
+- **Alternatives.** Select the free columns into smaller matrices: the same
+  result with index bookkeeping and a second copy of the solve. Unit weights
+  on the coordinates: mixes radians and metres, so the answer depends on
+  units. User weights per coordinate, as some commercial codes offer: more
+  to specify, and hard limits are what users mean by "keep this value"; can
+  be added later as a diagonal scaling of W. Large weights instead of exact
+  holds: approximate, and ill-conditioned when large. Stopping after the
+  Gauss-Newton stage: the correction is the least only to first order (13 %
+  more costly in the four-bar test).
+- **Consequences.** Light parts move more than heavy ones when they are not
+  held, which can surprise (the four-bar's crank turns furthest); the help
+  says so and recommends holding as many coordinates as the mechanism has
+  degrees of freedom. The least correction is exact for scalar coordinates and
+  second-order for rotations. The projection now stops at the best point when
+  no step reduces `|phi|`. When the equations are dependent and the plain
+  step fails, assembly tries a least-squares step; the simulator's projection
+  does not, so that it drops the same equations as the dynamics and never
+  allocates.
+- **Record.** Journal: Phase 3, assembly. `docs/kernel.md`, "Assembly of
+  initial conditions".

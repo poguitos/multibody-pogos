@@ -12,35 +12,24 @@
 #include "mbd/kernel/constrained_dynamics.hpp"
 #include "mbd/spatial/spatial.hpp"
 
+#include "labels.hpp"
+
 namespace mbd::kernel {
 
 namespace {
-
-std::string body_label(const Model& model, int i)
-{
-    std::string s = "body " + std::to_string(i);
-    if (i >= 0 && i < static_cast<int>(model.name.size()) && !model.name[i].empty()) {
-        s += " (" + model.name[i] + ")";
-    }
-    return s;
-}
-
-std::string constraint_label(std::size_t k, const ConstraintModel& c)
-{
-    return "constraint " + std::to_string(k) + " (" + c.name() + ")";
-}
 
 std::string force_label(std::size_t k, const ForceElement& f)
 {
     return "force element " + std::to_string(k) + " (" + f.name() + ")";
 }
 
-std::string number(Real x)
+using labels::number;
+
+std::string body_label(const Model& model, int i) { return labels::body(model, i); }
+
+std::string constraint_label(std::size_t k, const ConstraintModel& c)
 {
-    std::ostringstream os;
-    os.precision(4);
-    os << x;
-    return os.str();
+    return labels::constraint(k, c);
 }
 
 bool close(const Mat6& a, const Mat6& b)

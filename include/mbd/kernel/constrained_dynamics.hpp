@@ -48,6 +48,16 @@ struct ProjectionInfo {
     bool converged{false};
 };
 
+/// How one level of an assembly went (task 3.4, kernel/assembly.hpp).
+struct AssemblyStepInfo {
+    int iterations{0};       ///< Positions: Gauss-Newton steps, refinements included
+    int refinements{0};      ///< Positions: steps towards the least correction
+    Real last_change{0.0};   ///< Positions: how much the last refinement moved the correction
+    Real residual{0.0};      ///< |phi|, |J v - nu| or |J a - gamma| at the end
+    int rank{0};             ///< Rank of the constraints in the coordinates left free
+    bool converged{false};
+};
+
 class ConstraintSolver {
 public:
     /// Equations whose pivot is below this fraction of the largest are
@@ -93,6 +103,30 @@ public:
     /// point of the constraint manifold is chosen changes, to second order.
     bool reuse_mass_matrix{false};
 
+    // --- Assembly (task 3.4) -------------------------------------------------
+    //
+    // Each moves its argument onto the constraints keeping the velocity
+    // coordinates listed in `held` (indices 0 to nv - 1) exactly as given, and
+    // changing the others by the least amount in the kinetic-energy metric:
+    // the mass matrix with the held rows and columns removed, at the given q
+    // for positions and at q for the rates. kernel::assemble() checks the
+    // held lists and reports; these do the numerical work.
+
+    /// phi(q, t) = 0. Gauss-Newton steps from q, each halved until |phi|
+    /// decreases, reach the constraints; refinements then move along them
+    /// until the correction q (-) q_given is the smallest, where it is a
+    /// combination of the constraint directions (M d = J^T mu).
+    AssemblyStepInfo assemble_positions(Data& data, VecX& q, Real t, const std::vector<int>& held,
+                                        Real tolerance, int max_iterations);
+
+    /// J v = nu at (q, t), in one solve: the problem is linear in v.
+    AssemblyStepInfo assemble_velocities(Data& data, const VecX& q, VecX& v, Real t,
+                                         const std::vector<int>& held, Real tolerance);
+
+    /// J a = gamma at (q, v, t), in one solve.
+    AssemblyStepInfo assemble_accelerations(Data& data, const VecX& q, const VecX& v, VecX& a,
+                                            Real t, const std::vector<int>& held, Real tolerance);
+
     const VecX& phi() const { return phi_; }
     const MatX& J() const { return J_; }
     const VecX& nu() const { return nu_; }
@@ -120,13 +154,38 @@ private:
     /// out += M^-1 J^T x = L^-T (Z_ x), without forming M^-1 J^T.
     void add_constraint_motion(const VecX& x, VecX& out);
 
+    /// Gauss-Newton steps on phi(q, t) = 0 in the metric factorized in
+    /// llt_M_, with the columns of `held` (if any) removed from J. Each step
+    /// is halved until |phi| decreases; a step that cannot be made to
+    /// decrease it ends the iteration at the best q. With
+    /// `least_squares_fallback`, dependent equations whose plain step fails
+    /// get a least-squares step first (assembly only; it allocates). Leaves
+    /// phi, J and nu evaluated at the final q.
+    ProjectionInfo gauss_newton(Data& data, VecX& q, Real t, Real tolerance, int max_iterations,
+                                const std::vector<int>* held, bool least_squares_fallback);
+
+    /// From q_save_, try q_save_ (+) (-step dv_) for step = 1, 1/2, ... until
+    /// |phi| < before; q and residual hold the last point tried.
+    bool halve_until_decrease(Data& data, VecX& q, Real t, Real before, Real& residual);
+
+    /// dv_ = the least-squares Gauss-Newton step, from Z_ and phi_.
+    void least_squares_step();
+
+    /// The assembly metric: the mass matrix at q with the rows and columns
+    /// of `held` replaced by those of the identity, factorized in llt_M_.
+    void factorize_metric(Data& data, const VecX& q, const std::vector<int>& held);
+
+    /// Zero the columns of J that belong to held coordinates.
+    void remove_held_columns(const std::vector<int>& held);
+
     const Model& model_;
     std::vector<std::shared_ptr<const ConstraintModel>> constraints_;
     int m_{0};
 
     VecX phi_, nu_, gamma_, lambda_, rhs_m_, mu_;
-    MatX J_, Z_, A_;
-    VecX q_save_, v_dot_, v_dot_free_, rhs_v_, dv_, zero_v_, work_v_;
+    MatX J_, Z_, A_, M_metric_;
+    VecX q_save_, q_given_, q_best_, d_;
+    VecX v_dot_, v_dot_free_, rhs_v_, dv_, zero_v_, work_v_;
     Eigen::LLT<MatX> llt_M_;
     Eigen::LDLT<MatX> ldlt_A_;
     Real pivot_cut_{0.0};

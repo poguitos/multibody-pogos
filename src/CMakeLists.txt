@@ -15,6 +15,7 @@ add_library(multibody_core
     kernel/validate.cpp
     kernel/joint_forces.cpp
     kernel/outputs.cpp
+    kernel/assembly.cpp
     forces/force_element.cpp
     forces/curve.cpp
     forces/spring_damper.cpp
