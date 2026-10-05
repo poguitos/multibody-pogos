@@ -5,9 +5,6 @@
 
 include(Catch)
 
-option(MBD_TEST_PCH
-    "Share one precompiled header between the test executables" ON)
-
 # Settings common to every test executable.
 add_library(mbd_test_config INTERFACE)
 target_link_libraries(mbd_test_config
@@ -21,13 +18,12 @@ target_include_directories(mbd_test_config
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# The engine is header-only, so without a precompiled header every test file
-# parses and analyses all of it again: about 60 s of the 90 s that one file
-# takes with MSVC. The header is compiled once here and reused by every test
-# executable. Each test file still includes what it uses, so the tests also
-# build with -DMBD_TEST_PCH=OFF (the Linux CI job does that to keep the
+# Without a precompiled header every test file parses Catch2, Eigen and the
+# engine's headers again. The header is compiled once here and reused by
+# every test executable. Each test file still includes what it uses, so the
+# tests also build with -DMBD_PCH=OFF (the Linux CI job does that to keep the
 # includes honest).
-if (MBD_TEST_PCH)
+if (MBD_PCH)
     add_library(mbd_test_pch OBJECT support/pch.cpp)
     target_link_libraries(mbd_test_pch PRIVATE mbd_test_config)
     target_precompile_headers(mbd_test_pch PRIVATE support/pch.hpp)
@@ -36,7 +32,7 @@ endif()
 function(mbd_add_test_exe name)
     add_executable(${name} ${ARGN})
     target_link_libraries(${name} PRIVATE mbd_test_config)
-    if (MBD_TEST_PCH)
+    if (MBD_PCH)
         target_precompile_headers(${name} REUSE_FROM mbd_test_pch)
     endif()
     catch_discover_tests(${name})

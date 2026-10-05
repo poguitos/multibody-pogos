@@ -43,7 +43,7 @@ jobs:
           cmake -S . -B build-linux -G Ninja
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DMBD_COMPILE_JOBS=3
-          -DMBD_TEST_PCH=OFF
+          -DMBD_PCH=OFF
           -DMBD_BUILD_PYTHON=OFF
           "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer"
 
@@ -71,7 +71,7 @@ jobs:
           cmake -S . -B build-nomalloc -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
           -DMBD_COMPILE_JOBS=3
-          -DMBD_TEST_PCH=OFF
+          -DMBD_PCH=OFF
           -DMBD_BUILD_PYTHON=OFF
           "-DCMAKE_CXX_FLAGS=-DEIGEN_RUNTIME_NO_MALLOC"
 

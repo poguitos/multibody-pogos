@@ -97,7 +97,7 @@ Signs in the ISO 8855 frame, which the migration will establish:
 | D2 | Quaternion coordinates for free and spherical joints | Adopted, Phase 2 |
 | D3 | ISO 8855 axes | **Decided 2 Oct 2026.** Migration is task 7.1 |
 | D4 | Wheels as rotating bodies with a spin joint | Adopted, Phase 7 |
-| D5 | Compiled library instead of header-only | Adopted, Phase 2 |
+| D5 | Compiled library instead of header-only | Done, task 2.8 |
 | D6 | CFD by coupling to OpenFOAM | **Decided 2 Oct 2026.** A CFD solver written from scratch is a stated goal for later, tracked as task 11.12 |
 | D7 | Real-time target | **Decided 2 Oct 2026.** Both: Windows soft real time first, then Linux hard real time |
 | D8 | JSON model files, Python scripting, CasADi and IPOPT for optimal control | Adopted |

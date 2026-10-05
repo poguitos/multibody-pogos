@@ -20,7 +20,7 @@ The project is in active development and its core is being revised. The roadmap,
 | `docs` | Project documentation |
 | `scripts` | Build helper |
 
-The kernel is compiled (`src/kernel`); the force, vehicle and analysis layers are still header-only. Moving them into the compiled library is task 2.8 of the plan.
+The engine is one compiled library, `multibody_core`. Each folder under `include/mbd` has its source files in the same folder under `src`; the headers hold declarations, small inline functions and templates.
 
 ## Requirements
 
@@ -54,18 +54,20 @@ build\tests\test_kernel.exe "[constraints]"
 
 **The build runs one compiler at a time, and that limit is part of the build system.** It is set by `MBD_COMPILE_JOBS` in the top-level `CMakeLists.txt` through a Ninja job pool, so a plain `cmake --build` is limited too, whatever Ninja would choose by itself.
 
-Why: compiling this code is heavy, because the engine is header-only and every file that uses it compiles all of it. Measured on the development laptop (i7-13700H, 20 logical cores, 16 GB), October 2026:
+Why: one compiler process needs up to 1.6 GB (a test file parsing Eigen and the engine without help, measured 3 October 2026). A default Ninja build would start 22 compilers at once on the development laptop (i7-13700H, 20 logical cores, 16 GB), more than twice its memory.
 
-| | Time | Peak compiler memory |
-|---|---|---|
-| One test file, no precompiled header | 92 s | 1.6 GB |
-| The shared precompiled header (built once, rebuilt when an engine header changes) | 49 s | 1.7 GB |
-| One test file using it | 23 s typical, 58 s at most | 1.1 GB |
-| All 47 test files and the header, from scratch, one compiler | about 21 min | |
+At one job the build stays short because the parsing is done once, in two precompiled headers: the library's (`src/pch.hpp`: the standard library, Eigen, the core and the kernel) and the one shared by the test executables (`tests/support/pch.hpp`). Measured on the same laptop, 5 October 2026:
 
-Without the shared header, a full rebuild took roughly an hour (estimated from the per-file times). The vehicle test executable alone went from about 16 minutes to 7.5.
+| | Time |
+|---|---|
+| The library's precompiled header | 18 s |
+| A library source file | 0.4 to 3 s; the kernel's algorithms 28 s |
+| The tests' precompiled header | 34 s |
+| A test file | 1 to 4 s; the kernel's randomized and analytic tests 13 to 55 s |
+| Everything in the project after a change to a core header (65 files) | 7.4 min |
+| After editing one source file | that file, then the links |
 
-A default Ninja build would start 22 compilers at once on this machine. At 1.6 GB each that is more than twice its memory.
+Before the engine became a compiled library and before the shared test header, a full rebuild took roughly an hour.
 
 By memory alone, 16 GB with 4 GB kept free would allow about six compilers. The default nevertheless stays at one: in mid-2026 two all-core builds restarted this PC, and whether memory or heat caused it was never established. To raise the limit, watch temperatures during a build and step up gradually:
 

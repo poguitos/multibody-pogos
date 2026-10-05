@@ -32,6 +32,9 @@ set(CMAKE_JOB_POOL_LINK mbd_link)
 # --- Options ---
 option(MBD_BUILD_PYTHON "Build the Python bindings" ON)
 option(MBD_WARNINGS "Compile the project's own code at a high warning level" ON)
+# Precompiled headers for the library and the tests. The Linux CI job turns
+# them off, so that every file is checked to include what it uses.
+option(MBD_PCH "Use precompiled headers for the library and the tests" ON)
 
 include(FetchContent)
 

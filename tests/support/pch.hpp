@@ -4,7 +4,7 @@
 //
 // It holds the test framework, Eigen and the whole engine. Nothing here may be
 // required for correctness: every test file includes what it uses and must
-// also compile with -DMBD_TEST_PCH=OFF.
+// also compile with -DMBD_PCH=OFF.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
