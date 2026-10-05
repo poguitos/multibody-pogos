@@ -13,7 +13,13 @@ add_library(multibody_core
     kernel/simulator.cpp
     kernel/checks.cpp
     kernel/validate.cpp
+    kernel/joint_forces.cpp
     forces/force_element.cpp
+    forces/curve.cpp
+    forces/spring_damper.cpp
+    forces/rotational_spring_damper.cpp
+    forces/bushing.cpp
+    forces/user_force.cpp
     forces/pacejka.cpp
     forces/tire.cpp
     forces/aerodynamics.cpp

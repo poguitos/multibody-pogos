@@ -136,6 +136,23 @@ and warning in the sources carries a code.
 
 - **Means:** a null pointer was added to a set of constraints.
 
+### MBD-K026
+
+`kernel::JointCoordinateForce: no such body` or `the joint must have one coordinate (revolute or prismatic)`
+
+- **Means:** a joint coordinate force acts on the coordinate of a joint with
+  one coordinate, given by the joint's child body.
+- **What to do:** for joints with more coordinates, use force elements between
+  bodies (`SpringDamper`, or a bushing when it exists).
+
+### MBD-K027
+
+`kernel::JointCoordinateForce: friction, stop stiffness and damping must be >= 0, the friction velocity > 0, and the lower limit not above the upper`
+
+- **Means:** a parameter of `JointCoordinateForceParams` is out of range. The
+  friction velocity is the rate over which friction builds up; it must be
+  positive (see the parameter's comment for how to choose it).
+
 ### MBD-K030
 
 `kernel::ConstraintSolver: constraint <k> is empty`
@@ -164,6 +181,19 @@ and warning in the sources carries a code.
 
 - **Means:** the force element acts on a body that does not exist; its forces
   would be written out of bounds. See also MBD-M034.
+
+### MBD-K042
+
+`kernel::Simulator: joint force <k> is empty`
+
+- **Means:** entry `k` of the system's joint forces is a null pointer.
+
+### MBD-K043
+
+`kernel::Simulator: joint force <k> (<name>) refers to body <b>, but the model's jointed bodies are 1 to <n>.`
+
+- **Means:** the joint force acts on the joint of a body that does not exist.
+  The ground (body 0) has no joint. See also MBD-M036.
 
 ### MBD-K050
 
@@ -316,6 +346,14 @@ Error: `Force element <k> is empty (a null pointer).`
 
 Error: `force element <k> (<name>): it refers to body <b>, but the model's bodies are 0 to <n>.`
 
+### MBD-M035
+
+Error: `Joint force <k> is empty (a null pointer).`
+
+### MBD-M036
+
+Error: `joint force <k> (<name>): it refers to body <b>, but the model's jointed bodies are 1 to <n>.`
+
 ### MBD-M040
 
 Warning: `The constraints are not satisfied at this configuration: the largest residual, <r>, is in constraint <k> (<name>). Simulator::initialize moves the bodies onto the constraints.`
@@ -350,6 +388,27 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
 
 - **Means:** a `LinearSpringDamper` needs stiffness, damping and rest length of
   zero or more.
+
+### MBD-F002
+
+`Curve::table: x and y need the same length, at least 2`, `the points must be finite` or `x must be strictly increasing`
+
+- **Means:** a tabulated characteristic needs at least two finite points with
+  strictly increasing abscissae.
+- **Usual causes:** a repeated x value, or a table sorted the wrong way.
+
+### MBD-F003
+
+`SpringDamper: free length and stop clearances must be >= 0`
+
+- **Means:** a stop clearance is the travel before the stop engages; leave it
+  at its default (infinite) for no stop.
+
+### MBD-F004
+
+`UserForce: no function given`
+
+- **Means:** a user force needs the function that computes its forces.
 
 ### MBD-F010
 

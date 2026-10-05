@@ -19,6 +19,7 @@
 #include "mbd/forces/force_element.hpp"
 #include "mbd/kernel/constrained_dynamics.hpp"
 #include "mbd/kernel/constraints.hpp"
+#include "mbd/kernel/joint_forces.hpp"
 #include "mbd/kernel/model.hpp"
 #include "mbd/model/rigid_body.hpp"
 
@@ -30,6 +31,8 @@ struct System {
     Model model;
     std::vector<std::shared_ptr<const ConstraintModel>> constraints;
     std::vector<std::shared_ptr<ForceElement>> force_elements;
+    /// Forces on joint coordinates, added to the generalized forces directly.
+    std::vector<std::shared_ptr<const JointForce>> joint_forces;
 };
 
 enum class Integrator {

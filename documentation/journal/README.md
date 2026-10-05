@@ -57,4 +57,5 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 5 Oct 2026 | [Phase 2: performance and allocations](2026-10-05_phase-2-performance.md) | 2.10 | `9472d8d` | At the time |
 | 5 Oct 2026 | [Phase 2 retrospective, and how the record is kept](2026-10-05_phase-2-retrospective.md) | Phase 2 gate, tag `v0.3.0` | `9472d8d`, `49b96bc` | At the time |
 | 5 Oct 2026 | [Help folder and message codes](2026-10-05_help-and-message-codes.md) | H.1, H.2 | `47315ba` | At the time |
-| 5 Oct 2026 | [Phase 3: prescribed motion and kinematic analysis](2026-10-05_phase-3-prescribed-motion-and-kinematics.md) | 3.2, 3.6 | see git log | At the time |
+| 5 Oct 2026 | [Phase 3: prescribed motion and kinematic analysis](2026-10-05_phase-3-prescribed-motion-and-kinematics.md) | 3.2, 3.6 | `30e6f08` | At the time |
+| 5 Oct 2026 | [Phase 3: the force library](2026-10-05_phase-3-force-library.md) | 3.1 | see git log | At the time |

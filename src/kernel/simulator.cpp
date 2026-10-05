@@ -30,6 +30,17 @@ Simulator::Simulator(System& sys)
                              + std::to_string(model.nbodies() - 1) + ".");
         }
     }
+    for (std::size_t k = 0; k < system.joint_forces.size(); ++k) {
+        const auto& jf = system.joint_forces[k];
+        MBD_THROW_IF(!jf, "MBD-K042: kernel::Simulator: joint force " + std::to_string(k) + " is empty");
+        for (int b : jf->bodies()) {
+            MBD_THROW_IF(b < 1 || b >= model.nbodies(),
+                         "MBD-K043: kernel::Simulator: joint force " + std::to_string(k) + " ("
+                             + jf->name() + ") refers to body " + std::to_string(b)
+                             + ", but the model's jointed bodies are 1 to "
+                             + std::to_string(model.nbodies() - 1) + ".");
+        }
+    }
     // The projection after each step weighs by the mass matrix of the step's
     // last stage instead of computing another.
     solver_.reuse_mass_matrix = true;
@@ -86,6 +97,7 @@ const VecX& Simulator::acceleration(const VecX& q_at, const VecX& v_at, Real t)
     }
     for (const auto& element : system.force_elements) element->apply(states_, forces_);
     generalized_forces(model, data_, forces_, tau_forces_);
+    for (const auto& jf : system.joint_forces) jf->apply(q_at, v_at, tau_forces_);
 
     tau_total_ = tau + tau_forces_;
     if (force_callback) force_callback(*this, t, tau_total_);

@@ -35,12 +35,18 @@
 #include "mbd/kernel/constraints.hpp"
 #include "mbd/kernel/constrained_dynamics.hpp"
 #include "mbd/kernel/forces.hpp"
+#include "mbd/kernel/joint_forces.hpp"
 #include "mbd/kernel/simulator.hpp"
 #include "mbd/kernel/validate.hpp"
 
 #include "mbd/model/rigid_body.hpp"
 
 #include "mbd/forces/force_element.hpp"
+#include "mbd/forces/curve.hpp"
+#include "mbd/forces/spring_damper.hpp"
+#include "mbd/forces/rotational_spring_damper.hpp"
+#include "mbd/forces/bushing.hpp"
+#include "mbd/forces/user_force.hpp"
 #include "mbd/forces/pacejka.hpp"
 #include "mbd/forces/tire.hpp"
 #include "mbd/forces/aerodynamics.hpp"

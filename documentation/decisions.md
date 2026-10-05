@@ -33,7 +33,8 @@ and the journal entry of the work refers to them by number
 | D20 | One kinematics pass per evaluation; `Z = L^-1 J^T`; projection weighted by the last stage's mass matrix | 5 Oct 2026 | In force |
 | D21 | Timings pinned to a performance core, versions compared alternately | 5 Oct 2026 | In force |
 | D22 | A development record kept in the repository, for the book | 5 Oct 2026 | In force |
-| D23 | Help documentation grown with each phase, with message codes | 5 Oct 2026 | Planned, documentation track H |
+| D23 | Help documentation grown with each phase, with message codes | 5 Oct 2026 | In force (H.1, H.2 done) |
+| D24 | Force laws in each element's own coordinates, with their derivatives; joint-coordinate forces act on generalized forces directly | 5 Oct 2026 | In force, task 3.1 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -260,3 +261,35 @@ and the journal entry of the work refers to them by number
   messages, so all new code uses them from the start.
 - **Record.** Journal: Phase 2 retrospective; `documentation/Master_plan.md`,
   documentation track H.
+
+## D24. Force laws in their own coordinates, with their derivatives
+
+- **Context.** Task 3.1 asks for a force library whose elements return their
+  derivatives with respect to position and velocity, which statics (3.5),
+  linearisation (3.7) and implicit integration (Phase 4) need. Two forms are
+  possible: each element's derivatives in its own coordinates (a spring's
+  length and its rate, a joint's coordinate and rate, a bushing's relative
+  displacement and rotation), or each element's tangent stiffness and damping
+  matrices in generalized coordinates, geometric terms included.
+- **Decision.** Every element states its force law in its own coordinates and
+  returns the force with its two derivatives (`law(x, x_dot)` returning the
+  force, `d/dx` and `d/dx_dot`), tested against finite differences of the law.
+  Generalized stiffness and damping are assembled by the kernel from these and
+  the elements' kinematics when statics and linearisation need them, starting
+  from finite differences of the generalized forces, which the element
+  derivatives then replace term by term. Tabulated characteristics are
+  monotone cubic (PCHIP) curves, so that a monotone table gives a monotone
+  force with a continuous stiffness. Forces on a joint coordinate (spring,
+  damper, friction, limit stop on a revolute or prismatic joint) are a kernel
+  element of their own that adds to the generalized forces directly: they
+  need the joint's coordinate, which the world-force interface does not see,
+  and are exact for it.
+- **Alternatives.** Tangent matrices per element now: correct and fastest in
+  the end, but a large amount of derivation (geometric stiffness of every
+  element) before any statics exists to use it. Natural cubic splines for
+  tables: smooth, but they overshoot between points, so a monotone damper
+  table could give a force of the wrong sign.
+- **Consequences.** Element derivatives are verified independently of any
+  assembly. Phase 4 decides whether the analytic tangent matrices are worth
+  their cost.
+- **Record.** Journal: the force library.

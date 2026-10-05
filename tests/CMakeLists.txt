@@ -82,6 +82,8 @@ mbd_add_test_exe(test_forces
     forces/test_anti_roll_bar.cpp
     forces/test_full_tire.cpp
     forces/test_pacejka.cpp
+    forces/test_force_library.cpp
+    forces/test_force_connectors.cpp
     test_force_elements.cpp
 )
 

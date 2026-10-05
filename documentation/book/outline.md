@@ -68,9 +68,22 @@ to a validated engine.*
     kinematics pass, `Z = L^-1 J^T`, proving "no allocation".
     *J: performance. D20, D21. `docs/performance.md`.*
 
-## Part V onwards: one part per phase still to come
+## Part V. Solver completeness (Phase 3)
 
-Solver completeness (Phase 3), time integration (4), validation (5), Python
+17. **Prescribed motion and kinematic analysis.** Drivers as constraints;
+    velocities and accelerations of a motion (motion ratios). *J: prescribed
+    motion and kinematic analysis. D15.*
+18. **The force library.** Characteristics as monotone cubics; the
+    spring-damper with stops; forces on joint coordinates and regularised
+    friction; rotational springs and bushings; force laws with their
+    derivatives. *J: the force library. D24.*
+
+To come in this part: output requests, assembly of initial conditions,
+statics, linearisation, contact, events.
+
+## Part VI onwards: one part per phase still to come
+
+Time integration (4), validation (5), Python
 (6), vehicle subsystems (7), the vehicle builder (8), vehicle analyses (9),
 lap time (10), aerodynamics and CFD, including the in-house CFD solver (11),
 real time on Windows and Linux (12), optimisation and AI (13), flexible bodies

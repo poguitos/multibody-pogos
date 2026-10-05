@@ -280,8 +280,24 @@ about each origin (`RigidBodyForces`). `kernel/forces.hpp` connects them:
 the forces into generalized forces `tau = sum J_i^T [tau_W; f_W]` in one pass
 from the leaves, without forming the Jacobians.
 
-**`kernel::System`** is a `Model` with its loop constraints and force
-elements: what the vehicle builders fill. **`kernel::Simulator`** advances
+**The force library** (task 3.1, decision D24). Characteristics are
+`Curve`s: a straight line, or a table interpolated by a monotone cubic
+(PCHIP), which passes through its points without overshoot and continues as
+a line beyond its ends. `SpringDamper` acts between two points: a spring curve
+against the compression, a preload, a damper curve against the rate, and bump
+and rebound stops beyond their clearances. `RotationalSpringDamper` acts
+between two bodies about an axis; its coordinate is the twist from the
+swing-twist split of the markers' relative rotation. `Bushing` acts on six
+axes between two markers, each axis with its own curves. `UserForce` wraps a
+function. `JointCoordinateForce` acts on the coordinate of a revolute or
+prismatic joint directly (spring, preload, damper, regularised Coulomb
+friction, limit stops that push but never pull); such elements go in
+`System::joint_forces` and add to the generalized forces. Every element's
+`law()` returns its force with the derivatives with respect to its own
+coordinate and rate, for statics, linearisation and implicit integration.
+
+**`kernel::System`** is a `Model` with its loop constraints, force elements
+and joint forces: what the vehicle builders fill. **`kernel::Simulator`** advances
 one. It owns the state (`q`, `v`, `time`) and, at every evaluation of the
 accelerations, computes the kinematics and body states, calls
 `pre_force_callback` (the drivetrain hands wheel spins to the tyres there),

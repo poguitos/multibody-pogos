@@ -226,6 +226,22 @@ void check_references(const System& sys, ValidationReport& r)
             }
         }
     }
+
+    for (std::size_t k = 0; k < sys.joint_forces.size(); ++k) {
+        const auto& jf = sys.joint_forces[k];
+        if (!jf) {
+            r.errors.push_back("MBD-M035: Joint force " + std::to_string(k) + " is empty (a null pointer).");
+            continue;
+        }
+        for (int b : jf->bodies()) {
+            if (b < 1 || b >= nb) {
+                r.errors.push_back("MBD-M036: joint force " + std::to_string(k) + " (" + jf->name()
+                                   + "): it refers to body " + std::to_string(b)
+                                   + ", but the model's jointed bodies are 1 to "
+                                   + std::to_string(nb - 1) + ".");
+            }
+        }
+    }
 }
 
 // A body on a free joint to the ground, with no constraint or force element
@@ -243,6 +259,9 @@ void check_floating(const System& sys, ValidationReport& r)
     }
     for (const auto& f : sys.force_elements) {
         if (f) for (BodyIndex b : f->bodies()) mark(b);
+    }
+    for (const auto& jf : sys.joint_forces) {
+        if (jf) for (int b : jf->bodies()) mark(b);
     }
     for (int i = model.nbodies() - 1; i >= 1; --i) {
         if (held[static_cast<std::size_t>(i)]) mark(model.parent[i]);
