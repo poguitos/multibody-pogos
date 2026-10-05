@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -11,6 +10,7 @@
 #include "mbd/kernel/constrained_dynamics.hpp"
 
 #include "checks.hpp"
+#include "held.hpp"
 #include "labels.hpp"
 
 namespace mbd::kernel {
@@ -30,44 +30,6 @@ void check_jointed_body(const Model& model, int body)
     MBD_THROW_IF(body < 1 || body >= model.nbodies(),
                  "MBD-K060: kernel::AssemblySpec::hold: there is no jointed body " + std::to_string(body)
                      + "; the bodies with joints are 1 to " + std::to_string(model.nbodies() - 1) + ".");
-}
-
-// The held list of one level, sorted and without repeats. Throws if an index
-// is out of range or holds part of a rotation (see assembly.hpp).
-std::vector<int> checked_held(const Model& model, const std::vector<int>& given, const char* level)
-{
-    std::vector<int> held = given;
-    std::sort(held.begin(), held.end());
-    held.erase(std::unique(held.begin(), held.end()), held.end());
-    for (int k : held) {
-        MBD_THROW_IF(k < 0 || k >= model.nv,
-                     std::string("MBD-K060: kernel::assemble: the held ") + level + " include "
-                         + std::to_string(k) + ", but the velocity coordinates are 0 to "
-                         + std::to_string(model.nv - 1) + ".");
-    }
-    auto count = [&](int first, int n) {
-        return static_cast<int>(std::count_if(held.begin(), held.end(),
-                                              [&](int k) { return k >= first && k < first + n; }));
-    };
-    for (int i = 1; i < model.nbodies(); ++i) {
-        const auto& joint = model.joint[static_cast<std::size_t>(i)];
-        if (!joint) continue;
-        const char* name = joint->name();
-        const bool is_spherical = std::strcmp(name, "spherical") == 0;
-        const bool is_free = std::strcmp(name, "free") == 0;
-        if (!is_spherical && !is_free) continue;
-        const int first = model.idx_v[static_cast<std::size_t>(i)];
-        const int angular = count(first, 3);
-        const int linear = is_free ? count(first + 3, 3) : 0;
-        MBD_THROW_IF((angular != 0 && angular != 3) || (angular == 0 && linear != 0 && linear != 3),
-                     std::string("MBD-K061: kernel::assemble: the held ") + level + " hold part of the "
-                         + name + " joint of " + labels::body(model, i) + " ("
-                         + std::to_string(angular) + " of its 3 angular coordinates, "
-                         + std::to_string(linear)
-                         + " of its linear ones). Hold its rotation whole, or not at all; its "
-                           "translation may be held in part only when the rotation is held.");
-    }
-    return held;
 }
 
 // Largest entry of |x| and its index; -1 if x is zero.
@@ -130,10 +92,11 @@ AssemblyReport run_assembly(const System& sys, VecX& q, VecX& v, VecX* a, Real t
     checks::q("kernel::assemble", model, q);
     checks::v("kernel::assemble", model, v);
     if (a) checks::v("kernel::assemble", model, *a, "a");
-    const std::vector<int> held_q = checked_held(model, spec.hold_positions, "positions");
-    const std::vector<int> held_v = checked_held(model, spec.hold_velocities, "velocities");
+    const std::vector<int> held_q = held::checked(model, spec.hold_positions, "kernel::assemble", "positions");
+    const std::vector<int> held_v = held::checked(model, spec.hold_velocities, "kernel::assemble", "velocities");
     const std::vector<int> held_a =
-        a ? checked_held(model, spec.hold_accelerations, "accelerations") : std::vector<int>{};
+        a ? held::checked(model, spec.hold_accelerations, "kernel::assemble", "accelerations")
+          : std::vector<int>{};
 
     Data data(model);
     ConstraintSolver solver(model, sys.constraints);

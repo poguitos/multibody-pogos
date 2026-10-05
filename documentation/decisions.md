@@ -37,6 +37,7 @@ and the journal entry of the work refers to them by number
 | D24 | Force laws in each element's own coordinates, with their derivatives; joint-coordinate forces act on generalized forces directly | 5 Oct 2026 | In force, task 3.1 |
 | D25 | Work in cloud sessions through git: rules in `CLAUDE.md`, a branch per session, the record unchanged | 5 Oct 2026 | In force |
 | D26 | Assembly holds coordinates by masking J and the metric; the least correction is in the kinetic-energy metric, refined to optimality | 5 Oct 2026 | In force, task 3.4 |
+| D27 | Statics by Newton on the constraint surface with a finite-difference stiffness, residual measured as accelerations at rest, kinetic-damping relaxation as fallback | 5 Oct 2026 | In force, task 3.5 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -364,3 +365,47 @@ and the journal entry of the work refers to them by number
   allocates.
 - **Record.** Journal: Phase 3, assembly. `docs/kernel.md`, "Assembly of
   initial conditions".
+
+## D27. Statics: Newton on the constraint surface, residual as accelerations
+
+- **Context.** Task 3.5 asks for Newton's method on the static residual, with
+  line search and dynamic relaxation as a fallback, settling the detailed
+  sedan in under 20 iterations to accelerations below 1e-6. Choices: what the
+  residual is and how it is measured, how the constraints enter Newton's
+  system, where the stiffness comes from, what to do with directions in which
+  nothing is stiff, and which relaxation.
+- **Decision.** The residual is `F = f + J^T lambda` with time frozen, and it
+  is measured as the accelerations at rest, `a = W^-1 F` with `J a = 0`,
+  computed by the constraint solver's range-space solve (one place for that
+  formula); its tolerance is the plan's 1e-6 on `|a|_inf`, and the line
+  search's merit is `a^T M a`. Newton works on the constraint surface: the
+  step is `N y` with `(N^T K N) y = -N^T f`, N an orthonormal basis of the
+  allowed motions from an SVD of the constraint and hold rows; after each
+  trial step the configuration is projected back. K is `dF/dq` at fixed
+  lambda by central differences of the simulator's own force evaluation
+  (`Simulator::applied_forces`), as D24 planned. Directions without
+  stiffness are dropped by a complete orthogonal decomposition with a
+  relative threshold, and reported; the stability of the result is read from
+  the eigenvalues of the symmetric part of the reduced stiffness. Dynamic
+  relaxation is pseudo-dynamics under the forces at rest with kinetic damping
+  (velocities zeroed at each peak of kinetic energy), which needs no damping
+  parameter, run until the accelerations fall a hundredfold.
+- **Alternatives.** The full KKT system `[K J^T; J 0]` in q and lambda: one
+  linear solve, but mixed units (N/m against dimensionless) make its rank
+  decisions unreliable, and directions without stiffness make it singular in
+  ways that are hard to tell from redundancy. Minimizing the potential
+  energy: needs every force to have a potential, which tyres and user forces
+  do not. Analytic tangent stiffness: decided against for now in D24.
+  Viscous dynamic relaxation: needs a damping coefficient tuned to the model.
+  Running the simulator with its dampers until the car settles: measured, it
+  approaches the static state to 3e-5 m after 8 s but the car keeps rolling
+  at a few mm/s, since free-rolling tyres resist nothing (finding F7).
+- **Consequences.** About `2 nv` force evaluations per iteration (54 for the
+  sedan), cheap at this size; the analytic derivatives can replace the
+  differences later. Newton finds the nearest equilibrium, stable or not, so
+  the report says which. Eigen's complete orthogonal decomposition must have
+  its threshold set before it decomposes: set afterwards, the rank it reports
+  changes but its solve does not (found in this task; the least-squares step
+  of D26 had the same mistake).
+- **Record.** Journal: Phase 3, statics. `docs/kernel.md`, "Static
+  equilibrium".

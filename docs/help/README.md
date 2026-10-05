@@ -36,6 +36,7 @@ examples:
 | Read joint reactions, constraint forces and energies | `compute_loads(sim)`; `tests/kernel/test_kernel_outputs.cpp` |
 | Record channels over a run and write them as CSV | `Recorder`; `tests/kernel/test_kernel_outputs.cpp` |
 | Start from values that do not satisfy the constraints: close a loop, hold the coordinates that matter | `kernel::assemble`, `AssemblySpec`; [the kernel, assembly](../kernel.md#assembly-of-initial-conditions); `tests/kernel/test_kernel_assembly.cpp` |
+| Find the static equilibrium: a vehicle settled on its springs and tyres, a mechanism at rest under load | `kernel::static_equilibrium`, `StaticsOptions`; [the kernel, static equilibrium](../kernel.md#static-equilibrium); `tests/kernel/test_kernel_statics.cpp` |
 | Check a model before simulating it | [The kernel, checks](../kernel.md#checks); `validate()` |
 | Build and run a vehicle | `tests/vehicle/test_vehicle_template_dynamic.cpp`, `bench/bench_dynamics.cpp` |
 | Sweep a suspension through bump travel | `tests/test_suspension_kinematics.cpp` |

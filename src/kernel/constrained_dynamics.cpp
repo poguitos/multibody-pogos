@@ -288,8 +288,10 @@ void ConstraintSolver::least_squares_step()
     // sqrt(kRankTolerance) of the largest are dropped, the tolerance the
     // pivots of Z^T Z use. Only reached when an assembly is failing, so it
     // may allocate.
-    Eigen::CompleteOrthogonalDecomposition<MatX> cod(Z_.transpose());
+    // The threshold is set before the decomposition, which it shapes.
+    Eigen::CompleteOrthogonalDecomposition<MatX> cod;
     cod.setThreshold(std::sqrt(kRankTolerance));
+    cod.compute(Z_.transpose());
     dv_ = cod.solve(phi_);
     llt_M_.matrixU().solveInPlace(dv_);
 }
@@ -442,6 +444,50 @@ AssemblyStepInfo ConstraintSolver::assemble_accelerations(Data& data, const VecX
     out.residual = rhs_m_.norm();
     out.converged = out.residual <= tolerance;
     return out;
+}
+
+ProjectionInfo ConstraintSolver::project_positions(Data& data, VecX& q, Real t,
+                                                  const std::vector<int>& held,
+                                                  Real tolerance, int max_iterations)
+{
+    checks::data("kernel::ConstraintSolver::project_positions", model_, data);
+    checks::q("kernel::ConstraintSolver::project_positions", model_, q);
+    if (m_ == 0) {
+        ProjectionInfo out;
+        out.converged = true;
+        return out;
+    }
+    factorize_metric(data, q, held);
+    return gauss_newton(data, q, t, tolerance, max_iterations, &held, true);
+}
+
+const VecX& ConstraintSolver::accelerations_at_rest(Data& data, const VecX& q, const VecX& f,
+                                                    Real t, const std::vector<int>& held)
+{
+    checks::data("kernel::ConstraintSolver::accelerations_at_rest", model_, data);
+    checks::q("kernel::ConstraintSolver::accelerations_at_rest", model_, q);
+    checks::v("kernel::ConstraintSolver::accelerations_at_rest", model_, f, "f");
+    // The held coordinates are locked: their rows of W are the identity and
+    // their entries of f are dropped (the force that would hold them is not
+    // asked for), so their accelerations come out zero.
+    factorize_metric(data, q, held);
+    rhs_v_ = f;
+    for (int k : held) rhs_v_(k) = 0.0;
+    v_dot_free_ = rhs_v_;
+    llt_M_.solveInPlace(v_dot_free_);
+    v_dot_ = v_dot_free_;
+    if (m_ == 0) return v_dot_;
+
+    // J a = 0: at rest, with time frozen, gamma has neither velocity products
+    // nor the drivers' accelerations.
+    evaluate(data, q, zero_v_, t);
+    remove_held_columns(held);
+    factorize_constraint_matrix();
+    rhs_m_.noalias() = J_ * v_dot_free_;
+    rhs_m_ = -rhs_m_;
+    solve_constraint_matrix(rhs_m_, lambda_);
+    add_constraint_motion(lambda_, v_dot_);
+    return v_dot_;
 }
 
 } // namespace mbd::kernel

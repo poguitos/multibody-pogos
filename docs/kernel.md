@@ -17,6 +17,7 @@ description.
 | `include/mbd/kernel/constraints.hpp`, `src/kernel/constraints.cpp` | Markers, constraint primitives and joint closures |
 | `include/mbd/kernel/constrained_dynamics.hpp`, `src/kernel/constrained_dynamics.cpp` | The constrained solve: accelerations, multipliers, redundancy, projection |
 | `include/mbd/kernel/assembly.hpp`, `src/kernel/assembly.cpp` | Assembly of initial conditions: positions, velocities and accelerations onto the constraints, with chosen coordinates held |
+| `include/mbd/kernel/statics.hpp`, `src/kernel/statics.cpp` | Static equilibrium: Newton on the constraint surface, dynamic relaxation as a fallback, stability of the result |
 | `include/mbd/kernel/forces.hpp`, `src/kernel/forces.cpp` | Body states for the force elements, and their generalized forces |
 | `include/mbd/kernel/simulator.hpp`, `src/kernel/simulator.cpp` | `System` (model, constraints, force elements) and `Simulator` |
 | `include/mbd/kernel/validate.hpp`, `src/kernel/validate.cpp` | `validate()`: checks of a system before it is simulated, and its degrees of freedom |
@@ -323,6 +324,52 @@ assembled (MBD-K062 to K064). `summary(model)` prints it.
 `assemble(sim, spec)` assembles a simulator's state at its time and warns
 (MBD-K067) when it cannot. Drivers are constraints like any other, so a
 driven coordinate is assembled at its target and its rate.
+
+## Static equilibrium
+
+`kernel::static_equilibrium(sim, options)` (task 3.5, `kernel/statics.hpp`,
+decision D27) brings a simulator to rest at its time. At rest, with f(q) the
+applied generalized forces less gravity's `rnea(q, 0, 0)`
+(`Simulator::applied_forces`, the first half of `acceleration`), equilibrium
+is
+
+    F(q, lambda) = f(q) + J^T lambda = 0,     phi(q, t) = 0,
+
+with time frozen: a driver holds its target and its rates play no part. The
+residual is measured as accelerations, `a = W^-1 F` with `J a = 0`
+(`ConstraintSolver::accelerations_at_rest`, W the mass matrix with any held
+coordinates locked), and the tolerance is on `|a|_inf`, 1e-6 m/s^2 or rad/s^2
+by default.
+
+Newton's method works on the constraint surface. With N an orthonormal basis
+of the motions the constraints and holds allow (`J N = 0`), the step is
+`dq = N y`, `(N^T K N) y = -N^T f`, where K is `dF/dq` at fixed lambda by
+central differences (step 1e-6) and `N^T K N` the reduced tangent stiffness,
+the constraint forces' geometric stiffness included. Its singular directions,
+along which neither force nor stiffness acts, are left alone (a complete
+orthogonal decomposition with a relative threshold of 1e-8; the threshold is
+set before the decomposition, which it shapes). Each step is halved until
+`a^T M a` decreases, and each trial point is projected back onto the
+constraints. Convergence is quadratic: the double-wishbone sedan goes from
+`|a|_inf` = 73 at the start `set_vehicle_equilibrium` gives it (finding F9)
+to 2e-8 in three iterations, 6 ms.
+
+When no step along Newton's direction reduces the accelerations (a body
+above the ground it will rest on, where gravity acts and nothing is stiff
+yet), dynamic relaxation takes over: the system moves under the forces at
+rest, by semi-implicit Euler steps of `relaxation_step`, projected onto the
+constraints, and its velocities are zeroed each time its kinetic energy
+passes a peak (kinetic damping), until the accelerations have fallen a
+hundredfold. Newton then resumes.
+
+The report gives the iterations, the history of `|a|_inf`, the degrees of
+freedom, and, from the eigenvalues of the symmetric part of `-N^T K N` at the
+end, the directions without stiffness (MBD-K073: a car's position and heading
+on a flat road) and those with negative stiffness, which make the equilibrium
+unstable (MBD-K072: Newton finds the nearest equilibrium, stable or not). A
+failure is MBD-K070, a start off the constraints MBD-K071, a fall back on
+relaxation MBD-K074. `StaticsOptions::hold` holds coordinates as assembly
+does.
 
 ## Forces and simulation
 

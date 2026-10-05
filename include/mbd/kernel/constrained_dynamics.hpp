@@ -127,6 +127,25 @@ public:
     AssemblyStepInfo assemble_accelerations(Data& data, const VecX& q, const VecX& v, VecX& a,
                                             Real t, const std::vector<int>& held, Real tolerance);
 
+    /// Gauss-Newton onto phi(q, t) = 0 with `held` kept, in the metric of the
+    /// mass matrix at q: assembly's first stage, without the refinement to
+    /// the least correction. For statics, after each step.
+    ProjectionInfo project_positions(Data& data, VecX& q, Real t, const std::vector<int>& held,
+                                     Real tolerance, int max_iterations);
+
+    // --- Statics (task 3.5) --------------------------------------------------
+
+    /// The accelerations at rest under the generalized forces f (everything
+    /// but the constraint forces: the applied forces less gravity's
+    /// rnea(q, 0, 0)), with the velocity coordinates in `held` locked and
+    /// time frozen at t, so that a driver holds its target but its rates
+    /// play no part: a = W^-1 (f + J^T lambda) with J a = 0, W the mass
+    /// matrix with the held rows and columns removed. Zero exactly at a
+    /// static equilibrium. Returns a; the multipliers are in lambda(), the
+    /// mass matrix at q in data.M, and J() has the held columns zeroed.
+    const VecX& accelerations_at_rest(Data& data, const VecX& q, const VecX& f, Real t,
+                                      const std::vector<int>& held);
+
     const VecX& phi() const { return phi_; }
     const MatX& J() const { return J_; }
     const VecX& nu() const { return nu_; }

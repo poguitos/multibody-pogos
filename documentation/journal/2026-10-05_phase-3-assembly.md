@@ -135,6 +135,8 @@ velocities given as zero and left at zero, where it says nothing.
 locally (`test_kernel "[alloc]"` and `test_alloc` in a Debug build with
 `EIGEN_RUNTIME_NO_MALLOC`). Two unused helpers in `test_full_tire.cpp` and
 `test_steering.cpp`, which GCC warns about and MSVC does not, were removed.
+CI run 37332674074 on the pushed commit passed: the first MSVC build of this
+work, the sanitizers, and the no-allocation job.
 
 ## Measurements
 

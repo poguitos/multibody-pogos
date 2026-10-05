@@ -234,9 +234,10 @@ Warning: `Constraint projection did not converge at t = <t> s: residual <r> afte
 
 ### MBD-K060
 
-`kernel::assemble: the held <level> include <k>, but the velocity coordinates are 0 to <nv - 1>.` Also from `AssemblySpec::hold`, for a body without a joint or a coordinate its joint does not have.
+`<function>: the held <what> include <k>, but the velocity coordinates are 0 to <nv - 1>.` From `kernel::assemble` and `kernel::static_equilibrium`; also from `AssemblySpec::hold`, for a body without a joint or a coordinate its joint does not have.
 
-- **Means:** an assembly was asked to hold a coordinate that does not exist.
+- **Means:** an assembly or a static solution was asked to hold a coordinate
+  that does not exist.
 - **Usual causes:** a coordinate index counted in `q` rather than in `v`
   (they differ after a spherical or free joint, whose quaternion is four
   coordinates for three velocities); body 0, the ground, which has no joint.
@@ -246,12 +247,12 @@ Warning: `Constraint projection did not converge at t = <t> s: residual <r> afte
 
 ### MBD-K061
 
-`kernel::assemble: the held <level> hold part of the <spherical or free> joint of <body> (<n> of its 3 angular coordinates, <m> of its linear ones). Hold its rotation whole, or not at all; ...`
+`<function>: the held <what> hold part of the <spherical or free> joint of <body> (<n> of its 3 angular coordinates, <m> of its linear ones). Hold its rotation whole, or not at all; ...` From `kernel::assemble` and `kernel::static_equilibrium`.
 
 - **Means:** a rotation's three angular velocity coordinates are not
   independent angles: a correction applied about one axis and not the others
-  does not leave "the held angle" unchanged. Assembly therefore holds a
-  rotation whole or not at all. A free joint's translation is measured in its
+  does not leave "the held angle" unchanged. Assembly and statics therefore
+  hold a rotation whole or not at all. A free joint's translation is measured in its
   child-side axes, which turn with the body, so it can be held in part only
   while the rotation is held.
 - **What to do:** hold all three angular coordinates, or none. To fix a body's
@@ -334,6 +335,70 @@ Warning: `Simulator assembly at t = <t> s did not succeed; the state is the clos
 - **What to do:** as for the codes it contains. The full report, with the
   coordinate that changed most at each level, is the return value of
   `assemble`, and its `summary(model)` prints it.
+
+### MBD-K070
+
+Report error: `No static equilibrium found: the largest acceleration at rest is <a> (tolerance <tol>), in <coordinate>, after <n> Newton iterations and <m> relaxation steps.`
+
+- **Means:** `static_equilibrium` stopped without reaching a state where
+  nothing accelerates at rest. The simulator holds the best state reached.
+- **Usual causes:** no equilibrium exists: a force with nothing to balance it
+  (a vehicle on a slope with free-rolling tyres, a constant force on a
+  sliding joint with no spring); a body that must fall further than the
+  relaxation budget allows (`StaticsOptions::relaxation_max_steps`); a
+  relaxation step too long for the stiffest motion, which makes it blow up
+  (`relaxation_step`, below 2 / the highest natural frequency); a force law
+  with a kink exactly at the equilibrium.
+- **What to do:** check that every free direction has something to hold it,
+  or hold it (`StaticsOptions::hold`); look at the coordinate named and at
+  `history`, which shows whether Newton was converging; shorten the
+  relaxation step or raise its budget.
+
+### MBD-K071
+
+Report error: `Statics could not start: the configuration could not be brought onto the constraints. Assemble it first (kernel::assemble), which reports why.`
+
+- **Means:** the starting configuration is too far from any configuration
+  that satisfies the constraints (with the held coordinates at their values).
+- **What to do:** `kernel::assemble(sim)` with the same holds; its report
+  names the constraint that cannot be met (MBD-K062).
+
+### MBD-K072
+
+Report warning: `The equilibrium is unstable: the stiffness is negative in <n> direction(s), so the smallest disturbance moves the system away from it (a pendulum balanced upright).`
+
+- **Means:** the state found is an equilibrium, but not a resting state: the
+  forces push away from it along `n` directions. Newton's method finds the
+  nearest equilibrium, stable or not.
+- **What to do:** if a resting state was meant, start nearer to it, or
+  disturb the result slightly and run `static_equilibrium` again; a
+  simulation from a slightly disturbed state shows where the system goes.
+  For conservative forces the count is exact; with forces that are not (a
+  follower force), it is taken from the symmetric part of the stiffness and
+  is a guide only.
+
+### MBD-K073
+
+Report note: `<n> of the <d> degrees of freedom have no stiffness here: nothing pushes back along them (a vehicle's position and heading on a flat road), and statics left them as they were.`
+
+- **Means:** along these directions neither force nor stiffness acts, so any
+  position along them is an equilibrium; statics did not move them.
+- **What to do:** nothing, when that is the physics (a car is free to roll
+  and turn on a flat road). If a direction should be held (a body that
+  should rest on a spring), check that the element acting along it exists
+  and is engaged.
+
+### MBD-K074
+
+Report note: `Newton could not reduce the accelerations <n> time(s); dynamic relaxation took over for <m> steps.`
+
+- **Means:** at least once, no step along Newton's direction reduced the
+  accelerations: usually because a force acted where nothing was stiff yet (a
+  body above the ground it will rest on), sometimes because of a kink in a
+  force law. Dynamic relaxation (motion under the forces, stopped at each peak
+  of kinetic energy) brought the system nearer, and Newton finished.
+- **What to do:** nothing; it is information. Starting nearer to the
+  equilibrium avoids it and is faster.
 
 ## M: findings of `validate()`
 

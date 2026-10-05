@@ -85,6 +85,13 @@ public:
     /// valid until the next evaluation.
     const VecX& acceleration(const VecX& q_at, const VecX& v_at, Real t);
 
+    /// The generalized forces of everything applied at (q, v, t): the force
+    /// elements, the joint forces, tau and force_callback, after
+    /// pre_force_callback; not gravity, velocity products or constraint
+    /// forces. The first half of acceleration(), for statics and
+    /// linearisation. Valid until the next evaluation.
+    const VecX& applied_forces(const VecX& q_at, const VecX& v_at, Real t);
+
     /// Kinematics at the current state (after initialize, step or refresh).
     const Data& data() const { return data_; }
     /// World states of the bodies at the current state.

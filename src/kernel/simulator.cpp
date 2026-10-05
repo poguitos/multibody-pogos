@@ -78,11 +78,11 @@ void Simulator::initialize()
     refresh();
 }
 
-const VecX& Simulator::acceleration(const VecX& q_at, const VecX& v_at, Real t)
+const VecX& Simulator::applied_forces(const VecX& q_at, const VecX& v_at, Real t)
 {
     const Model& model = system.model;
-    checks::q("kernel::Simulator::acceleration", model, q_at);
-    checks::v("kernel::Simulator::acceleration", model, v_at);
+    checks::q("kernel::Simulator::applied_forces", model, q_at);
+    checks::v("kernel::Simulator::applied_forces", model, v_at);
     // One kinematics pass serves the forces and the dynamics: with zero joint
     // accelerations it also gives the velocity-product terms the constraints
     // need.
@@ -101,7 +101,12 @@ const VecX& Simulator::acceleration(const VecX& q_at, const VecX& v_at, Real t)
 
     tau_total_ = tau + tau_forces_;
     if (force_callback) force_callback(*this, t, tau_total_);
+    return tau_total_;
+}
 
+const VecX& Simulator::acceleration(const VecX& q_at, const VecX& v_at, Real t)
+{
+    applied_forces(q_at, v_at, t);
     const VecX& v_dot = solver_.forward_dynamics_from_kinematics(data_, v_at, tau_total_, t);
     if (solver_.info().redundant() && !redundancy_reported_) {
         redundancy_reported_ = true;

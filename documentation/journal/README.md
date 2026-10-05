@@ -72,4 +72,5 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 5 Oct 2026 | [Phase 3: prescribed motion and kinematic analysis](2026-10-05_phase-3-prescribed-motion-and-kinematics.md) | 3.2, 3.6 | `30e6f08` | At the time |
 | 5 Oct 2026 | [Phase 3: the force library](2026-10-05_phase-3-force-library.md) | 3.1 | `e1e3863` | At the time |
 | 5 Oct 2026 | [Phase 3: output requests](2026-10-05_phase-3-outputs.md) | 3.3 | `8243549` | At the time, on the laptop |
-| 5 Oct 2026 | [Phase 3: assembly of initial conditions](2026-10-05_phase-3-assembly.md) | 3.4, D25, D26 | `b1b9db3` and the next | At the time, in a cloud session |
+| 5 Oct 2026 | [Phase 3: assembly of initial conditions](2026-10-05_phase-3-assembly.md) | 3.4, D25, D26 | `b1b9db3`, `e9381a1` | At the time, in a cloud session |
+| 5 Oct 2026 | [Phase 3: static equilibrium](2026-10-05_phase-3-statics.md) | 3.5, D27 | the commit after `e9381a1` | At the time, in a cloud session |

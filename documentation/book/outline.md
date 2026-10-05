@@ -89,7 +89,14 @@ to a validated engine.*
     pivot-dropping solve against least squares when held values contradict
     the constraints. *J: assembly. D26.*
 
-To come in this part: statics, linearisation, contact, events.
+20. **Static equilibrium.** The residual at rest and why it is measured as
+    accelerations; Newton on the constraint surface with the reduced tangent
+    stiffness; directions without stiffness (a car on a flat road) and
+    unstable equilibria; dynamic relaxation with kinetic damping; why a
+    simulation does not settle a car (it keeps rolling). Figure: the
+    sedan's `|a|` per iteration, quadratic. *J: statics. D27.*
+
+To come in this part: linearisation, contact, events.
 
 (Part X, *Keeping a record*, gains the move to cloud sessions through git:
 rules that lived in an assistant's memory moved into the repository. *D25.*)
