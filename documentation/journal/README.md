@@ -79,4 +79,5 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 5 Oct 2026 | [Phase 3: events](2026-10-05_phase-3-events.md) | 3.9, D30 | `70366fd` | At the time, in a cloud session |
 | 5 Oct 2026 | [Help: troubleshooting guide and debugging aids](2026-10-05_help-troubleshooting-and-debugging.md) | H.3, H.4, D31 | `fade6c8` | At the time, in a cloud session |
 | 5 Oct 2026 | [Help: the API reference](2026-10-05_help-api-reference.md) | H.5 | `731ca98` | At the time, in a cloud session |
-| 5 Oct 2026 | [Help: how-to guides for Phase 3](2026-10-05_help-howto-phase-3.md) | H.6 | the commit after `731ca98` | At the time, in a cloud session |
+| 5 Oct 2026 | [Help: how-to guides for Phase 3](2026-10-05_help-howto-phase-3.md) | H.6 | `7944a72` | At the time, in a cloud session |
+| 5 Oct 2026 | [Phase 3 retrospective](2026-10-05_phase-3-retrospective.md) | Phase 3, gate 3.10 prepared | the commit after `7944a72` | At the time, in a cloud session |
