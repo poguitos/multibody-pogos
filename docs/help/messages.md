@@ -435,6 +435,33 @@ Warning in a linearisation: `<n> eigenvalue(s) of A have a positive real part: m
 - **What to do:** look at the modes with `eigenvalue.real() > 0` and their
   shapes, which name the coordinates involved.
 
+### MBD-K090
+
+`kernel::Simulator: event <i> (<name>) has no function.`
+
+- **Means:** an `Event` in `Simulator::events` was added without its
+  `function`, so there is nothing to watch.
+- **What to do:** give every event a function of the simulator's state,
+  `[](const Simulator& s) { return ...; }`.
+
+### MBD-K091
+
+Warning: `More than 100 events in one step at t = <t> s: the events are chattering. The rest of the step was taken without looking for events. Further cases are not reported.`
+
+- **Means:** events followed each other a tolerance apart: an action that
+  makes its own event's function cross again at once. The classic case is a
+  switched (unregularised) friction at rest: each switch reverses the net
+  force and the velocity crosses zero again. The rest of the step was taken
+  without events, so whatever the actions maintain (the friction's
+  direction) is no longer updated, and the motion after this point is not
+  to be trusted.
+- **Usual causes:** a discontinuous law modelled with events where a
+  regularised one belongs (friction: use the regularised friction of
+  `JointCoordinateForce` or `PlaneContact`); an event with direction 0 (both
+  ways) whose action leaves the state on the switching surface.
+- **What to do:** regularise the law, or give the event a direction, or a
+  hysteresis (two events at different thresholds).
+
 ## M: findings of `validate()`
 
 `validate(system)` checks a system at its neutral configuration, or

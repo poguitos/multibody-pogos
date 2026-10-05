@@ -14,6 +14,7 @@
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "mbd/forces/force_element.hpp"
@@ -33,6 +34,32 @@ struct System {
     std::vector<std::shared_ptr<ForceElement>> force_elements;
     /// Forces on joint coordinates, added to the generalized forces directly.
     std::vector<std::shared_ptr<const JointForce>> joint_forces;
+};
+
+class Simulator;
+
+/// A function of the state whose sign changes mark an event (task 3.9): an
+/// impact, a switch, a limit reached. Within a step whose start and end give
+/// it opposite signs, the step is integrated again to the root, found to
+/// Simulator::event_tolerance in time; there `action` runs (it may change q
+/// and v, an impact's rebound for instance) and the rest of the step
+/// follows.
+struct Event {
+    std::string name;
+    /// g at the simulator's present state (q, v, time, states()).
+    std::function<Real(const Simulator&)> function;
+    /// +1: only rising crossings (- to +); -1: only falling; 0: both.
+    int direction{0};
+    /// Called at the event, just past the crossing. Optional.
+    std::function<void(Simulator&)> action;
+    /// End the step, and run(), at the event.
+    bool stop{false};
+};
+
+/// An event that happened: its index in Simulator::events and its time.
+struct EventRecord {
+    std::size_t event{0};
+    Real time{0.0};
 };
 
 enum class Integrator {
@@ -69,13 +96,24 @@ public:
     /// Called after every completed step.
     std::function<void(Simulator&, Real dt)> post_step_callback;
 
+    // --- Events (task 3.9) ------------------------------------------------------
+    std::vector<Event> events;
+    /// Width of the time interval within which an event is located [s].
+    Real event_tolerance{1e-10};
+    /// The events that have happened, in order.
+    const std::vector<EventRecord>& event_log() const { return event_log_; }
+    /// True if the last step ended at an event with `stop`.
+    bool stopped() const { return stopped_; }
+
     /// Project the state onto the constraints and refresh the kinematics.
     void initialize();
 
-    /// Advance by dt.
+    /// Advance by dt, stopping at each event within it (see Event); ends at
+    /// time + dt unless an event with `stop` ends it first.
     void step(Real dt);
 
-    /// Advance by round(duration / dt) steps; returns their number.
+    /// Advance by round(duration / dt) steps; returns the number taken, fewer
+    /// if an event with `stop` ended one.
     int run(Real duration, Real dt);
 
     /// Kinematics and body states at the current (q, v).
@@ -107,6 +145,20 @@ public:
 private:
     void step_rk4(Real dt);
     void step_semi_implicit_euler(Real dt);
+    /// One integrator step, the projection and the kinematics: a step
+    /// without events.
+    void advance(Real dt);
+    /// The time within (0, h] at which event i's function crosses, from the
+    /// state (q, v, time) saved in q_event_, v_event_, t_event_.
+    Real locate_event(std::size_t i, Real h, Real g0, Real g1);
+    void restore_event_start();
+
+    VecX q_event_, v_event_;
+    Real t_event_{0.0};
+    std::vector<Real> g_start_, g_end_;
+    std::vector<EventRecord> event_log_;
+    bool stopped_{false};
+    bool chatter_reported_{false};
 
     Data data_;
     ConstraintSolver solver_;

@@ -107,7 +107,10 @@ to a validated engine.*
     `v_s atanh(tan th / mu)`; the time step a slip speed demands; a plane on
     a moving body. *J: contact. D29.*
 
-To come in this part: events.
+23. **Events.** Sign changes, regula falsi on the step length, landing
+    strictly past the crossing; the bouncing ball and the Zeno point (why the
+    tolerance itself ends the bouncing); chattering of switched friction, and
+    why friction is regularised instead. *J: events. D30.*
 
 (Part X, *Keeping a record*, gains the move to cloud sessions through git:
 rules that lived in an assistant's memory moved into the repository. *D25.*)

@@ -468,6 +468,23 @@ constrained dynamics with `ConstraintSolver`, from the same kinematics pass. RK4
 `q_dot` and normalizes once per step; semi-implicit Euler moves q through
 `integrate`. After each step the state is projected onto the constraints.
 
+**Events** (task 3.9, decision D30). `Simulator::events` holds functions of
+the state, `g(sim)`, whose sign changes mark an event (an impact, a switch, a
+limit), each with a direction (rising, falling or both), an optional action
+that may change q and v, and an optional stop. After each step the signs at
+its two ends are compared; for a crossing, the step is integrated again from
+its start to the root, located by Illinois' regula falsi on the step length
+to `event_tolerance` (1e-10 s), the earliest event's action runs at the
+point strictly past the crossing, and the rest of the step follows, with its
+own events. `step(dt)` therefore still ends at `time + dt`, unless an event
+with `stop` ends it (`stopped()`, and `run` returns early); the integrator
+is fixed-step, and it is the step that is cut at the event. `event_log()`
+records every event and its time. Two limits: detection compares the ends
+of a step, so two crossings of one function within one step (a rise and a
+fall) go unseen, and the step must be shorter than the time between them;
+and more than 100 events in one step is chattering (MBD-K091), after which
+the rest of the step is taken without events.
+
 **Outputs** (task 3.3, `kernel/outputs.hpp`). `compute_loads(sim)` evaluates
 the accelerations at the simulator's state and returns them with the
 multipliers, each constraint's wrench on each body, and each joint's reaction.

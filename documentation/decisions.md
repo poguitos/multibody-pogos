@@ -40,6 +40,7 @@ and the journal entry of the work refers to them by number
 | D27 | Statics by Newton on the constraint surface with a finite-difference stiffness, residual measured as accelerations at rest, kinetic-damping relaxation as fallback | 5 Oct 2026 | In force, task 3.5 |
 | D28 | Linearisation in the coordinates of the constraint surface, by central differences fitted against the points' actual coordinates | 5 Oct 2026 | In force, task 3.7 |
 | D29 | Contact by penalty with a ramped damper and tanh-regularised friction, as a force element | 5 Oct 2026 | In force, task 3.8 |
+| D30 | Events by sign change at step ends, the step integrated again to the root, the action strictly past the crossing | 5 Oct 2026 | In force, task 3.9 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -478,3 +479,33 @@ and the journal entry of the work refers to them by number
   implicit integrators of Phase 4 will). Contact is with planes only; a
   terrain or road surface (Phase 7) generalizes the plane to a height field.
 - **Record.** Journal: Phase 3, contact. `docs/kernel.md`, "Contact".
+
+## D30. Events: the step integrated again to the root
+
+- **Context.** Task 3.9 asks for sign changes of user functions, with the
+  step shortened to the event "in variable-step mode". The engine has only
+  fixed-step integrators (RK4, semi-implicit Euler); variable steps with
+  dense output are task 4.2.
+- **Decision.** After each step, compare each event function's signs at the
+  step's two ends. For a crossing, integrate the step again from its start
+  with a shorter step, the length found by Illinois' regula falsi on the
+  function after that step, to a time tolerance (1e-10 s); take the earliest
+  event, land strictly past its crossing, run its action, and complete the
+  step from there, looking for further events. `step(dt)` keeps its end
+  time. Functions read the simulator itself (q, v, time, body states), so
+  that an event can be about anything the user can compute. At most 100
+  events per step; beyond, chattering is reported.
+- **Alternatives.** Locate the root on an interpolant of the step (dense
+  output), which costs no extra integration: the right method once task 4.2
+  provides dense output, and it can also see two crossings inside one step.
+  Locate it by bisection: slower, with nothing gained. Let the action happen
+  at the end of the step (no location): errors of a whole step in impact
+  times, which is what the plan's test is there to rule out.
+- **Consequences.** Each event costs a few re-integrations of a step
+  (typically 5 to 10 for 1e-10 s). Detection compares the ends of a step, so
+  the step must be shorter than the time between two crossings of one
+  function. An event lands strictly past its crossing, where the function
+  has its new sign, so an action can rely on the switch having happened; a
+  root found exactly counts as not yet crossed for that reason (found by a
+  test whose velocity was linear in time).
+- **Record.** Journal: Phase 3, events. `docs/kernel.md`, "Events".

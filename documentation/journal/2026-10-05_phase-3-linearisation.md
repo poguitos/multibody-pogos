@@ -78,7 +78,7 @@ were caught at the design stage, before code:
 | Off-equilibrium point reported (K080); state, velocities and tau restored | exactly | |
 | Sedan at rest: 10 degrees of freedom, 3 zero modes, none negative, no growing mode | as stated | |
 
-411 tests pass with GCC 13 (404 before).
+411 tests pass with GCC 13 (404 before). CI run 37340492561 on the pushed commit passed (MSVC, sanitizers, no-allocation).
 
 ## Measurements
 

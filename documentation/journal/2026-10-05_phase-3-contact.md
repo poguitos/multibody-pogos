@@ -67,7 +67,7 @@ model, which needs a state per contact (task 4.1 makes that possible).
 | Same, energy at the deepest point | 1.9e-6 relative | 1e-4: the deepest point is sampled once a step |
 | Ball on a sprung plate (plane on a moving body): spring and contact by statics | 0 and 3.3e-16 m | 1e-9 m |
 
-417 tests pass with GCC 13 (411 before).
+417 tests pass with GCC 13 (411 before). CI run 37341405079 on the pushed commit passed (MSVC, sanitizers, no-allocation).
 
 ## Measurements
 
