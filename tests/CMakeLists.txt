@@ -71,6 +71,7 @@ mbd_add_test_exe(test_kernel
     kernel/test_kernel_statics.cpp
     kernel/test_kernel_linearization.cpp
     kernel/test_kernel_events.cpp
+    kernel/test_kernel_diagnostics.cpp
 )
 find_package(Threads REQUIRED)
 target_link_libraries(test_kernel PRIVATE Threads::Threads)

@@ -76,4 +76,5 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 5 Oct 2026 | [Phase 3: static equilibrium](2026-10-05_phase-3-statics.md) | 3.5, D27 | `570d480` | At the time, in a cloud session |
 | 5 Oct 2026 | [Phase 3: linearisation](2026-10-05_phase-3-linearisation.md) | 3.7, D28 | `7db18ee` | At the time, in a cloud session |
 | 5 Oct 2026 | [Phase 3: contact with a plane](2026-10-05_phase-3-contact.md) | 3.8, D29 | `18dc53b` | At the time, in a cloud session |
-| 5 Oct 2026 | [Phase 3: events](2026-10-05_phase-3-events.md) | 3.9, D30 | the commit after `18dc53b` | At the time, in a cloud session |
+| 5 Oct 2026 | [Phase 3: events](2026-10-05_phase-3-events.md) | 3.9, D30 | `70366fd` | At the time, in a cloud session |
+| 5 Oct 2026 | [Help: troubleshooting guide and debugging aids](2026-10-05_help-troubleshooting-and-debugging.md) | H.3, H.4, D31 | the commit after `70366fd` | At the time, in a cloud session |

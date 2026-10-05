@@ -18,6 +18,7 @@ add_library(multibody_core
     kernel/assembly.cpp
     kernel/statics.cpp
     kernel/linearization.cpp
+    kernel/diagnostics.cpp
     forces/force_element.cpp
     forces/curve.cpp
     forces/spring_damper.cpp

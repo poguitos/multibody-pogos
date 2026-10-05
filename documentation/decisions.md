@@ -41,6 +41,7 @@ and the journal entry of the work refers to them by number
 | D28 | Linearisation in the coordinates of the constraint surface, by central differences fitted against the points' actual coordinates | 5 Oct 2026 | In force, task 3.7 |
 | D29 | Contact by penalty with a ramped damper and tanh-regularised friction, as a force element | 5 Oct 2026 | In force, task 3.8 |
 | D30 | Events by sign change at step ends, the step integrated again to the root, the action strictly past the crossing | 5 Oct 2026 | In force, task 3.9 |
+| D31 | A step trace whose energy balance integrates the work of applied and constraint forces with the integrator's own stages | 5 Oct 2026 | In force, task H.4 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -509,3 +510,36 @@ and the journal entry of the work refers to them by number
   root found exactly counts as not yet crossed for that reason (found by a
   test whose velocity was linear in time).
 - **Record.** Journal: Phase 3, events. `docs/kernel.md`, "Events".
+
+## D31. The step trace and its energy balance
+
+- **Context.** Task H.4 asks for a step trace from which a broken model can be
+  diagnosed. Energy is the most telling quantity, but a model's total energy
+  needs the potential of every element, and many have none (dampers, tyres,
+  user forces) or have one only in their own coordinates.
+- **Decision.** The trace records kinetic and gravity energy and, separately,
+  the work of everything else: the applied forces (force elements, joint
+  forces, tau, callbacks) and the constraint forces, whose power is
+  `lambda . nu`, nonzero only for drivers. The work is integrated with the
+  integrator's own rule, the RK4 stages' powers weighted 1, 2, 2, 1, so the
+  balance kinetic + potential - work stays constant to the integrator's own
+  accuracy whatever the forces. A drifting balance therefore points at the
+  integration or the projection; energy that rises while the balance holds
+  points at the applied forces. `diagnose` turns the trace into coded
+  findings; the trace is written to and read from CSV exactly, so a run can
+  be diagnosed later from its file.
+- **Alternatives.** A potential for every element: a virtual function each,
+  with the element's coordinate computed from body states a second time (the
+  pattern behind findings F1 to F4), and no answer for dampers and tyres.
+  The work by the trapezoidal rule at the step ends (the first version,
+  replaced before it was measured): second-order, its error relative to the
+  energy of order (omega dt)^2 / 12, about 1e-3 at omega dt = 0.1, enough to
+  raise false alarms on healthy runs.
+- **Consequences.** Tracing costs one constraint and one force evaluation per
+  step, and the evaluation of acceleration() two dot products always. Energy
+  growth by applied forces is judged from the growth of the energy's peaks,
+  since a spring's stored energy is in the work and not in the energy column;
+  over less than one period of the motion that judgement can be wrong, and
+  the message says so.
+- **Record.** Journal: help, troubleshooting and debugging aids.
+  `docs/kernel.md`, "Debugging aids".

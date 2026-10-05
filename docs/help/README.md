@@ -40,6 +40,7 @@ examples:
 | Start from values that do not satisfy the constraints: close a loop, hold the coordinates that matter | `kernel::assemble`, `AssemblySpec`; [the kernel, assembly](../kernel.md#assembly-of-initial-conditions); `tests/kernel/test_kernel_assembly.cpp` |
 | Find the static equilibrium: a vehicle settled on its springs and tyres, a mechanism at rest under load | `kernel::static_equilibrium`, `StaticsOptions`; [the kernel, static equilibrium](../kernel.md#static-equilibrium); `tests/kernel/test_kernel_statics.cpp` |
 | Natural frequencies, damping ratios and mode shapes; state matrices for control | `kernel::linearize` after `static_equilibrium`; [the kernel, linearisation](../kernel.md#linearisation); `tests/kernel/test_kernel_linearization.cpp` |
+| Find out what went wrong in a simulation: a step trace and its diagnosis | `Simulator::trace`, `diagnose`; [troubleshooting](troubleshooting.md#8-the-debugging-tools); `tests/kernel/test_kernel_diagnostics.cpp` |
 | Check a model before simulating it | [The kernel, checks](../kernel.md#checks); `validate()` |
 | Build and run a vehicle | `tests/vehicle/test_vehicle_template_dynamic.cpp`, `bench/bench_dynamics.cpp` |
 | Sweep a suspension through bump travel | `tests/test_suspension_kinematics.cpp` |
@@ -47,9 +48,11 @@ examples:
 
 ## Troubleshooting
 
-Planned (task H.3): from symptom to cause to fix. Until then, start with the
-code at the front of the message, in the catalogue below, and with
-`validate(system)`, which lists every problem it finds in a model at once.
+[Troubleshooting](troubleshooting.md): from symptom to cause to fix, for
+builds, models, starting states, simulations, events and contact, timings,
+and work on the engine itself; and how to use the debugging tools
+(`validate`, `describe`, `dump_state`, the step trace and `diagnose`). Every
+problem the development journal records has an entry there.
 
 ## Messages
 

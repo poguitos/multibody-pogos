@@ -518,6 +518,39 @@ inner points and driven to `SteeringRack::travel` by a `JointDriver`.
 `VehicleHandle::set_steering` sets that travel; the projection after the
 next step moves the linkage, and each wheel's toe follows from the geometry.
 
+## Debugging aids
+
+`kernel/diagnostics.hpp` (task H.4). `describe(system)` lists every body
+with its joint, parent, coordinate indices, mass and centre of mass, every
+constraint and force element with the bodies it acts on, and the count of
+degrees of freedom (`describe(system, q)` counts at a given configuration: a
+loop's neutral configuration may be singular). `dump_state(sim)` gives the
+time, each body's coordinates, velocities, placement and velocity, each
+constraint's largest residual and the last projection.
+
+**The step trace.** With `Simulator::trace` on, the simulator records a
+`TraceRow` at the first step's start and after every step: the drift of the
+constraints after the integrator's step and before the projection, the
+projection's iterations and residuals, the rank, the kinetic and gravity
+energies, the power and work of the applied and constraint forces, the
+energy balance, the largest speed and the events in the step. The work is
+integrated with the integrator's own rule (the RK4 stages' powers), and the
+constraint forces' power is `lambda . nu`, nonzero only for drivers; the
+balance, kinetic + potential - work less its first value, therefore stays at
+zero to the integrator's accuracy whatever the forces, springs and dampers
+included (5 s of a damped pendulum at 1 ms: under 1e-6 J). It costs a
+constraint and a force evaluation per step.
+
+`write_trace_csv` and `read_trace_csv` store a trace exactly; `diagnose(trace)`
+reads one and reports what went wrong: failed projections (MBD-K100), an
+energy balance that drifts (K101: the integration or the projection makes or
+loses energy, usually a step too long), energy whose peaks grow under
+positive work of the applied forces (K102: a motor, or a force with the wrong
+sign), redundant equations (K103), drift within a step (K104). The test
+`tests/kernel/test_kernel_diagnostics.cpp` diagnoses a loop that cannot
+close, a damper with the wrong sign and a step too long for a stiff spring,
+each from its trace file alone.
+
 ## Checks
 
 **Always on.** Every entry point of the kernel checks the vectors it is

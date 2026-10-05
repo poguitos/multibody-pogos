@@ -132,7 +132,9 @@ journal entries and retrospective.
 - **Keeping a record.** This journal, the decision log, and how they fed this
   book. *D22.*
 - **Help and diagnostics.** Messages written for the reader, codes and a
-  catalogue, `validate()`. *D19, D23.*
+  catalogue, `validate()`; the step trace and its energy balance without
+  potentials; the journal turned into a troubleshooting guide. *D19, D23,
+  D31; J: help, troubleshooting and debugging aids.*
 - **Working with an AI assistant.** The March 2026 rewrite from an AI proposal,
   the review, and the collaboration since: what worked, what had to be
   checked, and why every claim was tied to a measurement. *All journal entries.*

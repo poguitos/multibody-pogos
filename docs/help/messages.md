@@ -8,7 +8,7 @@ letter for the area, and three digits. Search this page for the code.
 | K | The kernel: building models, the algorithms, constraints, the solver, the simulator | Errors: an exception `mbd::MbdError`, whose `what()` is the message. Warnings: the diagnostic sink, see below |
 | M | `kernel::validate()`: findings in a model | Lines of the report: `errors`, `warnings` and `notes`, and `summary()` |
 | F | Force elements | Errors, when the element is constructed |
-| A | Analysis: tracks and lap simulation | Errors |
+| A | Analysis: tracks and lap simulation, recorders and traces | Errors |
 
 **Warnings** go through one replaceable sink, `mbd::diagnostic_sink()`. By
 default it writes `[mbd warning] <message>` to standard error;
@@ -462,6 +462,58 @@ Warning: `More than 100 events in one step at t = <t> s: the events are chatteri
 - **What to do:** regularise the law, or give the event a direction, or a
   hysteresis (two events at different thresholds).
 
+### MBD-K100
+
+Trace diagnosis, warning: `The projection onto the constraints failed in <n> of <m> steps, first at t = <t> s, leaving |phi| up to <r>: the constraints cannot be met there (...)`
+
+- **Means:** in the steps counted the state could not be put back onto the
+  constraints (MBD-K051 is the same seen live).
+- **What to do:** `validate(system, q)` at the first failure's state, from
+  `dump_state(sim)` or by stepping to it; check the lengths and markers of the
+  loop named there, the drivers' targets, and whether the mechanism passes a
+  singular position.
+
+### MBD-K101
+
+Trace diagnosis, warning: `The energy balance drifts by <e> J (<f> of the energy exchanged), largest at t = <t> s: the integration or the projection makes or loses energy. Usually the step is too long for the fastest motion.`
+
+- **Means:** kinetic + gravity's potential - the work of the applied and
+  constraint forces should stay at its first value; it moved by more than
+  1e-4 of the energy that changed hands during the run (event actions, such as
+  an impact's rebound, are left out).
+- **Usual causes:** a step too long for the stiffest element (a contact, a
+  bushing, a tyre: the step should be well under 1 / its frequency);
+  projections that move the state a long way each step (see MBD-K104).
+- **What to do:** halve the step and compare; find the stiff element with
+  `linearize` (its highest mode).
+
+### MBD-K102
+
+Trace diagnosis, note: `The energy's peaks grew by <e> J from the first quarter of the run to the last, and the applied forces did <w> J of work: a driver or a motor does that, and so does a force element with the wrong sign (a damper that pushes). ...`
+
+- **Means:** something applied keeps putting energy in. Legitimate for a
+  motor, a driver or a force that pushes on purpose; otherwise a sign error.
+- **What to do:** if nothing should drive the system, look for a damper, a
+  friction or a user force with the wrong sign (`law()` of each element
+  gives its force against its rate).
+
+### MBD-K103
+
+Trace diagnosis, note: `<n> of the <m> constraint equations are redundant, from t = <t> s (see MBD-K050).`
+
+- **Means and what to do:** as MBD-K050, found in the trace.
+
+### MBD-K104
+
+Trace diagnosis, warning: `Within a step the constraints drift by up to <d> before the projection (at t = <t> s): the step is long for the motion, and the dynamics within it were computed off the constraints.`
+
+- **Means:** after the integrator's step and before the projection, |phi|
+  exceeded 1e-6. The projection then moved the state back, which changes its
+  energy and hides the error; the dynamics of the step were computed away
+  from the constraint surface.
+- **What to do:** a shorter step; if the drift comes with MBD-K100, the
+  constraints cannot be met at all.
+
 ## M: findings of `validate()`
 
 `validate(system)` checks a system at its neutral configuration, or
@@ -739,3 +791,15 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
 - **Usual causes:** a folder in the path that does not exist, a file open in
   another program (a spreadsheet keeps CSV files locked on Windows), or a full
   disk.
+
+### MBD-A030
+
+`write_trace_csv: cannot open <path> for writing`, `read_trace_csv: cannot open <path>`, `... does not start with the trace's header`, or `a row of <path> has <n> fields, not <m>`
+
+- **Means:** a step trace could not be written or read back.
+- **Usual causes:** a folder that does not exist; a file that is not a trace
+  written by `write_trace_csv` (the header must match exactly); a file cut
+  short.
+- **What to do:** write traces with `write_trace_csv` and read them with
+  `read_trace_csv` unchanged; a spreadsheet that saves the file again may
+  change its format.

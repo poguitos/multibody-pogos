@@ -62,6 +62,27 @@ struct EventRecord {
     Real time{0.0};
 };
 
+/// One row of a simulator's step trace (task H.4): what each step did, for
+/// finding out afterwards what went wrong. See kernel/diagnostics.hpp.
+struct TraceRow {
+    Real time{0.0};
+    Real dt{0.0};                   ///< Step length; 0 for the first row (the start)
+    Real drift{0.0};                ///< |phi| after the integrator step, before projection
+    int projection_iterations{0};
+    Real position_residual{0.0};    ///< |phi| after projection
+    Real velocity_residual{0.0};    ///< |J v - nu| after projection
+    bool projection_converged{true};
+    int equations{0};               ///< Constraint equations
+    int rank{0};                    ///< Independent ones, at the step's last evaluation
+    Real kinetic{0.0};              ///< Kinetic energy
+    Real potential{0.0};            ///< Gravity's potential energy
+    Real power{0.0};                ///< Power of the applied and constraint forces, tau . v + lambda . nu
+    Real work{0.0};                 ///< Their work since the first row, by the integrator's own rule
+    Real balance{0.0};              ///< kinetic + potential - work, less its first value
+    Real max_speed{0.0};            ///< |v|_inf
+    int events{0};                  ///< Events in the step
+};
+
 enum class Integrator {
     RK4,                ///< Classical fourth order
     SemiImplicitEuler,  ///< First order and symplectic: velocities, then positions
@@ -104,6 +125,12 @@ public:
     const std::vector<EventRecord>& event_log() const { return event_log_; }
     /// True if the last step ended at an event with `stop`.
     bool stopped() const { return stopped_; }
+
+    // --- Step trace (task H.4) ----------------------------------------------------
+    /// Record a TraceRow at the first step's start and after every step. It
+    /// costs a constraint evaluation and a force evaluation per step.
+    bool trace{false};
+    const std::vector<TraceRow>& trace_rows() const { return trace_rows_; }
 
     /// Project the state onto the constraints and refresh the kinematics.
     void initialize();
@@ -158,6 +185,13 @@ private:
     std::vector<Real> g_start_, g_end_;
     std::vector<EventRecord> event_log_;
     bool stopped_{false};
+    /// The trace: the row at the present state, and the drift of the last
+    /// integrator step.
+    void record_trace(Real dt, int events_in_step, Real work_in_step);
+    std::vector<TraceRow> trace_rows_;
+    Real last_drift_{0.0};
+    Real last_power_{0.0};       ///< At the last evaluation of acceleration()
+    Real last_step_work_{0.0};   ///< Of the last advance(), by the integrator's rule
     bool chatter_reported_{false};
 
     Data data_;

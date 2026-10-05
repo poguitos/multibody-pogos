@@ -109,6 +109,12 @@ const VecX& Simulator::acceleration(const VecX& q_at, const VecX& v_at, Real t)
 {
     applied_forces(q_at, v_at, t);
     const VecX& v_dot = solver_.forward_dynamics_from_kinematics(data_, v_at, tau_total_, t);
+    // The power of the applied forces and of the constraint forces, whose
+    // power (J^T lambda) . v = lambda . nu is zero unless a constraint
+    // depends on time (a driver). Integrated alongside the motion for the
+    // trace's energy balance.
+    last_power_ = tau_total_.dot(v_at);
+    if (solver_.size() > 0) last_power_ += solver_.lambda().dot(solver_.nu());
     if (solver_.info().redundant() && !redundancy_reported_) {
         redundancy_reported_ = true;
         report_warning("MBD-K050: Redundant constraints: " + std::to_string(solver_.info().equations)
@@ -125,6 +131,8 @@ void Simulator::step_rk4(Real dt)
     q0_ = q;
     v0_ = v;
     const Real stage_dt[4] = {0.0, 0.5 * dt, 0.5 * dt, dt};
+    const Real weight[4] = {1.0, 2.0, 2.0, 1.0};
+    last_step_work_ = 0.0;
     for (int k = 0; k < 4; ++k) {
         if (k == 0) {
             q_stage_ = q0_;
@@ -134,8 +142,10 @@ void Simulator::step_rk4(Real dt)
             v_stage_ = v0_ + stage_dt[k] * kv_[k - 1];
         }
         kv_[k] = acceleration(q_stage_, v_stage_, time + stage_dt[k]);
+        last_step_work_ += weight[k] * last_power_;
         q_dot(model, q_stage_, v_stage_, kq_[k]);
     }
+    last_step_work_ *= dt / 6.0;
     // Combine the stages linearly and normalize once (see kernel::q_dot).
     q = q0_ + (dt / 6.0) * (kq_[0] + 2.0 * kq_[1] + 2.0 * kq_[2] + kq_[3]);
     v = v0_ + (dt / 6.0) * (kv_[0] + 2.0 * kv_[1] + 2.0 * kv_[2] + kv_[3]);
@@ -145,6 +155,7 @@ void Simulator::step_rk4(Real dt)
 void Simulator::step_semi_implicit_euler(Real dt)
 {
     v += dt * acceleration(q, v, time);
+    last_step_work_ = dt * last_power_;
     integrate(system.model, q, v, dt, q);
 }
 
@@ -156,6 +167,10 @@ void Simulator::advance(Real dt)
     }
     time += dt;
 
+    if (trace && solver_.size() > 0) {
+        solver_.evaluate(data_, q, data_.zero_v, time);
+        last_drift_ = solver_.phi().norm();
+    }
     if (project_constraints && solver_.size() > 0) {
         last_projection_ = solver_.project(data_, q, v, time, projection_tolerance);
         if (!last_projection_.converged) {
@@ -240,9 +255,13 @@ void Simulator::step(Real dt)
     checks::v("kernel::Simulator::step", system.model, v);
     checks::v("kernel::Simulator::step", system.model, tau, "tau");
     stopped_ = false;
+    if (trace && trace_rows_.empty()) record_trace(0.0, 0, 0.0);
+    int found = 0;
+    Real work = 0.0;   // of the advances kept, not of the event search's trials
 
     if (events.empty()) {
         advance(dt);
+        work = last_step_work_;
     } else {
         for (std::size_t i = 0; i < events.size(); ++i) {
             MBD_THROW_IF(!events[i].function, "MBD-K090: kernel::Simulator: event " + std::to_string(i) + " ("
@@ -252,7 +271,6 @@ void Simulator::step(Real dt)
         g_end_.resize(events.size());
         const Real t_end = time + dt;
         const Real t_small = 1e-14 * std::max(Real(1.0), std::abs(t_end));
-        int found = 0;
         while (t_end - time > t_small) {
             const Real h = t_end - time;
             for (std::size_t i = 0; i < events.size(); ++i) g_start_[i] = events[i].function(*this);
@@ -261,6 +279,7 @@ void Simulator::step(Real dt)
             t_event_ = time;
             advance(h);
             if (found >= kMaxEventsPerStep) {
+                work += last_step_work_;
                 if (!chatter_reported_) {
                     chatter_reported_ = true;
                     report_warning("MBD-K091: More than " + std::to_string(kMaxEventsPerStep)
@@ -283,10 +302,14 @@ void Simulator::step(Real dt)
                     tau_first = tau;
                 }
             }
-            if (first == events.size()) break;   // no event: the step is done
+            if (first == events.size()) {   // no event: the step is done
+                work += last_step_work_;
+                break;
+            }
 
             restore_event_start();
             advance(tau_first);
+            work += last_step_work_;
             ++found;
             event_log_.push_back({first, time});
             if (events[first].action) {
@@ -299,8 +322,44 @@ void Simulator::step(Real dt)
             }
         }
     }
+    if (trace) record_trace(dt, found, work);
     tau.setZero();
     if (post_step_callback) post_step_callback(*this, dt);
+}
+
+void Simulator::record_trace(Real dt, int events_in_step, Real work_in_step)
+{
+    const Model& model = system.model;
+    TraceRow row;
+    row.time = time;
+    row.dt = dt;
+    row.events = events_in_step;
+    row.max_speed = v.size() > 0 ? v.cwiseAbs().maxCoeff() : 0.0;
+    if (dt > 0.0) {
+        row.drift = last_drift_;
+        row.projection_iterations = last_projection_.iterations;
+        row.position_residual = last_projection_.position_residual;
+        row.velocity_residual = last_projection_.velocity_residual;
+        row.projection_converged = !project_constraints || solver_.size() == 0 || last_projection_.converged;
+    }
+    row.equations = solver_.info().equations;
+    row.rank = solver_.info().rank;
+    // The power at the state reached; the evaluation also leaves the
+    // kinematics with velocities in data_, for the energies.
+    acceleration(q, v, time);
+    row.power = last_power_;
+    row.kinetic = kinetic_energy(model, data_);
+    row.potential = potential_energy(model, data_);
+    if (trace_rows_.empty()) {
+        row.work = 0.0;
+        row.balance = 0.0;
+    } else {
+        const TraceRow& first = trace_rows_.front();
+        row.work = trace_rows_.back().work + work_in_step;
+        row.balance = (row.kinetic + row.potential - row.work) - (first.kinetic + first.potential);
+    }
+    trace_rows_.push_back(row);
+    refresh();
 }
 
 int Simulator::run(Real duration, Real dt)
