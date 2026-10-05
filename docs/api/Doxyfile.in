@@ -1,0 +1,46 @@
+# The API reference (plan task H.5), generated from the header comments of
+# include/mbd/ by the CMake target `docs`. Configured by CMake into the build
+# directory; @VAR@ are filled in there.
+
+PROJECT_NAME           = "multibody"
+PROJECT_BRIEF          = "C++20 multibody dynamics for vehicles: API reference"
+PROJECT_NUMBER         = @PROJECT_VERSION@
+OUTPUT_DIRECTORY       = @MBD_DOCS_OUTPUT@
+INPUT                  = @PROJECT_SOURCE_DIR@/docs/api/mainpage.md @PROJECT_SOURCE_DIR@/include/mbd
+USE_MDFILE_AS_MAINPAGE = @PROJECT_SOURCE_DIR@/docs/api/mainpage.md
+FILE_PATTERNS          = *.hpp *.md
+RECURSIVE              = YES
+STRIP_FROM_PATH        = @PROJECT_SOURCE_DIR@/include
+STRIP_FROM_INC_PATH    = @PROJECT_SOURCE_DIR@/include
+FULL_PATH_NAMES        = YES
+
+# Every declaration is listed, documented or not: the reference is complete,
+# and "no warnings" means no errors in the comments that exist.
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+EXTRACT_PRIVATE        = NO
+HIDE_UNDOC_RELATIONS   = NO
+JAVADOC_AUTOBRIEF      = YES
+MARKDOWN_SUPPORT       = YES
+BUILTIN_STL_SUPPORT    = YES
+SORT_MEMBER_DOCS       = NO
+
+# Warnings: errors in the documentation fail the build (CI, task H.5).
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_IF_INCOMPLETE_DOC = NO
+WARN_NO_PARAMDOC       = NO
+WARN_AS_ERROR          = FAIL_ON_WARNINGS
+WARN_FORMAT            = "$file:$line: $text"
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_TREEVIEW      = YES
+SEARCHENGINE           = YES
+GENERATE_LATEX         = NO
+HAVE_DOT               = NO
+SOURCE_BROWSER         = NO
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = NO

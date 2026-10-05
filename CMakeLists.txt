@@ -107,6 +107,19 @@ if (MBD_BUILD_PYTHON)
     add_subdirectory(python)
 endif()
 
+#  API reference (plan task H.5): `cmake --build <dir> --target docs`, when
+#  Doxygen is installed. Errors in the header comments fail it.
+find_package(Doxygen QUIET)
+if (DOXYGEN_FOUND)
+    set(MBD_DOCS_OUTPUT "${CMAKE_BINARY_DIR}/docs")
+    configure_file(${PROJECT_SOURCE_DIR}/docs/api/Doxyfile.in ${CMAKE_BINARY_DIR}/Doxyfile @ONLY)
+    add_custom_target(docs
+        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_BINARY_DIR}/Doxyfile
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        COMMENT "API reference into ${MBD_DOCS_OUTPUT}/html"
+        VERBATIM)
+endif()
+
 #  Testing setup (only *our* tests)
 include(CTest)
 

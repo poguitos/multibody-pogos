@@ -57,9 +57,11 @@ a cloud session starts from a fresh clone and sees only what is committed
   ctest --test-dir build-linux --output-on-failure -j3
   ```
 
-- CI (`.github/workflows/ci.yml`) runs Windows/MSVC, Linux with sanitizers
-  and a no-allocation check on every push. A cloud session builds with GCC
-  only, so CI is the first MSVC build of its work: check it after pushing.
+- CI (`.github/workflows/ci.yml`) runs Windows/MSVC, Linux with sanitizers,
+  a no-allocation check and the API reference (Doxygen; any comment error
+  fails it; `--target docs` locally) on every push. A cloud session builds
+  with GCC only, so CI is the first MSVC build of its work: check it after
+  pushing.
 - **Timings** are comparable only on one machine in one session (D21). Numbers
   from a cloud container are not compared with the laptop's; say which
   machine produced them.

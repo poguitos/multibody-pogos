@@ -55,6 +55,10 @@ cmake --build build-linux
 ctest --test-dir build-linux --output-on-failure -j3
 ```
 
+The API reference is generated from the header comments by Doxygen, when it
+is installed: `cmake --build build-linux --target docs` (or the `build`
+directory on Windows) writes `docs/html/index.html` in the build directory.
+
 A test executable can also be run directly, with Catch2's own filters:
 
 ```powershell
