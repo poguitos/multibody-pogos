@@ -441,6 +441,23 @@ friction, limit stops that push but never pull); such elements go in
 `law()` returns its force with the derivatives with respect to its own
 coordinate and rate, for statics, linearisation and implicit integration.
 
+**Contact** (task 3.8, decision D29). `PlaneContact` (`forces/plane_contact.hpp`)
+puts spheres of a body (radius 0 for points) against a plane, the XY plane of
+a frame on any body (the ground by default). At depth `d = r - h` the normal
+force is `k d^e + c s(d / d_c) d_dot`, never pulling: a penalty spring
+(exponent 1, or 1.5 for Hertz's sphere) and a damper whose coefficient ramps
+smoothly from zero at first touch to c at the depth `d_c`, so that the force
+does not jump when contact begins. Friction is Coulomb's, regularised as
+`mu F_n tanh(|u| / v_s)` against the slip velocity u: below the slip speed
+`v_s` it acts as a viscous damper, so that a body that would stick creeps at
+a speed of order `v_s` (exactly `v_s atanh(tan th / mu)` on an incline of
+angle th), and the time step must resolve it: RK4 is stable while
+`dt mu F_n / (v_s m_point) < 2.8`. The rate of penetration and the slip come
+from the velocities of the two material points at the contact point, the
+plane's own motion included, and the plane's body takes the reaction.
+`normal_law`, `friction_law` and `potential_energy` give the laws with their
+derivatives; `contact(states, i)` the state of one sphere.
+
 **`kernel::System`** is a `Model` with its loop constraints, force elements
 and joint forces: what the vehicle builders fill. **`kernel::Simulator`** advances
 one. It owns the state (`q`, `v`, `time`) and, at every evaluation of the

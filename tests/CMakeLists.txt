@@ -88,6 +88,7 @@ mbd_add_test_exe(test_forces
     forces/test_pacejka.cpp
     forces/test_force_library.cpp
     forces/test_force_connectors.cpp
+    forces/test_plane_contact.cpp
     test_force_elements.cpp
 )
 

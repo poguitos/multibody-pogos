@@ -102,7 +102,12 @@ to a validated engine.*
     closure); from A to frequencies, damping ratios and shapes; the quarter
     car to twelve digits; the sedan's modes. *J: linearisation. D28.*
 
-To come in this part: contact, events.
+22. **Contact.** Penalty contact and its damping (why a ramp from first
+    touch); regularised friction and the friction angle, sticking as creep at
+    `v_s atanh(tan th / mu)`; the time step a slip speed demands; a plane on
+    a moving body. *J: contact. D29.*
+
+To come in this part: events.
 
 (Part X, *Keeping a record*, gains the move to cloud sessions through git:
 rules that lived in an assistant's memory moved into the repository. *D25.*)

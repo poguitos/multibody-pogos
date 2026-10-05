@@ -39,6 +39,7 @@ and the journal entry of the work refers to them by number
 | D26 | Assembly holds coordinates by masking J and the metric; the least correction is in the kinetic-energy metric, refined to optimality | 5 Oct 2026 | In force, task 3.4 |
 | D27 | Statics by Newton on the constraint surface with a finite-difference stiffness, residual measured as accelerations at rest, kinetic-damping relaxation as fallback | 5 Oct 2026 | In force, task 3.5 |
 | D28 | Linearisation in the coordinates of the constraint surface, by central differences fitted against the points' actual coordinates | 5 Oct 2026 | In force, task 3.7 |
+| D29 | Contact by penalty with a ramped damper and tanh-regularised friction, as a force element | 5 Oct 2026 | In force, task 3.8 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -447,3 +448,33 @@ and the journal entry of the work refers to them by number
   this.
 - **Record.** Journal: Phase 3, linearisation. `docs/kernel.md`,
   "Linearisation".
+
+## D29. Contact by penalty, ramped damping and regularised friction
+
+- **Context.** Task 3.8 asks for points and spheres against a plane with
+  penalty stiffness, nonlinear damping and regularised friction. The
+  choices: the damping law, the friction law, and whether contact is a force
+  element or a constraint.
+- **Decision.** A force element. Normal force `k d^e + c s(d / d_c) d_dot`,
+  clamped at zero: the damper's coefficient ramps by a smooth step from zero
+  at first touch to c at the depth `d_c`, as in the IMPACT function of
+  commercial codes, so the force is continuous at contact. Friction
+  `mu F_n tanh(|u| / v_s)`, the same regularisation as the joint friction of
+  D24, smooth through zero slip. Each law returns its derivatives; the
+  spring has a potential.
+- **Alternatives.** Hunt and Crossley's damping `c d^e d_dot`: also
+  continuous, with a restitution coefficient that depends on impact speed in
+  a known way; worth adding as an option when impacts matter (Phase 9
+  kerbs). A linear damper: a jump in force at first touch, and a pull just
+  before separation. Unilateral constraints with complementarity (exact
+  sticking, exact impacts): a different solver class (LCP, time-stepping
+  schemes), out of scope until a case needs it. A stick-slip model with
+  a bristle state (LuGre): real sticking without creep, at the cost of a
+  state per contact, which the integrator interface of task 4.1 will make
+  possible.
+- **Consequences.** A body that should stick creeps at a speed of order the
+  slip speed, exactly predictable on an incline; a small slip speed makes the
+  friction stiff (`mu F_n / v_s`) and the time step must resolve it (the
+  implicit integrators of Phase 4 will). Contact is with planes only; a
+  terrain or road surface (Phase 7) generalizes the plane to a height field.
+- **Record.** Journal: Phase 3, contact. `docs/kernel.md`, "Contact".

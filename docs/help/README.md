@@ -33,6 +33,7 @@ examples:
 | Add a spring or damper with a tabulated curve, preload or stops | `tests/forces/test_force_library.cpp` |
 | Add a torsion spring, friction or a limit stop on a joint | `tests/forces/test_force_library.cpp` (`JointCoordinateForce`) |
 | Add a bushing, a rotational spring between bodies, or a force of your own | `tests/forces/test_force_connectors.cpp` |
+| Put a body in contact with the ground or another body's face: points, spheres, friction | `PlaneContact`; [the kernel, contact](../kernel.md#forces-and-simulation); `tests/forces/test_plane_contact.cpp` |
 | Read joint reactions, constraint forces and energies | `compute_loads(sim)`; `tests/kernel/test_kernel_outputs.cpp` |
 | Record channels over a run and write them as CSV | `Recorder`; `tests/kernel/test_kernel_outputs.cpp` |
 | Start from values that do not satisfy the constraints: close a loop, hold the coordinates that matter | `kernel::assemble`, `AssemblySpec`; [the kernel, assembly](../kernel.md#assembly-of-initial-conditions); `tests/kernel/test_kernel_assembly.cpp` |

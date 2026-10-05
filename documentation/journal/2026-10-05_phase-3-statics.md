@@ -96,7 +96,8 @@ coefficient per model; stability read from the reduced stiffness.
 | Sedan: degrees of freedom / without stiffness / unstable | 10 / 3 / 0 | the position and heading on the road are free |
 
 Every case converges quadratically (the histories are in the data file). 404
-tests pass with GCC 13 (397 before).
+tests pass with GCC 13 (397 before). CI run 37335603045 on the pushed commit
+passed (MSVC, sanitizers, no-allocation).
 
 ## Measurements
 

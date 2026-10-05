@@ -24,6 +24,7 @@ add_library(multibody_core
     forces/rotational_spring_damper.cpp
     forces/bushing.cpp
     forces/user_force.cpp
+    forces/plane_contact.cpp
     forces/pacejka.cpp
     forces/tire.cpp
     forces/aerodynamics.cpp

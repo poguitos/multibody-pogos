@@ -642,6 +642,26 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
 
 `AntiRollBar: stiffness must be >= 0` or `damping must be >= 0`
 
+### MBD-F040
+
+`PlaneContact: stiffness, damping and friction must be >= 0, the exponent >= 1, and the damping depth and slip speed > 0`
+
+- **Means:** a contact parameter is out of range. An exponent below 1 gives an
+  infinite stiffness at first touch; a zero damping depth or slip speed
+  divides by zero.
+- **What to do:** 1 for a linear penalty, 1.5 for Hertz's sphere; a damping
+  depth of the order of the static depth (0.1 mm for a stiff contact); a
+  slip speed small against the speeds of interest (1 mm/s), with a time step
+  short enough for it (see the contact section of the kernel page).
+
+### MBD-F041
+
+`PlaneContact: no contact points given`, or `a contact point is not finite, or its radius is negative`
+
+- **Means:** the list of contact spheres is empty or malformed.
+- **What to do:** give at least one `ContactSphere`, with radius 0 for a
+  point.
+
 ## A: analysis
 
 ### MBD-A001
