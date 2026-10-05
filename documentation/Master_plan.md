@@ -179,6 +179,8 @@ Each has a recommendation. Where the choice is yours, it says so.
 
 **D8. Files and tools.** JSON for model files, Python for scripting and post-processing, Rerun or Meshcat for three-dimensional playback, CasADi with IPOPT for optimal control.
 
+Decisions taken since the review, from D9 on, are recorded in [decisions.md](decisions.md) as they are made, with their context, alternatives and consequences.
+
 ---
 
 ## 5. Roadmap overview
@@ -201,6 +203,7 @@ Each has a recommendation. Where the choice is yours, it says so.
 | 13 | Optimisation and AI layer | 9 | 100 to 150 |
 | 14 | Flexible bodies, FEM coupling, FMI | 5 | 100 to 150 |
 | 15 | Documentation and release | all | 60 to 100 |
+| H | Help and debugging documentation, alongside every phase from 3 on | 2 | 40 to 70 |
 
 The total is roughly 1,000 to 1,650 hours, the same order as the 950 to 1,380 hours of your original schedule. These are planning guesses, not commitments. The spread is wide because the vehicle, CFD and real-time phases depend on choices not yet made.
 
@@ -209,6 +212,7 @@ The total is roughly 1,000 to 1,650 hours, the same order as the 950 to 1,380 ho
 - **M2, credible vehicle:** end of Phase 9.
 - **M3 to M6:** Phases 10 to 13 are independent of each other once M2 is reached. Take them in the order you care about. The suggested order is lap time, then CFD (which improves lap time), then real time, then the AI layer.
 - **M7, release:** Phases 14 and 15.
+- **Documentation track H** runs alongside the phases from Phase 3 on (D23), and the development record (working rule 7, D22) alongside everything.
 
 ---
 
@@ -263,6 +267,7 @@ Goal: a structure in which F1 to F4 cannot recur, fast enough to build on, and s
 - [x] **2.8 Compiled library.** Move non-template code into `src/`. *Done when editing one source file recompiles one file, and a full rebuild at one job takes under ten minutes.* *Result, 5 Oct 2026: the force, vehicle and analysis code moved out of 17 headers into source files under `src/`, the bodies moved verbatim by script; the headers keep declarations, doc comments, small inline accessors and templates. The library has its own precompiled header (standard library, Eigen, core and kernel), which took the kernel's source files from 10 to 46 s each down to 2 or 3 s (the algorithms 28 s); the new files take 0.4 to 2.2 s. Editing one source file recompiles that file and relinks (checked with `ninja -n`). A full rebuild of the project at one job takes 7.4 min (65 files), against 7.8 min for 46 files before. Compiling the moved code once brought out four unused variables in an inline function no test had used, now removed. The option `MBD_TEST_PCH` became `MBD_PCH`, for the library and the tests.*
 - [x] **2.9 Checks that stay on.** Size checks in all builds. A `validate()` pass that reports topological order, invalid inertias, unconnected bodies, and the count of degrees of freedom and redundant constraints. *Done when each malformed test model produces a specific message.* *Result, 5 Oct 2026: every entry point of the kernel checks its vectors and its `Data` against the model in every build (`src/kernel/checks.hpp`, replacing debug-only asserts), at the cost of a comparison each. Building a `ConstraintSolver` or a `Simulator` checks that every constraint and force element acts on bodies of the model; both now report their bodies through `bodies()`. `kernel::validate(system)` reports, without throwing: per-body arrays out of step, bodies out of topological order, joint indices that do not match their joints, inertias no real body has (not finite, negative mass, not symmetric, a negative principal moment, the triangle inequality broken), an inertia or joint frame changed after the body was added, a joint that moves nothing with mass (a singular mass matrix, naming the joint), constraints and force elements on missing bodies, a constraint with all its markers on one body, constraints not satisfied, and redundant equations. In the kernel every body comes with its joint, so "unconnected" becomes a body floating on a free joint with nothing acting on it, which is noted. It counts the degrees of freedom with the solver's own rank. Each malformed model in `test_kernel_validate.cpp` gets its specific message; a planar four-bar closed in 3D counts one degree of freedom and three redundant equations, and the template vehicles ten degrees of freedom whatever their suspension. 364 tests pass.*
 - [x] **2.10 Performance baseline.** Benchmarks for each algorithm on chains of 2 to 64 bodies and on the detailed sedan, recorded in `docs/performance.md`. *Target: the 26-degree-of-freedom sedan steps in under 0.25 ms on average on this laptop, with zero allocations per step.* *Result, 5 Oct 2026: chains and trees of 2 to 64 bodies and the double-wishbone sedan are benchmarked in `docs/performance.md`, pinned to a performance core: unpinned, runs varied by more than a factor of two on this hybrid CPU. The sedan (27 velocities with its steering rack, 17 constraint equations) steps in 124 us, against 181 us for the code of 4 October run alternately in the same session. The changes: one kinematics pass per evaluation instead of four, the constraint matrix formed as `Z^T Z` with `Z = L^-1 J^T`, and a projection that reuses the last stage's mass matrix and its own last evaluation. In a slower state of the machine seen the same morning (2.2 times slower), the step would take about 280 us, so the target holds in the laptop's normal state only. Stepping allocates nothing: `test_alloc` counts every `operator new` over 100 steps of the sedan and of a four-bar, and the CI job kernel-no-malloc also runs it with Eigen's check on. 366 tests pass.*
+- [x] **2.11 Gate.** Merge into `main` and tag `v0.3.0`. *Done when CI is green on `main`.* *Result, 5 Oct 2026: fast-forwarded and tagged; CI run 37318464879 on `main` passed (Windows, Linux with sanitizers, no-malloc). Retrospective in `documentation/journal/2026-10-05_phase-2-retrospective.md`.*
 
 ### Phase 3. Solver completeness
 
@@ -437,6 +442,19 @@ Goal: Block 4 of your original schedule.
 - [ ] **15.6 Packaging.** Version numbers, changelog, wheels for Windows and Linux, CMake package files, licence and third-party notices.
 - [ ] **15.7 Roadmap for version 2.** Flexible-ring tyre, soft-soil terrain (the Bekker-Wong models in your knowledge base), GPU batch simulation.
 
+Tasks 15.2 to 15.4 complete and polish what the documentation track H has built since Phase 3; they do not start from nothing.
+
+### Documentation track H. Help and debugging (alongside every phase)
+
+Goal: the help every program has, written while the program is built (D23): how to use it, what each message means, and how to find out what went wrong. H.1 and H.2 come first in Phase 3, before Phase 3 adds more messages; H.3 to H.5 during Phase 3; H.6 at every phase gate.
+
+- [ ] **H.1 Help folder.** `docs/help/` with an index: getting started, concepts, how-to guides, troubleshooting, the message catalogue and the reference. The existing documents (`conventions.md`, `kernel.md`, `performance.md`) get their place in it. *Done when the README points to it and every existing document is reachable from its index.*
+- [ ] **H.2 Message codes.** Every error, warning and `validate()` message carries a stable code (`MBD-` with an area letter and a number), printed with the message, and has an entry in `docs/help/messages.md`: what it means, the usual causes, what to do. *Done when a test that scans the sources and the catalogue finds every code used documented, and every documented code used.*
+- [ ] **H.3 Troubleshooting guide.** From symptom to cause to fix: builds (compiler memory, code page, precompiled headers), models (`validate()`), simulations (projection failures, constraint drift, energy growth, stiff tyres at low speed, step size) and slow runs (the timing protocol, D21); and how to use the debugging tools (`validate()`, the diagnostic sink and logging, finite-difference and energy checks for a new element). *Done when every problem met so far in the journal has its entry.*
+- [ ] **H.4 Debugging aids in the program.** `describe(system)`: bodies, joints, constraints, force elements and the degree-of-freedom count, as text. A step trace switched on by an option, written to CSV: projection iterations and residuals, constraint residual, energy, redundancy, per step. A state dump. *Done when a test shows a deliberately broken model diagnosed from its trace alone.*
+- [ ] **H.5 API reference.** Doxygen from the header comments, a CMake target `docs`, built in CI. *Done when CI builds it with no warnings for the public headers.*
+- [ ] **H.6 Guides grow with the phases.** Each phase adds the how-to pages of what it delivers, with examples that are compiled and run as tests so they cannot go stale. Python docstrings (Phase 6) and the command-line `--help` (with the model files of Phase 8) use the same message catalogue. *Done at each phase gate.*
+
 ---
 
 ## 7. Working rules
@@ -447,6 +465,8 @@ Goal: Block 4 of your original schedule.
 4. **One place per formula.** If two routines need the same quantity, one computes it and the other reads it.
 5. **Commit every session.** `main` stays green. Work happens on branches.
 6. **Each phase ends at its gate.** The next phase starts when the "done when" conditions hold, not when the code exists.
+7. **Keep the record** (D22). Every task ends with an entry in `documentation/journal/`, in the commit that finishes the task. Decisions go to `documentation/decisions.md` when they are taken; every number keeps its raw data and the command that produced it; every phase ends with a retrospective entry. This is the material for the book about the project.
+8. **Keep the help current** (D23). A task that adds or changes a message, an option or a behaviour updates `docs/help/` in the same commit; every error and warning carries a code documented in the message catalogue.
 
 ## 8. Risks
 
