@@ -36,6 +36,7 @@
 #include "mbd/kernel/constrained_dynamics.hpp"
 #include "mbd/kernel/forces.hpp"
 #include "mbd/kernel/simulator.hpp"
+#include "mbd/kernel/validate.hpp"
 
 #include "mbd/model/rigid_body.hpp"
 

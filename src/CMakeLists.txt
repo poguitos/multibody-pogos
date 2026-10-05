@@ -11,6 +11,8 @@ add_library(multibody_core
     kernel/constrained_dynamics.cpp
     kernel/forces.cpp
     kernel/simulator.cpp
+    kernel/checks.cpp
+    kernel/validate.cpp
     forces/force_element.cpp
     forces/pacejka.cpp
     forces/tire.cpp

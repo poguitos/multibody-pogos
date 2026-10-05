@@ -12,6 +12,8 @@
 
 #include "mbd/spatial/spatial.hpp"
 
+#include "checks.hpp"
+
 namespace mbd::kernel {
 
 namespace {
@@ -65,7 +67,8 @@ Vec6 add_gravity(const Model& model, const Data& data, int i, const Vec6& a_gf)
 
 void forward_kinematics(const Model& model, Data& data, const VecX& q)
 {
-    MBD_ASSERT(q.size() == model.nq);
+    checks::data("kernel::forward_kinematics", model, data);
+    checks::q("kernel::forward_kinematics", model, q);
     data.oMi[0] = Transform3::Identity();
     for (int i = 1; i < model.nbodies(); ++i) {
         placement_step(model, data, i, q, data.zero_v);
@@ -74,7 +77,9 @@ void forward_kinematics(const Model& model, Data& data, const VecX& q)
 
 void forward_kinematics(const Model& model, Data& data, const VecX& q, const VecX& v)
 {
-    MBD_ASSERT(q.size() == model.nq && v.size() == model.nv);
+    checks::data("kernel::forward_kinematics", model, data);
+    checks::q("kernel::forward_kinematics", model, q);
+    checks::v("kernel::forward_kinematics", model, v);
     data.oMi[0] = Transform3::Identity();
     data.v[0].setZero();
     for (int i = 1; i < model.nbodies(); ++i) {
@@ -86,7 +91,10 @@ void forward_kinematics(const Model& model, Data& data, const VecX& q, const Vec
 void forward_kinematics(const Model& model, Data& data,
                         const VecX& q, const VecX& v, const VecX& a)
 {
-    MBD_ASSERT(q.size() == model.nq && v.size() == model.nv && a.size() == model.nv);
+    checks::data("kernel::forward_kinematics", model, data);
+    checks::q("kernel::forward_kinematics", model, q);
+    checks::v("kernel::forward_kinematics", model, v);
+    checks::v("kernel::forward_kinematics", model, a, "a");
     data.oMi[0] = Transform3::Identity();
     data.v[0].setZero();
     data.a[0].setZero();
@@ -103,6 +111,7 @@ void forward_kinematics(const Model& model, Data& data,
 
 Vec6 body_velocity_world(const Data& data, int i)
 {
+    checks::body("kernel::body_velocity_world", i, data.oMi.size());
     const Quat& R = data.oMi[i].q;
     Vec6 out;
     out << R * data.v[i].head<3>(), R * data.v[i].tail<3>();
@@ -111,6 +120,7 @@ Vec6 body_velocity_world(const Data& data, int i)
 
 Vec6 body_acceleration_world(const Data& data, int i)
 {
+    checks::body("kernel::body_acceleration_world", i, data.oMi.size());
     // The spatial acceleration's linear part is the acceleration of the body
     // origin less w x v_origin (Featherstone, section 2.11).
     const Quat& R = data.oMi[i].q;
@@ -123,6 +133,8 @@ Vec6 body_acceleration_world(const Data& data, int i)
 
 void body_jacobian_world(const Model& model, const Data& data, int i, MatX& J)
 {
+    checks::data("kernel::body_jacobian_world", model, data);
+    checks::body("kernel::body_jacobian_world", i, data.oMi.size());
     J.setZero(6, model.nv);
     const Vec3& p_i = data.oMi[i].p;
     for (int j = i; j > 0; j = model.parent[j]) {
@@ -139,7 +151,10 @@ void body_jacobian_world(const Model& model, const Data& data, int i, MatX& J)
 const VecX& rnea(const Model& model, Data& data,
                  const VecX& q, const VecX& v, const VecX& a)
 {
-    MBD_ASSERT(q.size() == model.nq && v.size() == model.nv && a.size() == model.nv);
+    checks::data("kernel::rnea", model, data);
+    checks::q("kernel::rnea", model, q);
+    checks::v("kernel::rnea", model, v);
+    checks::v("kernel::rnea", model, a, "a");
     const int nb = model.nbodies();
     data.oMi[0] = Transform3::Identity();
     data.v[0].setZero();
@@ -171,6 +186,8 @@ const VecX& rnea(const Model& model, Data& data,
 
 const MatX& crba(const Model& model, Data& data, const VecX& q)
 {
+    checks::data("kernel::crba", model, data);
+    checks::q("kernel::crba", model, q);
     forward_kinematics(model, data, q);
     const int nb = model.nbodies();
     for (int i = 1; i < nb; ++i) data.Ic[i] = model.I[i];
@@ -204,7 +221,10 @@ const MatX& crba(const Model& model, Data& data, const VecX& q)
 const VecX& aba(const Model& model, Data& data,
                 const VecX& q, const VecX& v, const VecX& tau)
 {
-    MBD_ASSERT(q.size() == model.nq && v.size() == model.nv && tau.size() == model.nv);
+    checks::data("kernel::aba", model, data);
+    checks::q("kernel::aba", model, q);
+    checks::v("kernel::aba", model, v);
+    checks::v("kernel::aba", model, tau, "tau");
     const int nb = model.nbodies();
     data.oMi[0] = Transform3::Identity();
     data.v[0].setZero();
@@ -269,6 +289,7 @@ const VecX& aba(const Model& model, Data& data,
 
 Vec6 momentum_world(const Model& model, const Data& data)
 {
+    checks::data("kernel::momentum_world", model, data);
     Vec6 h = Vec6::Zero();
     for (int i = 1; i < model.nbodies(); ++i) {
         h += force_act(data.oMi[i], model.I[i] * data.v[i]);
@@ -278,6 +299,7 @@ Vec6 momentum_world(const Model& model, const Data& data)
 
 Real kinetic_energy(const Model& model, const Data& data)
 {
+    checks::data("kernel::kinetic_energy", model, data);
     Real T = 0.0;
     for (int i = 1; i < model.nbodies(); ++i) {
         T += data.v[i].dot(model.I[i] * data.v[i]);
@@ -287,6 +309,7 @@ Real kinetic_energy(const Model& model, const Data& data)
 
 Real potential_energy(const Model& model, const Data& data)
 {
+    checks::data("kernel::potential_energy", model, data);
     Real V = 0.0;
     for (int i = 1; i < model.nbodies(); ++i) {
         V -= model.inertia[i].mass * model.gravity.dot(data.oMi[i].apply(model.inertia[i].com_B));
@@ -296,6 +319,7 @@ Real potential_energy(const Model& model, const Data& data)
 
 Vec3 center_of_mass(const Model& model, const Data& data)
 {
+    checks::data("kernel::center_of_mass", model, data);
     Real m = 0.0;
     Vec3 mc = Vec3::Zero();
     for (int i = 1; i < model.nbodies(); ++i) {
@@ -309,8 +333,9 @@ Vec3 center_of_mass(const Model& model, const Data& data)
 
 void q_dot(const Model& model, const VecX& q, const VecX& v, VecX& qd)
 {
-    MBD_ASSERT(q.size() == model.nq && v.size() == model.nv);
-    MBD_ASSERT(&qd != &q);
+    checks::q("kernel::q_dot", model, q);
+    checks::v("kernel::q_dot", model, v);
+    MBD_THROW_IF(&qd == &q, "kernel::q_dot: qd must not be q itself");
     qd.resize(model.nq);
     for (int i = 1; i < model.nbodies(); ++i) {
         model.joint[i]->q_dot(q.segment(model.idx_q[i], model.nqs[i]),
@@ -321,7 +346,7 @@ void q_dot(const Model& model, const VecX& q, const VecX& v, VecX& qd)
 
 void normalize(const Model& model, VecX& q)
 {
-    MBD_ASSERT(q.size() == model.nq);
+    checks::q("kernel::normalize", model, q);
     for (int i = 1; i < model.nbodies(); ++i) {
         model.joint[i]->normalize(q.segment(model.idx_q[i], model.nqs[i]));
     }
@@ -329,7 +354,8 @@ void normalize(const Model& model, VecX& q)
 
 void integrate(const Model& model, const VecX& q, const VecX& v, Real dt, VecX& q_out)
 {
-    MBD_ASSERT(q.size() == model.nq && v.size() == model.nv);
+    checks::q("kernel::integrate", model, q);
+    checks::v("kernel::integrate", model, v);
     if (&q_out != &q) q_out.resize(model.nq);
     Eigen::Matrix<Real, Eigen::Dynamic, 1, 0, 6, 1> dv;
     for (int i = 1; i < model.nbodies(); ++i) {
@@ -341,7 +367,8 @@ void integrate(const Model& model, const VecX& q, const VecX& v, Real dt, VecX& 
 
 void difference(const Model& model, const VecX& q0, const VecX& q1, VecX& dv)
 {
-    MBD_ASSERT(q0.size() == model.nq && q1.size() == model.nq);
+    checks::q("kernel::difference", model, q0, "q0");
+    checks::q("kernel::difference", model, q1, "q1");
     dv.resize(model.nv);
     for (int i = 1; i < model.nbodies(); ++i) {
         const int iq = model.idx_q[i], nqi = model.nqs[i];

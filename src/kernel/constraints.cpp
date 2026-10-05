@@ -256,6 +256,16 @@ void ConstraintSet::add(std::shared_ptr<const ConstraintModel> c)
     parts_.push_back(std::move(c));
 }
 
+std::vector<int> ConstraintSet::bodies() const
+{
+    std::vector<int> out;
+    for (const auto& c : parts_) {
+        const std::vector<int> b = c->bodies();
+        out.insert(out.end(), b.begin(), b.end());
+    }
+    return out;
+}
+
 void ConstraintSet::calc(const Model& model, const Data& data, Real t,
                          VecRef phi, MatRef J, VecRef nu, VecRef gamma) const
 {

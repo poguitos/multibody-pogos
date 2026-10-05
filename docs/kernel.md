@@ -18,6 +18,8 @@ description.
 | `include/mbd/kernel/constrained_dynamics.hpp`, `src/kernel/constrained_dynamics.cpp` | The constrained solve: accelerations, multipliers, redundancy, projection |
 | `include/mbd/kernel/forces.hpp`, `src/kernel/forces.cpp` | Body states for the force elements, and their generalized forces |
 | `include/mbd/kernel/simulator.hpp`, `src/kernel/simulator.cpp` | `System` (model, constraints, force elements) and `Simulator` |
+| `include/mbd/kernel/validate.hpp`, `src/kernel/validate.cpp` | `validate()`: checks of a system before it is simulated, and its degrees of freedom |
+| `src/kernel/checks.hpp`, `src/kernel/checks.cpp` | The argument checks of the entry points |
 | `tests/kernel/` | Identities, invariants and closed-form cases |
 
 The reference is R. Featherstone, *Rigid Body Dynamics Algorithms*, Springer
@@ -284,6 +286,41 @@ inner points and driven to `SteeringRack::travel` by a `JointDriver`.
 `VehicleHandle::set_steering` sets that travel; the projection after the
 next step moves the linkage, and each wheel's toe follows from the geometry.
 
+## Checks
+
+**Always on.** Every entry point of the kernel checks the vectors it is
+given against the model (q against nq; v, a and tau against nv) and that the
+`Data` was made for the model; where a body is named, that it exists. These
+checks stay on in release builds, where a wrong size would otherwise be read
+out of bounds. Each costs a comparison; its message, which names the
+function, the argument and both sizes, is built only when it fails. Building
+a `ConstraintSolver` checks that every constraint acts on bodies of the
+model, and building a `Simulator` does the same for the force elements:
+both report their bodies through `bodies()`.
+
+**`validate(system)`** (task 2.9) reports, without throwing, what would
+otherwise surface later as a singular matrix, a NaN or a quietly wrong
+answer, each with a message that names the body, constraint or force
+element concerned:
+
+* errors: per-body arrays out of step, bodies out of topological order, joint
+  indices that do not match the joint models; inertias no real body has (not
+  finite, negative mass, not symmetric, a negative principal moment,
+  principal moments that break the triangle inequality); an inertia or joint
+  frame changed after the body was added; a joint that moves nothing with
+  mass in some direction, which makes the mass matrix singular; constraints
+  or force elements on bodies that do not exist; a constraint whose markers
+  are all on one body;
+* warnings: constraints not satisfied at the configuration checked;
+* notes: a body that floats freely (on a free joint to the ground, with no
+  constraint or force element on it or on what it carries), and redundant
+  constraint equations.
+
+It also counts the degrees of freedom: the tree's velocities less the rank
+of the constraint Jacobian as the solver itself sees it (the pivots of
+`J M^-1 J^T`, with the same tolerance). `summary()` gives the counts and
+every message as text.
+
 ## Tests
 
 `tests/kernel/test_spatial.cpp` checks the identities of the spatial algebra
@@ -339,6 +376,13 @@ inclines, the steady spin of a symmetric body, a fixed joint's placement, the
 slow normal mode of a double pendulum, two bodies held together at a point
 under a balanced load, and a height driver holding a point of a falling
 body.
+
+`tests/kernel/test_kernel_validate.cpp` gives each malformed system its own
+expected message, and checks the counts on a planar four-bar closed in three
+dimensions (one degree of freedom, three redundant equations); it also checks
+that the algorithms, the solver and the simulator reject wrong sizes and
+missing bodies. The template vehicles validate with ten degrees of freedom
+whatever their suspension (`tests/vehicle/test_vehicle_template_dynamic.cpp`).
 
 Until task 2.7b, `tests/kernel/test_kernel_vs_legacy.cpp` compared the kernel
 with the original `MultibodySystem` on random chains and trees: poses,

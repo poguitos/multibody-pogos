@@ -1,12 +1,17 @@
 #include "mbd/kernel/forces.hpp"
 
+#include <string>
+
 #include "mbd/kernel/algorithms.hpp"
 #include "mbd/spatial/spatial.hpp"
+
+#include "checks.hpp"
 
 namespace mbd::kernel {
 
 RigidBodyState body_state(const Data& data, int i)
 {
+    checks::body("kernel::body_state", i, data.oMi.size());
     RigidBodyState s;
     const Transform3& X = data.oMi[i];
     s.p_WB = X.p;
@@ -18,6 +23,7 @@ RigidBodyState body_state(const Data& data, int i)
 
 void body_states(const Model& model, const Data& data, std::vector<RigidBodyState>& states)
 {
+    checks::data("kernel::body_states", model, data);
     states.resize(static_cast<std::size_t>(model.nbodies()));
     for (int i = 0; i < model.nbodies(); ++i) states[static_cast<std::size_t>(i)] = body_state(data, i);
 }
@@ -25,7 +31,11 @@ void body_states(const Model& model, const Data& data, std::vector<RigidBodyStat
 void generalized_forces(const Model& model, Data& data,
                         const std::vector<RigidBodyForces>& forces, VecX& tau)
 {
-    MBD_ASSERT(static_cast<int>(forces.size()) == model.nbodies());
+    checks::data("kernel::generalized_forces", model, data);
+    MBD_THROW_IF(forces.size() != static_cast<std::size_t>(model.nbodies()),
+                 "kernel::generalized_forces: " + std::to_string(forces.size())
+                     + " forces given, but the model has " + std::to_string(model.nbodies())
+                     + " bodies.");
     if (tau.size() != model.nv) tau.resize(model.nv);
     tau.setZero();
     const int nb = model.nbodies();

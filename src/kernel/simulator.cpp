@@ -7,6 +7,8 @@
 #include "mbd/kernel/algorithms.hpp"
 #include "mbd/kernel/forces.hpp"
 
+#include "checks.hpp"
+
 namespace mbd::kernel {
 
 Simulator::Simulator(System& sys)
@@ -15,6 +17,19 @@ Simulator::Simulator(System& sys)
     , solver_(sys.model, sys.constraints)
 {
     const Model& model = system.model;
+    // Every force element must act on bodies of the model: apply() would
+    // otherwise index the states out of bounds.
+    for (std::size_t k = 0; k < system.force_elements.size(); ++k) {
+        const auto& f = system.force_elements[k];
+        MBD_THROW_IF(!f, "kernel::Simulator: force element " + std::to_string(k) + " is empty");
+        for (BodyIndex b : f->bodies()) {
+            MBD_THROW_IF(b < 0 || b >= model.nbodies(),
+                         "kernel::Simulator: force element " + std::to_string(k) + " ("
+                             + f->name() + ") refers to body " + std::to_string(b)
+                             + ", but the model's bodies are 0 to "
+                             + std::to_string(model.nbodies() - 1) + ".");
+        }
+    }
     q = model.neutral_configuration();
     v = VecX::Zero(model.nv);
     tau = VecX::Zero(model.nv);
@@ -41,6 +56,8 @@ void Simulator::refresh()
 
 void Simulator::initialize()
 {
+    checks::q("kernel::Simulator::initialize", system.model, q);
+    checks::v("kernel::Simulator::initialize", system.model, v);
     if (project_constraints && solver_.size() > 0) {
         last_projection_ = solver_.project(data_, q, v, time, projection_tolerance);
     }
@@ -50,6 +67,8 @@ void Simulator::initialize()
 const VecX& Simulator::acceleration(const VecX& q_at, const VecX& v_at, Real t)
 {
     const Model& model = system.model;
+    checks::q("kernel::Simulator::acceleration", model, q_at);
+    checks::v("kernel::Simulator::acceleration", model, v_at);
     forward_kinematics(model, data_, q_at, v_at);
     body_states(model, data_, states_);
 
@@ -107,6 +126,9 @@ void Simulator::step_semi_implicit_euler(Real dt)
 
 void Simulator::step(Real dt)
 {
+    checks::q("kernel::Simulator::step", system.model, q);
+    checks::v("kernel::Simulator::step", system.model, v);
+    checks::v("kernel::Simulator::step", system.model, tau, "tau");
     switch (method) {
         case Integrator::RK4:               step_rk4(dt); break;
         case Integrator::SemiImplicitEuler: step_semi_implicit_euler(dt); break;

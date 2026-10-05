@@ -5,6 +5,7 @@
 
 #include "mbd/vehicle/vehicle_template.hpp"
 #include "mbd/vehicle/drivetrain.hpp"
+#include "mbd/kernel/validate.hpp"
 
 // Template-built vehicles with linkage suspensions, on the kernel (plan task
 // 2.7). A steered axle with linkage suspension carries a steering rack: one
@@ -328,4 +329,29 @@ TEST_CASE("Dynamic template: DWB vehicle corners with steering",
 
     // Should turn LEFT (positive Z)
     REQUIRE(z_after - z_before > 0.05);
+}
+
+TEST_CASE("Template vehicles pass validate() with ten degrees of freedom", "[vehicle][validate]")
+{
+    using namespace mbd;
+
+    // Whatever the suspension, the chassis keeps its six freedoms and each
+    // wheel one bump travel: the linkage joints' extra freedoms are removed
+    // by independent constraint equations, and a steered linkage axle's rack
+    // by its driver. Double wishbone: 27 velocities, 17 equations;
+    // McPherson: 23 and 13; simple: 10 and none.
+    for (const SuspensionType type : {SuspensionType::Simple, SuspensionType::DoubleWishbone,
+                                      SuspensionType::McPherson}) {
+        auto tmpl = VehicleTemplate::DefaultSedan();
+        tmpl.front_axle.suspension_type = type;
+        tmpl.rear_axle.suspension_type = type;
+        kernel::System sys;
+        build_vehicle(sys, tmpl);
+        const kernel::ValidationReport r = kernel::validate(sys);
+        INFO(r.summary());
+        CHECK(r.ok());
+        CHECK(r.warnings.empty());
+        CHECK(r.redundant_equations == 0);
+        CHECK(r.degrees_of_freedom == 10);
+    }
 }

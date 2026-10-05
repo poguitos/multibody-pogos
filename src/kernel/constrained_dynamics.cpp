@@ -2,19 +2,33 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <utility>
 
 #include "mbd/kernel/algorithms.hpp"
+
+#include "checks.hpp"
 
 namespace mbd::kernel {
 
 namespace {
 
-int total_size(const std::vector<std::shared_ptr<const ConstraintModel>>& constraints)
+// The number of equations. Every constraint must exist and act on bodies of
+// the model: a marker on a missing body would be read out of bounds.
+int total_size(const Model& model,
+               const std::vector<std::shared_ptr<const ConstraintModel>>& constraints)
 {
     int m = 0;
-    for (const auto& c : constraints) {
-        MBD_THROW_IF(!c, "kernel::ConstraintSolver: no constraint");
+    for (std::size_t k = 0; k < constraints.size(); ++k) {
+        const auto& c = constraints[k];
+        MBD_THROW_IF(!c, "kernel::ConstraintSolver: constraint " + std::to_string(k) + " is empty");
+        for (int b : c->bodies()) {
+            MBD_THROW_IF(b < 0 || b >= model.nbodies(),
+                         "kernel::ConstraintSolver: constraint " + std::to_string(k) + " ("
+                             + c->name() + ") refers to body " + std::to_string(b)
+                             + ", but the model's bodies are 0 to "
+                             + std::to_string(model.nbodies() - 1) + ".");
+        }
         m += c->size();
     }
     return m;
@@ -26,7 +40,7 @@ ConstraintSolver::ConstraintSolver(const Model& model,
                                    std::vector<std::shared_ptr<const ConstraintModel>> constraints)
     : model_(model)
     , constraints_(std::move(constraints))
-    , m_(total_size(constraints_))
+    , m_(total_size(model, constraints_))
     , llt_M_(model.nv)
     , ldlt_A_(m_)
 {
@@ -51,6 +65,9 @@ ConstraintSolver::ConstraintSolver(const Model& model,
 
 void ConstraintSolver::evaluate(Data& data, const VecX& q, const VecX& v, Real t)
 {
+    checks::data("kernel::ConstraintSolver::evaluate", model_, data);
+    checks::q("kernel::ConstraintSolver::evaluate", model_, q);
+    checks::v("kernel::ConstraintSolver::evaluate", model_, v);
     // Zero joint accelerations: the body accelerations are then the
     // velocity-product terms the constraints need for gamma.
     forward_kinematics(model_, data, q, v, zero_v_);
@@ -99,7 +116,9 @@ void ConstraintSolver::solve_constraint_matrix(const VecX& r, VecX& x)
 const VecX& ConstraintSolver::forward_dynamics(Data& data, const VecX& q, const VecX& v,
                                                const VecX& tau, Real t)
 {
-    MBD_ASSERT(q.size() == model_.nq && v.size() == model_.nv && tau.size() == model_.nv);
+    checks::q("kernel::ConstraintSolver::forward_dynamics", model_, q);
+    checks::v("kernel::ConstraintSolver::forward_dynamics", model_, v);
+    checks::v("kernel::ConstraintSolver::forward_dynamics", model_, tau, "tau");
     evaluate(data, q, v, t);
 
     // Unconstrained accelerations.
@@ -133,6 +152,9 @@ const VecX& ConstraintSolver::forward_dynamics(Data& data, const VecX& q, const 
 ProjectionInfo ConstraintSolver::project(Data& data, VecX& q, VecX& v, Real t,
                                          Real tolerance, int max_iterations)
 {
+    checks::data("kernel::ConstraintSolver::project", model_, data);
+    checks::q("kernel::ConstraintSolver::project", model_, q);
+    checks::v("kernel::ConstraintSolver::project", model_, v);
     ProjectionInfo out;
     if (m_ == 0) {
         out.converged = true;

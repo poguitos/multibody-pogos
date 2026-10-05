@@ -42,6 +42,9 @@ public:
     /// before starting the simulation.
     void capture_reference(const std::vector<RigidBodyState>& states);
 
+    const char* name() const override { return "anti-roll bar"; }
+    std::vector<BodyIndex> bodies() const override { return {chassis_idx, left_wheel_idx, right_wheel_idx}; }
+
     void apply(const std::vector<RigidBodyState>& states,
                std::vector<RigidBodyForces>& forces) const override;
 };

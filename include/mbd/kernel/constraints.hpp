@@ -80,6 +80,10 @@ public:
     /// Number of equations.
     virtual int size() const = 0;
 
+    /// The bodies the constraint acts on: one entry per marker, or for a
+    /// driver the body whose joint it drives. For the checks, not the solve.
+    virtual std::vector<int> bodies() const = 0;
+
     /// phi, J, nu and gamma at time t (see the top of this file), written to
     /// the first size() rows of the arguments. `data` must hold
     /// forward_kinematics(q, v, 0): placements, velocities, and the body
@@ -101,6 +105,7 @@ class PointCoincidence final : public ConstraintModel {
 public:
     PointCoincidence(Marker i, Marker j) : i_(i), j_(j) {}
     const char* name() const override { return "point coincidence"; }
+    std::vector<int> bodies() const override { return {i_.body, j_.body}; }
     int size() const override { return 3; }
     void calc(const Model& model, const Data& data, Real t,
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
@@ -116,6 +121,7 @@ class Dot1 final : public ConstraintModel {
 public:
     Dot1(Marker i, int axis_i, Marker j, int axis_j, TimeFunction s = {});
     const char* name() const override { return "dot-1"; }
+    std::vector<int> bodies() const override { return {i_.body, j_.body}; }
     int size() const override { return 1; }
     void calc(const Model& model, const Data& data, Real t,
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
@@ -133,6 +139,7 @@ class Dot2 final : public ConstraintModel {
 public:
     Dot2(Marker i, int axis_i, Marker j, TimeFunction s = {});
     const char* name() const override { return "dot-2"; }
+    std::vector<int> bodies() const override { return {i_.body, j_.body}; }
     int size() const override { return 1; }
     void calc(const Model& model, const Data& data, Real t,
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
@@ -154,6 +161,7 @@ public:
     /// Length L(t), scaled by the nominal length L0 > 0.
     Distance(Marker i, Marker j, TimeFunction length, Real nominal_length);
     const char* name() const override { return "distance"; }
+    std::vector<int> bodies() const override { return {i_.body, j_.body}; }
     int size() const override { return 1; }
     void calc(const Model& model, const Data& data, Real t,
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
@@ -172,6 +180,7 @@ class NoTwist final : public ConstraintModel {
 public:
     NoTwist(Marker i, Marker j) : i_(i), j_(j) {}
     const char* name() const override { return "no twist"; }
+    std::vector<int> bodies() const override { return {i_.body, j_.body}; }
     int size() const override { return 1; }
     void calc(const Model& model, const Data& data, Real t,
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
@@ -191,6 +200,7 @@ class JointDriver final : public ConstraintModel {
 public:
     JointDriver(const Model& model, int body, TimeFunction s);
     const char* name() const override { return "joint driver"; }
+    std::vector<int> bodies() const override { return {body_}; }
     int size() const override { return 1; }
     void calc(const Model& model, const Data& data, Real t,
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
@@ -214,6 +224,7 @@ public:
     void add(std::shared_ptr<const ConstraintModel> c);
 
     const char* name() const override { return name_; }
+    std::vector<int> bodies() const override;
     int size() const override { return size_; }
     void calc(const Model& model, const Data& data, Real t,
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;

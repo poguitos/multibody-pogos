@@ -43,6 +43,9 @@ public:
 
     AerodynamicForce(BodyIndex chassis, const AeroParams& p);
 
+    const char* name() const override { return "aerodynamics"; }
+    std::vector<BodyIndex> bodies() const override { return {chassis_idx}; }
+
     void apply(const std::vector<RigidBodyState>& states,
                std::vector<RigidBodyForces>& forces) const override;
 };

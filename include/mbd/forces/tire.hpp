@@ -38,6 +38,9 @@ public:
                      Real damping,
                      Real ground_y = 0.0);
 
+    const char* name() const override { return "tyre contact"; }
+    std::vector<BodyIndex> bodies() const override { return {wheel_body_idx}; }
+
     void apply(const std::vector<RigidBodyState>& states,
                std::vector<RigidBodyForces>& forces) const override;
 
@@ -108,6 +111,9 @@ public:
                   Real vert_damping,
                   const PacejkaTireParams& tire_params,
                   Real ground_y = 0.0);
+
+    const char* name() const override { return "tyre"; }
+    std::vector<BodyIndex> bodies() const override { return {wheel_body_idx}; }
 
     void apply(const std::vector<RigidBodyState>& states,
                std::vector<RigidBodyForces>& forces) const override;

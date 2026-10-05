@@ -15,6 +15,12 @@ public:
 
     virtual void apply(const std::vector<RigidBodyState>& states,
                        std::vector<RigidBodyForces>& forces) const = 0;
+
+    /// Short name, for messages.
+    virtual const char* name() const = 0;
+
+    /// The bodies the element acts on, for the checks.
+    virtual std::vector<BodyIndex> bodies() const = 0;
 };
 
 /// Linear spring-damper connecting a point on body1 to a point on body2.
@@ -32,6 +38,9 @@ public:
     LinearSpringDamper(BodyIndex b1, BodyIndex b2,
                        const Vec3& a1_local, const Vec3& a2_local,
                        Real stiffness, Real damping, Real length_0);
+
+    const char* name() const override { return "spring-damper"; }
+    std::vector<BodyIndex> bodies() const override { return {body1_idx, body2_idx}; }
 
     void apply(const std::vector<RigidBodyState>& states,
                std::vector<RigidBodyForces>& forces) const override;
