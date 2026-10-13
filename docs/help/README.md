@@ -67,8 +67,11 @@ causes and what to do.
 
 - [The kernel](../kernel.md) and [conventions](../conventions.md).
 - [Performance](../performance.md): timings, and how to measure them.
-- The API reference generated from the headers: planned (task H.5). Until
-  then, the header comments under `include/mbd/` are the reference.
+- The API reference generated from the header comments: with Doxygen
+  installed, `cmake --build build --target docs` writes it to
+  `build/docs/html/index.html`. CI builds it on every push and fails on any
+  Doxygen warning (task H.5). The header comments under `include/mbd/` are its
+  source.
 
 ## How the program came to be
 
