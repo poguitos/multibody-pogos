@@ -1,6 +1,7 @@
 #include "mbd/kernel/simulator.hpp"
 
 #include <cmath>
+#include <fstream>
 #include <string>
 
 #include "mbd/core/core.hpp"
@@ -147,10 +148,44 @@ void Simulator::step(Real dt)
     checks::q("kernel::Simulator::step", system.model, q);
     checks::v("kernel::Simulator::step", system.model, v);
     checks::v("kernel::Simulator::step", system.model, tau, "tau");
+    const std::size_t events_before = event_log_.size();
     if (events.empty()) advance(dt);
     else step_with_events(dt);
+    if (trace_steps) {
+        StepRecord r;
+        r.time = time;
+        r.dt = dt;
+        r.drift = last_projection_.initial_position_residual;
+        r.position_residual = last_projection_.position_residual;
+        r.velocity_residual = last_projection_.velocity_residual;
+        r.projection_iterations = last_projection_.iterations;
+        r.projection_converged = last_projection_.converged || !project_constraints || solver_.size() == 0;
+        r.equations = solver_.info().equations;
+        r.rank = solver_.info().rank;
+        r.kinetic_energy = kinetic_energy(system.model, data_);
+        r.potential_energy = potential_energy(system.model, data_);
+        r.events = static_cast<int>(event_log_.size() - events_before);
+        trace_.push_back(r);
+    }
     tau.setZero();
     if (post_step_callback) post_step_callback(*this, dt);
+}
+
+void Simulator::write_trace(const std::string& path) const
+{
+    std::ofstream out(path);
+    MBD_THROW_IF(!out, "MBD-K053: Simulator::write_trace: cannot open \"" + path + "\" for writing");
+    out.precision(17);
+    out << "time,dt,drift,position_residual,velocity_residual,projection_iterations,projection_converged,"
+           "equations,rank,kinetic_energy,potential_energy,events\n";
+    for (const StepRecord& r : trace_) {
+        out << r.time << ',' << r.dt << ',' << r.drift << ',' << r.position_residual << ','
+            << r.velocity_residual << ',' << r.projection_iterations << ',' << (r.projection_converged ? 1 : 0)
+            << ',' << r.equations << ',' << r.rank << ',' << r.kinetic_energy << ',' << r.potential_energy
+            << ',' << r.events << '\n';
+    }
+    out.flush();
+    MBD_THROW_IF(!out, "MBD-K053: Simulator::write_trace: writing \"" + path + "\" failed");
 }
 
 namespace {
@@ -257,6 +292,7 @@ void Simulator::advance(Real dt)
     }
     time += dt;
 
+    last_projection_ = ProjectionInfo{};
     if (project_constraints && solver_.size() > 0) {
         last_projection_ = solver_.project(data_, q, v, time, projection_tolerance);
         if (!last_projection_.converged) {

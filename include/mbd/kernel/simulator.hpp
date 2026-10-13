@@ -72,6 +72,23 @@ struct FiredEvent {
     Real time{0.0};
 };
 
+/// One step of the step trace (task H.4): how the step went, for finding out
+/// afterwards what went wrong.
+struct StepRecord {
+    Real time{0.0};                 ///< At the end of the step
+    Real dt{0.0};
+    Real drift{0.0};                ///< |phi| after the integrator, before the projection
+    Real position_residual{0.0};    ///< |phi| after the projection
+    Real velocity_residual{0.0};    ///< |J v - nu| after the projection
+    int projection_iterations{0};
+    bool projection_converged{true};
+    int equations{0};               ///< Constraint equations, and their rank, at the last evaluation
+    int rank{0};
+    Real kinetic_energy{0.0};       ///< At the end of the step
+    Real potential_energy{0.0};     ///< Gravity's, at the end of the step
+    int events{0};                  ///< Events that fired in the step
+};
+
 class Simulator {
 public:
     /// The system must outlive the simulator and must not gain bodies or
@@ -112,6 +129,14 @@ public:
     int max_events_per_step{100};
     /// The events that fired, in order.
     const std::vector<FiredEvent>& event_log() const { return event_log_; }
+
+    /// When set, every step adds a StepRecord to trace() (task H.4). Off by
+    /// default: it allocates and costs the energies at each step.
+    bool trace_steps{false};
+    const std::vector<StepRecord>& trace() const { return trace_; }
+    /// The trace as CSV, one row per step, 17 significant digits; throws
+    /// MBD-K053 if the file cannot be written.
+    void write_trace(const std::string& path) const;
 
     /// Project the state onto the constraints and refresh the kinematics.
     void initialize();
@@ -168,6 +193,7 @@ private:
     std::vector<Real> event_g0_;
     std::vector<FiredEvent> event_log_;
     bool event_chain_reported_{false};
+    std::vector<StepRecord> trace_;
 };
 
 } // namespace mbd::kernel

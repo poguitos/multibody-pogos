@@ -253,6 +253,7 @@ ProjectionInfo ConstraintSolver::project(Data& data, VecX& q, VecX& v, Real t,
     // halved until |phi| decreases, for starts far from the solution.
     evaluate(data, q, zero_v_, t);
     out.position_residual = phi_.norm();
+    out.initial_position_residual = out.position_residual;
     while (out.position_residual > tolerance && out.iterations < max_iterations) {
         factorize_constraint_matrix();
         solve_constraint_matrix(phi_, mu_);

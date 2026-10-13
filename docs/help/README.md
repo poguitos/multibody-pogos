@@ -42,6 +42,8 @@ examples:
 | Read joint reactions, constraint forces and energies | `compute_loads(sim)`; `tests/kernel/test_kernel_outputs.cpp` |
 | Record channels over a run and write them as CSV | `Recorder`; `tests/kernel/test_kernel_outputs.cpp` |
 | Check a model before simulating it | [The kernel, checks](../kernel.md#checks); `validate()` |
+| See a model as text: bodies, joints, constraints, forces, counts | `describe(system)` or `describe(system, q)`; `tests/kernel/test_kernel_debugging.cpp` |
+| Record how every step went (projection, residuals, rank, energy, events) and find what went wrong | `Simulator::trace_steps`, `write_trace(path)`, `dump_state(sim)`; [the kernel, checks](../kernel.md#checks); `tests/kernel/test_kernel_debugging.cpp` |
 | Build and run a vehicle | `tests/vehicle/test_vehicle_template_dynamic.cpp`, `bench/bench_dynamics.cpp` |
 | Sweep a suspension through bump travel | `tests/test_suspension_kinematics.cpp` |
 | Measure performance | [Performance, task 2.10](../performance.md#task-210-the-sedan-step-5-october-2026) |

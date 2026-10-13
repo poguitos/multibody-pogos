@@ -248,6 +248,14 @@ Warning: `<n> events in one step at t = <t> s; the rest of the step ignores even
   is not seen at all, because only the signs at the ends of each stretch are
   compared: shorten the step, or give the action a rest condition.
 
+### MBD-K053
+
+`Simulator::write_trace: cannot open "<path>" for writing` or `writing "<path>" failed`
+
+- **Usual causes:** a folder in the path that does not exist, a file open in
+  another program (a spreadsheet keeps CSV files locked on Windows), or a full
+  disk.
+
 ### MBD-K060
 
 `kernel::assemble: cannot hold velocity <k>; the model's velocities are 0 to <n>.`

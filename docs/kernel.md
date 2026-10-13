@@ -519,6 +519,21 @@ of the constraint Jacobian as the solver itself sees it (the pivots of
 `J M^-1 J^T`, with the same tolerance). `summary()` gives the counts and
 every message as text.
 
+**Debugging aids** (task H.4, `kernel/describe.hpp` and the simulator).
+`describe(system)` writes the model as text: the counts with `validate()`'s
+rank and degrees of freedom (at the neutral configuration, or at `q` with
+`describe(system, q)`), and every body with its joint, coordinates,
+velocities, mass and centre of mass, every constraint, force element and joint
+force with the bodies it acts on. `dump_state(sim)` writes the state: q, v,
+each body's world placement and velocity, the constraint residuals. With
+`Simulator::trace_steps` set, every step adds a `StepRecord`: the drift the
+projection corrected, the residuals after it, its iterations and whether it
+converged, the constraint equations and their rank, the kinetic and
+gravitational energies, and the events that fired; `write_trace(path)` writes
+them as CSV. A model with two drivers fighting over one coordinate shows it
+in every row: rank 1 of 2, a projection that never converges, and a residual
+equal to the distance between their targets.
+
 Every message, from the checks, the solver, the simulator or `validate()`,
 starts with a code (`MBD-K001`, `MBD-M021`, ...) explained in the message
 catalogue, [docs/help/messages.md](help/messages.md).

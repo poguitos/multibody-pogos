@@ -85,6 +85,7 @@ private:
 /// How a projection onto the constraints went.
 struct ProjectionInfo {
     int iterations{0};             ///< Gauss-Newton steps taken
+    Real initial_position_residual{0.0};   ///< |phi| before: the drift it corrected
     Real position_residual{0.0};   ///< |phi| at the end
     Real velocity_residual{0.0};   ///< |J v - nu| at the end
     bool converged{false};
