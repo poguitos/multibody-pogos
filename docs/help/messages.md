@@ -232,6 +232,22 @@ Warning: `Constraint projection did not converge at t = <t> s: residual <r> afte
   at the state of the first failure; check the drivers' targets and their
   derivatives (MBD-K021); try a shorter step.
 
+### MBD-K052
+
+Warning: `<n> events in one step at t = <t> s; the rest of the step ignores events. An action that sends its function back across zero makes a chain that never ends unless only one direction is watched. Further chains are not reported.`
+
+- **Means:** within one step, events fired `Simulator::max_events_per_step`
+  times (100 by default), and the step finished without watching them.
+- **Usual causes:** an action that moves the state back across its own
+  function's zero while `Event::direction` is 0, so that every crossing
+  causes the next; or two events whose actions undo each other.
+- **What to do:** watch one direction (`direction = -1` or `+1`), or make
+  the action move the state clear of the crossing.
+- **Related:** a function that goes out and back within one step (a bounce
+  shorter than the step, as a ball bouncing ever lower makes near the end)
+  is not seen at all, because only the signs at the ends of each stretch are
+  compared: shorten the step, or give the action a rest condition.
+
 ### MBD-K060
 
 `kernel::assemble: cannot hold velocity <k>; the model's velocities are 0 to <n>.`

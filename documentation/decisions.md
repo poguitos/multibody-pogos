@@ -461,3 +461,36 @@ and the journal entry of the work refers to them by number
   rounding); a smaller `v_static` creeps less and stiffens the equations.
   Sticking proper, and contact between general shapes, are later work.
 - **Record.** Journal: contact; `docs/kernel.md`, forces and simulation.
+
+## D29. Events: sign changes at step ends, located by re-integration
+
+- **Context.** Task 3.9 asks for the detection of sign changes in user
+  functions, with the step shortened to the event in variable-step mode,
+  done when a bouncing ball's impact times are correct to the tolerance. The
+  simulator has fixed-step integrators only until Phase 4, and no dense
+  output (an interpolant of the state within a step).
+- **Decision.** Each event is a function of the simulator's state, an
+  optional action and a watched direction. Its value is compared at the
+  start and the end of each stretch of a step; on a sign change the crossing
+  is located by the Illinois method on the step length, each trial
+  re-integrating one step from the start (the same method, so the located
+  time is that of the numerical solution), to a tolerance in time. The state
+  is left just past the crossing, the action runs, and the step continues to
+  its end. A step of dt still advances by dt. A chain of more than
+  `max_events_per_step` events within one step is cut with a warning.
+- **Alternatives.** Dense output: one interpolant per step instead of a
+  re-integration per trial, but it needs the embedded methods of Phase 4,
+  which will reuse the same locating code with the interpolant. Ending the
+  step at the event (the caller sees a shorter step): simpler, but every
+  caller of `step()` and `run()` would have to cope with steps of varying
+  length. Leaving the state just before the crossing: actions that reverse
+  the motion (bounces) then see no false crossing, but every action that does
+  not would fire twice; "just past" fires once, and a bounce watches one
+  direction.
+- **Consequences.** Only signs at the ends of stretches are compared, so a
+  function that goes out and back within one step is missed; near the end of
+  a bouncing chain whose bounces shrink below the step, the ball passes
+  through. Smaller steps, a rest condition in the action, or Phase 4's
+  variable steps address it. Each located event costs one extra step per
+  trial of the root finder.
+- **Record.** Journal: events; `docs/kernel.md`, events.

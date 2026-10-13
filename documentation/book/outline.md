@@ -101,8 +101,9 @@ to a validated engine.*
 22. **Contact.** Penalty contact with the IMPACT law; regularised friction
     with static and dynamic levels; the creep speed as a prediction; the
     friction angle as the test. *J: simple contact. D28.*
-
-To come in this part: events.
+23. **Events.** Zero crossings located by root finding on the step length;
+    just past the crossing; what endpoint detection cannot see (the bouncing
+    ball near its end); the guard against endless chains. *J: events. D29.*
 
 ## Part VI onwards: one part per phase still to come
 

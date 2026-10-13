@@ -466,6 +466,24 @@ velocity coordinates (the position part of the eigenvector, mapped by N,
 largest entry 1). A state off the constraints is first moved onto them
 (MBD-K080); a state at rest out of equilibrium is flagged (MBD-K081).
 
+## Events
+
+`Simulator::events` (task 3.9, decision D29) holds functions of the state
+whose zero crossings matter: a ball's height above the ground, a gap, a
+speed. At each step every function is evaluated at the start and the end;
+where one has changed sign in its watched direction (`Event::direction`:
+falling, rising or both), the crossing is found by the Illinois method on
+the step length, each trial re-integrating from the start of the step, to
+within `event_tolerance` in time (1e-10 s by default). The step is cut there,
+just past the crossing, the event's action runs (it may change q and v), the
+crossing is logged (`event_log()`), and the rest of the step follows, so
+`step(dt)` still advances by dt. Simulations without events take the old path
+and allocate nothing per step. Two limits: only the signs at the ends of each
+stretch are compared, so a function that goes out and back within one step
+is not seen; and a chain of events that never ends (an action that sends its
+function back across zero while both directions are watched) is cut after
+`max_events_per_step` with a warning (MBD-K052).
+
 ## Checks
 
 **Always on.** Every entry point of the kernel checks the vectors it is

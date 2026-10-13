@@ -28,6 +28,7 @@ examples:
 |---|---|
 | Build a mechanism with loops | `tests/kernel/test_kernel_constrained.cpp` (four-bar), `tests/kernel/test_kernel_validate.cpp` |
 | Simulate it | `tests/kernel/test_kernel_simulator.cpp`, `tests/kernel/test_kernel_joints_physics.cpp` |
+| Stop at the moment something happens (an impact, a threshold) and act on it | [The kernel, events](../kernel.md#events); `Simulator::events`; `tests/kernel/test_kernel_events.cpp` |
 | Natural frequencies, damping and mode shapes about an equilibrium | [The kernel, linearisation](../kernel.md#linearisation); `linearize(sim)`; `tests/kernel/test_kernel_linearization.cpp`, `tests/test_quarter_car.cpp` |
 | Find the static equilibrium (a vehicle settled on its tyres), with its loads | [The kernel, static equilibrium](../kernel.md#static-equilibrium); `static_equilibrium(sim)`; `tests/kernel/test_kernel_statics.cpp`, `tests/vehicle/test_vehicle_statics.cpp` |
 | Make initial positions and velocities satisfy the constraints, holding some coordinates | [The kernel, initial conditions](../kernel.md#initial-conditions); `assemble(sim, options)`; `tests/kernel/test_kernel_assembly.cpp`, `tests/vehicle/test_vehicle_assembly.cpp` |

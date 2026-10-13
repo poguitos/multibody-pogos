@@ -12,8 +12,10 @@
 //   5. the constrained forward dynamics (ConstraintSolver).
 // After each step the state is projected onto the constraints.
 
+#include <cstddef>
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "mbd/forces/force_element.hpp"
@@ -38,6 +40,36 @@ struct System {
 enum class Integrator {
     RK4,                ///< Classical fourth order
     SemiImplicitEuler,  ///< First order and symplectic: velocities, then positions
+};
+
+class Simulator;
+
+/// An event (plan task 3.9): a function of the state whose zero crossing
+/// matters, such as a ball's height above the ground. When it changes sign
+/// during a step, the step is shortened to the crossing, found to within
+/// Simulator::event_tolerance in time, the action runs there, and the rest
+/// of the step follows; the state is just past the crossing (the function
+/// has its new sign). Every sign change in the watched direction is an
+/// event: an action that sends the function back across zero (a bounce)
+/// should watch one direction only. Only the signs at the ends of each
+/// stretch of a step are compared, so a function that goes out and back
+/// within one step (a bounce shorter than the step) is not seen: steps must
+/// be short against the time the function spends on one side.
+struct Event {
+    std::string name;
+    /// Of the simulator's state (q, v, time, and its kinematics: states()).
+    std::function<Real(const Simulator&)> function;
+    /// Runs at the crossing; may change q and v. May be empty.
+    std::function<void(Simulator&)> action;
+    /// -1: falling crossings only (positive to not positive); +1: rising
+    /// only; 0: both.
+    int direction{0};
+};
+
+/// An event that fired: its index in Simulator::events and the time.
+struct FiredEvent {
+    std::size_t event{0};
+    Real time{0.0};
 };
 
 class Simulator {
@@ -68,6 +100,18 @@ public:
     std::function<void(Simulator&, Real t, VecX& tau)> force_callback;
     /// Called after every completed step.
     std::function<void(Simulator&, Real dt)> post_step_callback;
+
+    /// Events watched at every step; see Event.
+    std::vector<Event> events;
+    /// How closely an event's time is found [s].
+    Real event_tolerance{1e-10};
+    /// More events than this within one step stop the step's event handling
+    /// (a chain of crossings that never ends, such as an action that sends
+    /// its function back across zero while both directions are watched),
+    /// with a warning.
+    int max_events_per_step{100};
+    /// The events that fired, in order.
+    const std::vector<FiredEvent>& event_log() const { return event_log_; }
 
     /// Project the state onto the constraints and refresh the kinematics.
     void initialize();
@@ -100,6 +144,14 @@ public:
 private:
     void step_rk4(Real dt);
     void step_semi_implicit_euler(Real dt);
+    /// One step of the integrator, the projection, time and kinematics.
+    void advance(Real dt);
+    /// A step of dt that stops at each event on the way.
+    void step_with_events(Real dt);
+    /// From the state (event_q0_, event_v0_, t0), the step length in (0,
+    /// length] after which event i's function has crossed from g0 to its
+    /// other sign, to within event_tolerance; the state is left there.
+    Real locate_event(std::size_t i, Real t0, Real g0, Real length, Real g_end);
 
     Data data_;
     ConstraintSolver solver_;
@@ -112,6 +164,10 @@ private:
     int projection_failures_{0};
     bool projection_failure_reported_{false};
     bool redundancy_reported_{false};
+    VecX event_q0_, event_v0_;
+    std::vector<Real> event_g0_;
+    std::vector<FiredEvent> event_log_;
+    bool event_chain_reported_{false};
 };
 
 } // namespace mbd::kernel
