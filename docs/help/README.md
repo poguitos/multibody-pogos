@@ -37,6 +37,7 @@ examples:
 | Add a spring or damper with a tabulated curve, preload or stops | `tests/forces/test_force_library.cpp` |
 | Add a torsion spring, friction or a limit stop on a joint | `tests/forces/test_force_library.cpp` (`JointCoordinateForce`) |
 | Add a bushing, a rotational spring between bodies, or a force of your own | `tests/forces/test_force_connectors.cpp` |
+| Make points or spheres touch a plane, with friction | [The kernel, contact](../kernel.md#forces-and-simulation); `PlaneContact`; `tests/forces/test_contact.cpp` |
 | Read joint reactions, constraint forces and energies | `compute_loads(sim)`; `tests/kernel/test_kernel_outputs.cpp` |
 | Record channels over a run and write them as CSV | `Recorder`; `tests/kernel/test_kernel_outputs.cpp` |
 | Check a model before simulating it | [The kernel, checks](../kernel.md#checks); `validate()` |

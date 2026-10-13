@@ -29,6 +29,7 @@ add_library(multibody_core
     forces/tire.cpp
     forces/aerodynamics.cpp
     forces/anti_roll_bar.cpp
+    forces/contact.cpp
     vehicle/suspension/double_wishbone.cpp
     vehicle/suspension/mcpherson.cpp
     vehicle/suspension/multilink.cpp

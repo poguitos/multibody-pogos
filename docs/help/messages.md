@@ -574,6 +574,22 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
 
 `AntiRollBar: stiffness must be >= 0` or `damping must be >= 0`
 
+### MBD-F040
+
+`PlaneContact: needs radius, stiffness, damping and friction coefficients >= 0, exponent >= 1, damping depth > 0 and 0 < v_static < v_dynamic`
+
+- **Means:** a contact parameter is out of range. The exponent of the
+  penetration must be at least 1 so that the stiffness is finite at first
+  contact; the damping must ramp over a depth greater than zero; the friction
+  coefficient rises to its static value at `v_static` and falls to its
+  dynamic one at `v_dynamic`, so the second must exceed the first.
+
+### MBD-F041
+
+`PlaneContact: the spheres and the plane are on the same body`
+
+- **Means:** a contact between a body and itself, which can never act.
+
 ## A: analysis
 
 ### MBD-A001

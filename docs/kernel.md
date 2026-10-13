@@ -301,6 +301,20 @@ friction, limit stops that push but never pull); such elements go in
 `law()` returns its force with the derivatives with respect to its own
 coordinate and rate, for statics, linearisation and implicit integration.
 
+**Contact** (task 3.8, decision D28, `forces/contact.hpp`). `PlaneContact`
+puts spheres (radius zero: points) on one body against the XY plane of a
+marker on another, the ground or any body. The normal force is ADAMS's
+IMPACT function: `k delta^e + c(delta) delta_dot`, never pulling, the damping
+rising along a cubic step from zero at the surface to its full value at a
+chosen depth, so the force is continuous where contact begins and ends.
+Friction opposes the sliding velocity of the contact point (the sphere's
+lowest point) with a regularised coefficient: a cubic step from 0 at rest to
+`mu_static` at `v_static`, another down to `mu_dynamic` at `v_dynamic`, then
+constant. Nothing sticks exactly: below `v_static` a loaded contact creeps at
+the speed where `mu(v)` balances the push. The force acts on both bodies at
+the contact point, equal and opposite. `normal_law` and `friction` return
+their derivatives, as every element's law does.
+
 **`kernel::System`** is a `Model` with its loop constraints, force elements
 and joint forces: what the vehicle builders fill. **`kernel::Simulator`** advances
 one. It owns the state (`q`, `v`, `time`) and, at every evaluation of the

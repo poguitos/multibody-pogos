@@ -98,8 +98,11 @@ to a validated engine.*
     shapes; the quarter car checked against its closed forms and its
     characteristic determinant; what the tyre's regularisation does to a
     vehicle's modes at rest. *J: linearisation. D27.*
+22. **Contact.** Penalty contact with the IMPACT law; regularised friction
+    with static and dynamic levels; the creep speed as a prediction; the
+    friction angle as the test. *J: simple contact. D28.*
 
-To come in this part: contact, events.
+To come in this part: events.
 
 ## Part VI onwards: one part per phase still to come
 

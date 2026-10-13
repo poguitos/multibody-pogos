@@ -430,3 +430,34 @@ and the journal entry of the work refers to them by number
   moving frame adds terms not modelled, as noted in the header). Input
   matrices (B, for control) are left for when a controller needs them.
 - **Record.** Journal: linearisation; `docs/kernel.md`, linearisation.
+
+## D28. Contact: ADAMS's IMPACT law and a regularised friction coefficient
+
+- **Context.** Task 3.8 asks for point and sphere contact with a plane, with
+  penalty stiffness, nonlinear damping and regularised friction, done when a
+  block on an incline slides at the correct friction angle. Two choices
+  shape everything else: how the normal force starts and ends, and how
+  friction behaves near zero sliding speed, where Coulomb's law is
+  discontinuous.
+- **Decision.** The normal force is `k delta^e + c(delta) delta_dot`, clamped
+  at zero, with the damping coefficient rising along a cubic step from zero
+  at the surface to its full value at a chosen depth: the IMPACT function of
+  ADAMS, so the force is continuous at first contact and at separation. The
+  friction coefficient is a function of the sliding speed alone: a cubic step
+  from 0 at rest to `mu_static` at `v_static`, another to `mu_dynamic` at
+  `v_dynamic`, constant beyond (ADAMS's friction with its two transition
+  velocities). The plane is a marker's XY plane on any body; the force acts on
+  both bodies at the sphere's lowest point. Both laws return their
+  derivatives (D24).
+- **Alternatives.** Damping at full strength from first contact (a linear
+  Kelvin-Voigt contact): the force jumps on landing and pulls as the bodies
+  part. A bristle model (LuGre, Dahl) or a stick-slip state machine: true
+  sticking, but they need an extra state per contact or events, which arrive
+  with Phase 4 (extra first-order states) and task 3.9. A single tanh
+  regularisation, as for joint friction (task 3.1): no difference between
+  static and dynamic friction, and the incline test is about exactly that.
+- **Consequences.** A loaded contact below the friction limit creeps at a
+  speed below `v_static`, predictable from the step (the test checks it to
+  rounding); a smaller `v_static` creeps less and stiffens the equations.
+  Sticking proper, and contact between general shapes, are later work.
+- **Record.** Journal: contact; `docs/kernel.md`, forces and simulation.

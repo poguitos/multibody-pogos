@@ -62,4 +62,5 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 5 Oct 2026 | [Phase 3: output requests](2026-10-05_phase-3-outputs.md) | 3.3 | `8243549` | At the time |
 | 13 Oct 2026 | [Phase 3: initial-condition assembly](2026-10-13_phase-3-assembly.md) | 3.4, D25 | `961ca83` | At the time |
 | 13 Oct 2026 | [Phase 3: static equilibrium](2026-10-13_phase-3-statics.md) | 3.5, D26 | `bbc110e` | At the time |
-| 13 Oct 2026 | [Phase 3: linearisation](2026-10-13_phase-3-linearization.md) | 3.7, D27 | see git log | At the time |
+| 13 Oct 2026 | [Phase 3: linearisation](2026-10-13_phase-3-linearization.md) | 3.7, D27 | `bbb3864` | At the time |
+| 13 Oct 2026 | [Phase 3: simple contact](2026-10-13_phase-3-contact.md) | 3.8, D28 | see git log | At the time |
