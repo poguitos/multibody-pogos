@@ -59,4 +59,5 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 5 Oct 2026 | [Help folder and message codes](2026-10-05_help-and-message-codes.md) | H.1, H.2 | `47315ba` | At the time |
 | 5 Oct 2026 | [Phase 3: prescribed motion and kinematic analysis](2026-10-05_phase-3-prescribed-motion-and-kinematics.md) | 3.2, 3.6 | `30e6f08` | At the time |
 | 5 Oct 2026 | [Phase 3: the force library](2026-10-05_phase-3-force-library.md) | 3.1 | `e1e3863` | At the time |
-| 5 Oct 2026 | [Phase 3: output requests](2026-10-05_phase-3-outputs.md) | 3.3 | see git log | At the time |
+| 5 Oct 2026 | [Phase 3: output requests](2026-10-05_phase-3-outputs.md) | 3.3 | `8243549` | At the time |
+| 13 Oct 2026 | [Phase 3: initial-condition assembly](2026-10-13_phase-3-assembly.md) | 3.4, D25 | see git log | At the time |

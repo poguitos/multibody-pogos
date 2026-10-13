@@ -40,6 +40,36 @@ struct SolveInfo {
     bool redundant() const { return rank < equations; }
 };
 
+/// L D L^T with diagonal pivoting of a symmetric positive semi-definite
+/// matrix, which reveals its rank: the pivots come largest first, and those
+/// below kRankTolerance of the largest belong to dependent rows, whose
+/// components solve() sets to zero. The constraint solver and the
+/// initial-condition assembly count rank by this one rule.
+class RankRevealingLDLT {
+public:
+    /// Pivots below this fraction of the largest are dropped.
+    static constexpr Real kRankTolerance = 1e-10;
+
+    /// Storage for n x n matrices.
+    explicit RankRevealingLDLT(Index n = 0) : ldlt_(n) {}
+
+    /// Factorize A. Allocates nothing when A has the size given at construction.
+    void compute(const MatX& A);
+
+    /// Pivots kept.
+    int rank() const { return rank_; }
+
+    /// x with A x = r, for r in the range of A; the components of the dropped
+    /// pivots are zero. x must not be r. Allocates nothing when x has the
+    /// right size.
+    void solve(const VecX& r, VecX& x) const;
+
+private:
+    Eigen::LDLT<MatX> ldlt_;
+    Real pivot_cut_{0.0};
+    int rank_{0};
+};
+
 /// How a projection onto the constraints went.
 struct ProjectionInfo {
     int iterations{0};             ///< Gauss-Newton steps taken
@@ -52,7 +82,7 @@ class ConstraintSolver {
 public:
     /// Equations whose pivot is below this fraction of the largest are
     /// treated as redundant.
-    static constexpr Real kRankTolerance = 1e-10;
+    static constexpr Real kRankTolerance = RankRevealingLDLT::kRankTolerance;
 
     /// Sizes all working storage. `model` must outlive the solver.
     ConstraintSolver(const Model& model,
@@ -128,8 +158,7 @@ private:
     MatX J_, Z_, A_;
     VecX q_save_, v_dot_, v_dot_free_, rhs_v_, dv_, zero_v_, work_v_;
     Eigen::LLT<MatX> llt_M_;
-    Eigen::LDLT<MatX> ldlt_A_;
-    Real pivot_cut_{0.0};
+    RankRevealingLDLT ldlt_A_;
     bool mass_matrix_factorized_{false};
     SolveInfo info_;
 };

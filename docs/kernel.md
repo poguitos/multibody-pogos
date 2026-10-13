@@ -231,7 +231,8 @@ already.
 
 **Redundant constraints.** A planar loop closed in 3D, or a joint closed
 twice, makes `J M^-1 J^T` singular. It is factorized as `L D L^T` with diagonal
-pivoting, which puts the largest pivots first; pivots below 1e-10 of the
+pivoting (`RankRevealingLDLT`, shared with the assembly of initial
+conditions), which puts the largest pivots first; pivots below 1e-10 of the
 largest are dropped and the multipliers of their equations set to zero.
 `J^T lambda` and the accelerations are unique all the same, because the
 dropped directions are those in which J has no rank. `info()` reports the
@@ -338,6 +339,52 @@ light body sliding along the chassis's lateral axis, carrying the tie rods'
 inner points and driven to `SteeringRack::travel` by a `JointDriver`.
 `VehicleHandle::set_steering` sets that travel; the projection after the
 next step moves the linkage, and each wheel's toe follows from the geometry.
+
+## Initial conditions
+
+Initial values rarely satisfy the constraints: a loop open by a few
+millimetres, velocities that would stretch a link. `assemble(sim, options)`
+(task 3.4, decision D25, `kernel/assembly.hpp`) makes the simulator's state
+consistent, keeping the held coordinates exactly as given and changing the
+others as little as possible:
+
+    positions      min d^T W d   with  phi(q_given (+) d, t) = 0,  d_H = 0
+    velocities     min e^T W e   with  J (v_given + e) = nu,       e_H = 0
+    accelerations  the equations of motion at the assembled state
+
+Holds are velocity indices; `AssemblyOptions::hold_joint(model, body)` holds a
+whole joint. `W` is the diagonal of the mass matrix. Its entries carry each
+coordinate's own units, so the result does not depend on the units chosen,
+and because it is diagonal a coordinate that no constraint involves, a
+pendulum hanging outside the loop or a wheel's spin, keeps its given value.
+The full mass matrix, the metric of `ConstraintSolver::project`, would turn it
+as well. The least change of each kind is `x_f = W_f^-1/2 B^T mu` with
+`B = J_f W_f^-1/2` over the coordinates not held and `(B B^T) mu = r`: since
+`B^T mu` lies in the range of `B^T` it is the least solution, whichever `mu`
+solves the system. `mu` comes from the constraint solver's own rank-revealing
+`L D L^T` (`RankRevealingLDLT`), so the ranks with and without the holds are
+counted by the same rule as everywhere else.
+
+The positions take two stages. Gauss-Newton with the same weights reaches the
+constraints; but each of its steps is the least from where it starts, so
+their sum is not the least correction. The second stage makes the whole
+correction the least: at q, with `d = difference(q_given, q)`, it solves for
+the least `d_new` with `J d_new = J d - phi` and steps by `d_new - d`. Its
+fixed point satisfies `phi = 0` and `W d = J^T mu`, the conditions for the
+least correction; it converges linearly, the faster the smaller the
+correction against the curvature of the constraints. For spherical and free
+joints, whose coordinates do not add, it is exact to second order in the
+rotation. The accelerations and constraint forces at the assembled state come
+from `compute_loads`.
+
+The `AssemblyReport` gives the residuals before and after, the iterations,
+the counts (equations, rank, degrees of freedom, and the ranks with the holds),
+each coordinate's given and assembled value, the loads, and warnings with
+their codes (MBD-K062 to K064): positions or velocities not assembled, held
+coordinates that over-determine the mechanism (holding a four-bar's crank and
+rocker), the smallest correction not found. `summary(model)` writes it all as
+text. `Simulator::initialize()` still only projects, for a state already close
+to the constraints.
 
 ## Checks
 

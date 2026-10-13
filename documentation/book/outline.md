@@ -80,9 +80,15 @@ to a validated engine.*
     *Outputs: J: output requests.* Joint reactions by recursive Newton-Euler
     with external forces; constraint forces per body from the rows that build
     the Jacobian; energies; the recorder.
+19. **Assembling initial conditions.** The least correction subject to the
+    constraints and the holds; its optimality conditions; why Gauss-Newton
+    reaches the constraints but not the nearest point, and the iteration
+    anchored at the given values that does; the choice of metric (a pendulum
+    outside the loop under the full and the diagonal mass matrix); holds that
+    over-determine a mechanism, found by comparing ranks. *J: initial-condition
+    assembly. D25.*
 
-To come in this part: output requests, assembly of initial conditions,
-statics, linearisation, contact, events.
+To come in this part: statics, linearisation, contact, events.
 
 ## Part VI onwards: one part per phase still to come
 
@@ -97,7 +103,9 @@ journal entries and retrospective.
 
 - **Testing a numerical code.** Invariants, derived tolerances, tests that must
   be able to fail, hidden tests for special builds. *D11; working rules 2, 3.*
-- **Measuring performance.** *D21; `docs/performance.md`.*
+- **Measuring performance.** *D21; `docs/performance.md`.* Compile time as
+  well as run time: the decomposition that cost 31 s per file (journal:
+  initial-condition assembly).
 - **Keeping a record.** This journal, the decision log, and how they fed this
   book. *D22.*
 - **Help and diagnostics.** Messages written for the reader, codes and a

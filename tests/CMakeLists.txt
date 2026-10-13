@@ -67,6 +67,7 @@ mbd_add_test_exe(test_kernel
     kernel/test_kernel_joints_physics.cpp
     kernel/test_kernel_validate.cpp
     kernel/test_kernel_outputs.cpp
+    kernel/test_kernel_assembly.cpp
 )
 find_package(Threads REQUIRED)
 target_link_libraries(test_kernel PRIVATE Threads::Threads)
@@ -93,6 +94,7 @@ mbd_add_test_exe(test_vehicle
     vehicle/test_dwb_steering.cpp
     vehicle/test_mcpherson.cpp
     vehicle/test_vehicle_template_dynamic.cpp
+    vehicle/test_vehicle_assembly.cpp
     test_vehicle.cpp
     test_vehicle_template.cpp
     test_steering.cpp

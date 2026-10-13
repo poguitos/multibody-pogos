@@ -36,6 +36,35 @@ int total_size(const Model& model,
 
 } // namespace
 
+void RankRevealingLDLT::compute(const MatX& A)
+{
+    ldlt_.compute(A);
+    // Diagonal pivoting puts the largest pivots first; the rows behind
+    // pivots that are negligible next to the largest are dependent.
+    const auto D = ldlt_.vectorD();
+    Real largest = 0.0;
+    for (Index k = 0; k < D.size(); ++k) largest = std::max(largest, std::abs(D(k)));
+    pivot_cut_ = kRankTolerance * largest;
+    rank_ = 0;
+    for (Index k = 0; k < D.size(); ++k) {
+        if (std::abs(D(k)) > pivot_cut_) ++rank_;
+    }
+}
+
+void RankRevealingLDLT::solve(const VecX& r, VecX& x) const
+{
+    // x = P^T L^-T D^+ L^-1 P r, with D^+ zero for the dropped pivots. When
+    // r is in the range of A this solves A x = r exactly.
+    x = ldlt_.transpositionsP() * r;
+    ldlt_.matrixL().solveInPlace(x);
+    const auto D = ldlt_.vectorD();
+    for (Index k = 0; k < D.size(); ++k) {
+        x(k) = std::abs(D(k)) > pivot_cut_ ? x(k) / D(k) : 0.0;
+    }
+    ldlt_.matrixU().solveInPlace(x);
+    x = ldlt_.transpositionsP().transpose() * x;   // swaps in place
+}
+
 ConstraintSolver::ConstraintSolver(const Model& model,
                                    std::vector<std::shared_ptr<const ConstraintModel>> constraints)
     : model_(model)
@@ -100,32 +129,14 @@ void ConstraintSolver::factorize_constraint_matrix()
     Z_ = J_.transpose();
     llt_M_.matrixL().solveInPlace(Z_);
     A_.noalias() = Z_.transpose() * Z_;
+    // The equations behind dropped pivots are redundant.
     ldlt_A_.compute(A_);
-
-    // Diagonal pivoting puts the largest pivots first; the equations behind
-    // pivots that are negligible next to the largest are redundant.
-    const auto D = ldlt_A_.vectorD();
-    Real largest = 0.0;
-    for (Index k = 0; k < m_; ++k) largest = std::max(largest, std::abs(D(k)));
-    pivot_cut_ = kRankTolerance * largest;
-    info_.rank = 0;
-    for (Index k = 0; k < m_; ++k) {
-        if (std::abs(D(k)) > pivot_cut_) ++info_.rank;
-    }
+    info_.rank = ldlt_A_.rank();
 }
 
 void ConstraintSolver::solve_constraint_matrix(const VecX& r, VecX& x)
 {
-    // x = P^T L^-T D^+ L^-1 P r, with D^+ zero for the dropped pivots. When
-    // r is in the range of A this solves A x = r exactly.
-    x = ldlt_A_.transpositionsP() * r;
-    ldlt_A_.matrixL().solveInPlace(x);
-    const auto D = ldlt_A_.vectorD();
-    for (Index k = 0; k < m_; ++k) {
-        x(k) = std::abs(D(k)) > pivot_cut_ ? x(k) / D(k) : 0.0;
-    }
-    ldlt_A_.matrixU().solveInPlace(x);
-    x = ldlt_A_.transpositionsP().transpose() * x;   // swaps in place
+    ldlt_A_.solve(r, x);
 }
 
 const VecX& ConstraintSolver::forward_dynamics(Data& data, const VecX& q, const VecX& v,

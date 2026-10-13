@@ -293,3 +293,52 @@ and the journal entry of the work refers to them by number
   assembly. Phase 4 decides whether the analytic tangent matrices are worth
   their cost.
 - **Record.** Journal: the force library.
+
+## D25. Initial conditions: held coordinates, the diagonal of the mass matrix as the metric
+
+- **Context.** Task 3.4 asks for initial positions and velocities solved
+  "with chosen coordinates held, with the smallest correction to the rest".
+  Three things had to be chosen: how a hold is expressed, in what measure a
+  correction is "smallest", and whether "smallest" is meant exactly or to
+  first order. The solver already had a projection (`ConstraintSolver::project`,
+  task 2.6) that moves a state onto the constraints by Gauss-Newton steps,
+  each the least in the kinetic-energy metric (the full mass matrix).
+- **Decision.** Holds are velocity indices whose component of the correction
+  is kept at zero; a joint is held whole by `hold_joint`. The metric is the
+  diagonal of the mass matrix, at the given positions for positions and at the
+  assembled positions for velocities. "Smallest" is exact: after a
+  Gauss-Newton stage reaches the constraints, a second stage iterates on the
+  whole correction from the given values until it meets the optimality
+  conditions (`phi = 0`, `W d = J^T mu`). Accelerations and constraint forces
+  come from the equations of motion at the assembled state, not from holds.
+  Problems go to the report's warnings with codes; nothing is printed, and
+  the function is `[[nodiscard]]`.
+- **Alternatives.** Holds as extra constraint equations: general, but a
+  constraint sees the joint transforms, not the coordinates, so a hold on an
+  arbitrary coordinate could not be written as one. The identity metric:
+  never changes a coordinate no constraint involves, but weighs metres
+  against radians, so the result depends on the units. The full mass matrix:
+  unit-consistent and the metric of the projection (and, for velocities, the
+  response to an impulse), but it couples every coordinate to the bodies it
+  carries, so it changes coordinates that no constraint involves; a user who
+  gives a wheel's spin rate or a pendulum's angle would see it altered. The
+  diagonal keeps the units right and leaves such coordinates alone. The
+  Gauss-Newton stage alone: cheaper, but its result is the least correction
+  only to first order. On a four-bar off by several hundredths of a radian
+  its optimality condition is off by 6e-3 where the second stage reaches
+  8e-14; the distance it gives away is small (3.7e-5 of the squared
+  distance), as a second-order effect should be. The second stage costs a
+  few iterations at setup and makes "smallest" a property that can be stated
+  and tested exactly.
+  Acceleration holds: the accelerations of a dynamic model follow from its
+  forces, so prescribing them would contradict the equations of motion.
+- **Consequences.** `Simulator::initialize()` keeps projecting, for states
+  already near the constraints; `assemble()` is the initial-condition
+  analysis. The rank-revealing `L D L^T` of the constraint solver became a
+  class of its own (`RankRevealingLDLT`) that both use, so the assembly
+  counts rank by the solver's rule (a complete orthogonal decomposition was
+  tried first and cost 31 s of compile time per file). For spherical and free joints the second stage treats the
+  logarithm of the relative rotation as additive, so the smallest correction
+  is exact to second order in the rotation there.
+- **Record.** Journal: initial-condition assembly; `docs/kernel.md`, initial
+  conditions.

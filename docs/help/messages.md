@@ -232,6 +232,69 @@ Warning: `Constraint projection did not converge at t = <t> s: residual <r> afte
   at the state of the first failure; check the drivers' targets and their
   derivatives (MBD-K021); try a shorter step.
 
+### MBD-K060
+
+`kernel::assemble: cannot hold velocity <k>; the model's velocities are 0 to <n>.`
+or `AssemblyOptions::hold_joint: there is no jointed body <b>; the jointed bodies are 1 to <n>.`
+
+- **Means:** a hold names no coordinate of the model. Holds are velocity
+  indices (`model.idx_v[body]` is the first of a joint's), not coordinate
+  indices: they differ after a spherical or free joint, whose orientation has
+  four coordinates and three velocities. The ground (body 0) has no joint.
+- **What to do:** use `AssemblyOptions::hold_joint(model, body)` to hold a
+  whole joint by its body.
+
+### MBD-K061
+
+`kernel::assemble: velocity <k> (body <b>) moves no mass, so its correction cannot be weighed (mass matrix entry <w>). validate() names such joints.`
+
+- **Means:** assembly weighs each coordinate's correction by its diagonal
+  entry of the mass matrix, and this one is zero (or not a number): the joint
+  moves nothing with mass or inertia.
+- **What to do:** run `validate()` (MBD-M021 names the joint); give the bodies
+  below it a mass and an inertia.
+
+### MBD-K062
+
+Warning, in `AssemblyReport::warnings`: `Assembly: the positions were not assembled: |phi| = <r> after <n> iterations (tolerance <tol>).`, or the same for the velocities with `|J v - nu|`.
+
+- **Means:** the constraints could not be met with the coordinates held. The
+  assembled state is still written to the simulator, the nearest that was
+  found; the given one is in the report (`q_given`, `v_given`).
+- **Usual causes:** held coordinates that over-determine the mechanism (then
+  MBD-K063 comes with it); given values too far from any assembled
+  configuration, for instance a linkage on the wrong side of a dead centre;
+  constraints that cannot all be met (two drivers asking for different
+  values of one quantity, links too short to close the loop).
+- **What to do:** read `report.summary(model)`; release held coordinates; start
+  closer to an assembled configuration; run `validate(system, q)`.
+
+### MBD-K063
+
+Warning, in `AssemblyReport::warnings`: `Assembly: the coordinates held in position are not independent of the constraints: with them held the constraint equations have rank <rh> instead of <r>, so <n> of them are already determined by the others. Hold fewer, or give them consistent values.`, or the same for the velocities held.
+
+- **Means:** the held coordinates fix something the constraints and the other
+  held coordinates already fix. Holding both the crank and the rocker of a
+  four-bar is an example: the crank alone determines the rocker. When the
+  held values happen to agree, the state is assembled and this is the only
+  warning; when they do not, MBD-K062 follows.
+- **What to do:** hold only the coordinates you mean to prescribe, as many as
+  the mechanism has degrees of freedom at most (`report.degrees_of_freedom`).
+
+### MBD-K064
+
+Warning, in `AssemblyReport::warnings`: `Assembly: the smallest correction was not found (<the steps grew | no convergence> after <n> iterations, last step <s>). The positions satisfy the constraints but may be farther from the given ones than necessary.`
+
+- **Means:** the second stage of the position assembly, which makes the
+  correction the smallest, did not converge; the result of the first stage is
+  kept. The state is assembled, but some coordinates may have moved more than
+  they needed to.
+- **Usual causes:** a correction large against the curvature of the
+  constraints (the second stage converges the faster the smaller the
+  correction), or a configuration near a singular position of the mechanism.
+- **What to do:** usually nothing; if the assembled values matter, start
+  closer to them, or hold the coordinates you care about.
+
 ## M: findings of `validate()`
 
 `validate(system)` checks a system at its neutral configuration, or
