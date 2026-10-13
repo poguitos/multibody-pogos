@@ -50,9 +50,12 @@ examples:
 
 ## Troubleshooting
 
-Planned (task H.3): from symptom to cause to fix. Until then, start with the
-code at the front of the message, in the catalogue below, and with
-`validate(system)`, which lists every problem it finds in a model at once.
+[The troubleshooting guide](troubleshooting.md): from symptom to cause to
+fix, for builds, models, initial conditions and statics, simulations and slow
+runs, with the debugging tools (`validate()`, `describe()`, the step trace,
+the state dump) and how to check a new element. Every problem met so far in
+the journal has its entry. For a message, start with the code at its front,
+in the catalogue below.
 
 ## Messages
 
