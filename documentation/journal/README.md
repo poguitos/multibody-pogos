@@ -67,4 +67,5 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 13 Oct 2026 | [Phase 3: events](2026-10-13_phase-3-events.md) | 3.9, D29 | `536cd2d` | At the time |
 | 13 Oct 2026 | [Debugging aids: describe, state dump, step trace](2026-10-13_debugging-aids.md) | H.4 | `598e517` | At the time |
 | 13 Oct 2026 | [The troubleshooting guide](2026-10-13_troubleshooting-guide.md) | H.3 | `ba4ece4` | At the time |
-| 13 Oct 2026 | [The API reference in CI](2026-10-13_api-reference.md) | H.5 | `5a2e38f`, `9be974a`, see git log | At the time |
+| 13 Oct 2026 | [The API reference in CI](2026-10-13_api-reference.md) | H.5 | `5a2e38f`, `9be974a`, `f811714` | At the time |
+| 13 Oct 2026 | [Phase 3 retrospective](2026-10-13_phase-3-retrospective.md) | Phase 3 gate | `49b96bc` to `f811714` | At the time |
