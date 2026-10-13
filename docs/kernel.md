@@ -231,9 +231,13 @@ already.
 
 **Redundant constraints.** A planar loop closed in 3D, or a joint closed
 twice, makes `J M^-1 J^T` singular. It is factorized as `L D L^T` with diagonal
-pivoting (`RankRevealingLDLT`, shared with the assembly of initial
-conditions), which puts the largest pivots first; pivots below 1e-10 of the
-largest are dropped and the multipliers of their equations set to zero.
+pivoting (`RankRevealingLDLT`, shared with assembly and statics): each pivot
+is the largest remaining diagonal, and the factorization stops when that falls
+below 1e-10 of the first, the equations left being redundant; their
+multipliers are set to zero. Stopping matters: eliminating past the rank, as
+Eigen's own `LDLT` does (it is not rank-revealing), divides by pivots made of
+rounding error, which was found when statics fed it a matrix with noise in
+its null space (task 3.5).
 `J^T lambda` and the accelerations are unique all the same, because the
 dropped directions are those in which J has no rank. `info()` reports the
 number of equations and the rank.
@@ -385,6 +389,46 @@ coordinates that over-determine the mechanism (holding a four-bar's crank and
 rocker), the smallest correction not found. `summary(model)` writes it all as
 text. `Simulator::initialize()` still only projects, for a state already close
 to the constraints.
+
+## Static equilibrium
+
+`static_equilibrium(sim, options)` (task 3.5, decision D26,
+`kernel/statics.hpp`) finds the configuration on the constraints where the
+system, at rest, does not accelerate: `a(q) = 0`, with `a` the accelerations
+of the constrained dynamics at `v = 0`. Everything the simulator applies at
+rest acts: gravity, force elements, joint forces, `tau`, the callbacks.
+Time-dependent constraints are frozen where they are at the simulator's time:
+`ConstraintSolver::quasi_static` takes `gamma` as zero, which at rest leaves
+out exactly the drivers' prescribed accelerations, since statics has no
+inertia.
+
+It is Newton's method in the tangent space of the constraints. The Jacobian
+`G = da/dq` comes from central differences, each perturbed configuration
+projected back onto the constraints (the same Gauss-Newton projection as
+assembly), so that `G` vanishes across them. The step is the least, in the
+weights of the diagonal of the mass matrix, that zeroes `G step + a`: with
+`S = W^1/2` and `Gs = S G S^-1`, `step = S^-1 Gs^T y` and `(Gs Gs^T) y = -S a`,
+solved by `RankRevealingLDLT`. Directions with neither stiffness nor force
+are therefore not moved (to first order: they shift by products of the other
+changes), and the report counts them: a vehicle on tyres at rest has three,
+its position on the ground and its heading, because a tyre gives no
+horizontal force without slip. A line search halves the step until `|S a|`
+decreases. When no step does, a force has no stiffness against it (a wheel
+above the ground), and dynamic relaxation takes over: a motion driven by the
+accelerations at rest, with kinetic damping (the velocities set to zero each
+time the kinetic energy has passed a maximum), until those accelerations fall
+below `relaxation_tolerance`; then Newton resumes. The forces are taken at
+rest because damping and tyre slip forces play no part in the equilibrium and
+are too stiff at low speed for an explicit step: a tyre's lateral force below
+its `V_low` of 1 m/s acts as a damper of about 45 kN s/m.
+
+The `StaticReport` gives the largest acceleration before and after and after
+each iteration, the relaxation used, the degrees of freedom split into those
+with stiffness and the neutral ones (from the Jacobian at the equilibrium),
+each coordinate's change, the loads at the equilibrium (`compute_loads` with
+the drivers frozen: constraint forces and joint reactions), and coded
+messages (MBD-K070 to K073). The equilibrium is written to the simulator, at
+rest.
 
 ## Checks
 

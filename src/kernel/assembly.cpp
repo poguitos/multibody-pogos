@@ -1,8 +1,6 @@
 #include "mbd/kernel/assembly.hpp"
 
 #include <algorithm>
-#include <cmath>
-#include <cstdio>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -12,33 +10,14 @@
 #include "mbd/kernel/constrained_dynamics.hpp"
 
 #include "checks.hpp"
+#include "labels.hpp"
+#include "least_change.hpp"
 
 namespace mbd::kernel {
 
 namespace {
 
-std::string sci(Real x)
-{
-    char text[32];
-    std::snprintf(text, sizeof text, "%.2e", x);
-    return text;
-}
-
-/// "body 2 (coupler)", or "body 2" when it has no name.
-std::string body_label(const Model& model, int body)
-{
-    const std::string& name = model.name[static_cast<std::size_t>(body)];
-    return "body " + std::to_string(body) + (name.empty() ? "" : " (" + name + ")");
-}
-
-/// The body whose joint has velocity index k.
-int body_of_velocity(const Model& model, int k)
-{
-    for (int i = 1; i < model.nbodies(); ++i) {
-        if (k >= model.idx_v[i] && k < model.idx_v[i] + model.nvs[i]) return i;
-    }
-    return 0;
-}
+using detail::sci;
 
 /// The held indices, sorted and without repeats; each must be a velocity.
 std::vector<int> held_indices(std::vector<int> held, int nv)
@@ -53,75 +32,7 @@ std::vector<int> held_indices(std::vector<int> held, int nv)
     return held;
 }
 
-/// The weights of the corrections: the diagonal of the mass matrix at q.
-VecX weights(const Model& model, Data& data, const VecX& q)
-{
-    const VecX w = crba(model, data, q).diagonal();
-    for (int k = 0; k < model.nv; ++k) {
-        MBD_THROW_IF(!(w(k) > 0.0),
-                     "MBD-K061: kernel::assemble: velocity " + std::to_string(k) + " ("
-                         + body_label(model, body_of_velocity(model, k))
-                         + ") moves no mass, so its correction cannot be weighed (mass matrix entry "
-                         + sci(w(k)) + "). validate() names such joints.");
-    }
-    return w;
-}
-
-/// The least changes x of the velocities not held, in the norm
-/// sqrt(x^T W x) with W diagonal. With B = J_f W_f^-1/2 and A = B B^T,
-/// x_f = W_f^-1/2 B^T mu with A mu = r solves J_f x_f = r: B^T mu lies in the
-/// range of B^T, so it is the least solution, whichever mu solves A mu = r.
-/// RankRevealingLDLT gives mu and the rank of J_f by the constraint solver's
-/// own rule; when r is out of reach (held coordinates that over-determine the
-/// constraints), it drops the dependent equations.
-class LeastChange {
-public:
-    LeastChange(int nv, const std::vector<int>& held)
-    {
-        std::vector<bool> is_held(static_cast<std::size_t>(nv), false);
-        for (int k : held) is_held[static_cast<std::size_t>(k)] = true;
-        for (int k = 0; k < nv; ++k) {
-            if (!is_held[static_cast<std::size_t>(k)]) free_.push_back(k);
-        }
-        scale_.resize(static_cast<Index>(free_.size()));
-    }
-
-    void factorize(const MatX& J, const VecX& w)
-    {
-        const Index nf = static_cast<Index>(free_.size());
-        B_.resize(J.rows(), nf);
-        for (Index c = 0; c < nf; ++c) {
-            const int k = free_[static_cast<std::size_t>(c)];
-            scale_(c) = 1.0 / std::sqrt(w(k));
-            B_.col(c) = scale_(c) * J.col(k);
-        }
-        empty_ = B_.rows() == 0 || B_.cols() == 0;
-        if (empty_) return;
-        A_.noalias() = B_ * B_.transpose();
-        ldlt_.compute(A_);
-    }
-
-    /// x (every velocity): the least change with J_f x_f = r; zero where held.
-    void solve(const VecX& r, VecX& x)
-    {
-        x.setZero();
-        if (empty_) return;
-        ldlt_.solve(r, mu_);
-        y_.noalias() = B_.transpose() * mu_;
-        for (std::size_t c = 0; c < free_.size(); ++c) {
-            x(free_[c]) = scale_(static_cast<Index>(c)) * y_(static_cast<Index>(c));
-        }
-    }
-
-    int rank() const { return empty_ ? 0 : ldlt_.rank(); }
-
-private:
-    std::vector<int> free_;
-    VecX scale_, mu_, y_;
-    MatX B_, A_;
-    RankRevealingLDLT ldlt_;
-    bool empty_{true};
-};
+using detail::LeastChange;
 
 } // namespace
 
@@ -161,27 +72,14 @@ AssemblyReport assemble(Simulator& sim, const AssemblyOptions& options)
     const VecX zero = VecX::Zero(nv);
 
     // --- Positions, first stage: Gauss-Newton onto phi = 0 ---------------------
-    const VecX w_q = weights(model, data, r.q_given);
+    const VecX w_q = detail::mass_weights("kernel::assemble", model, data, r.q_given);
     LeastChange position(nv, r.held_positions);
-    VecX q = r.q_given, q_save, step(nv), d(nv), target(nv), rhs;
+    VecX q = r.q_given, step(nv), d(nv), target(nv), rhs;
     solver.evaluate(data, q, zero, t);
     r.position_residual_given = solver.phi().norm();
-    Real residual = r.position_residual_given;
-    while (residual > tol && r.projection_iterations < options.max_iterations) {
-        position.factorize(solver.J(), w_q);
-        position.solve(-solver.phi(), step);
-        q_save = q;
-        const Real before = residual;
-        Real fraction = 1.0;
-        for (int halving = 0; halving < 12; ++halving) {
-            integrate(model, q_save, step, fraction, q);
-            solver.evaluate(data, q, zero, t);
-            residual = solver.phi().norm();
-            if (residual < before) break;
-            fraction *= 0.5;
-        }
-        ++r.projection_iterations;
-    }
+    Real residual = 0.0;
+    r.projection_iterations = detail::project_positions(model, solver, data, position, w_q, q, t, tol,
+                                                        options.max_iterations, residual);
     r.positions_assembled = residual <= tol;
     r.smallest_correction = r.positions_assembled && r.equations == 0;
 
@@ -225,7 +123,7 @@ AssemblyReport assemble(Simulator& sim, const AssemblyOptions& options)
     difference(model, r.q_given, q, r.position_change);
 
     // --- Velocities: one linear solve at the assembled positions -------------
-    const VecX w_v = weights(model, data, q);
+    const VecX w_v = detail::mass_weights("kernel::assemble", model, data, q);
     solver.evaluate(data, q, r.v_given, t);
     const MatX& J = solver.J();
     rhs = solver.nu() - J * r.v_given;
@@ -308,26 +206,9 @@ std::string AssemblyReport::summary(const Model& model) const
     const bool of_model = q_given.size() == model.nq && q.size() == model.nq
                           && v_given.size() == nv && v.size() == nv && position_change.size() == nv;
     for (int k = 0; of_model && k < nv; ++k) {
-        const int b = body_of_velocity(model, k);
-        const auto i = static_cast<std::size_t>(b);
-        const int c = k - model.idx_v[i];
-        // A joint whose coordinates are its velocities' integrals shows them;
-        // a spherical or free joint shows its change only.
-        const bool scalar = model.nqs[i] == model.nvs[i];
-        os << "  [" << k << "] " << body_label(model, b) << ", " << model.joint[i]->name();
-        if (model.nvs[i] > 1) os << " " << c;
-        os << ": position ";
-        if (scalar) {
-            const int iq = model.idx_q[i] + c;
-            os << q_given(iq);
-            if (held(held_positions, k)) os << " (held)";
-            else os << " -> " << q(iq) << " (change " << position_change(k) << ")";
-        } else if (held(held_positions, k)) {
-            os << "held";
-        } else {
-            os << "change " << position_change(k);
-        }
-        os << "; velocity " << v_given(k);
+        os << "  [" << k << "] " << detail::velocity_label(model, k) << ": position "
+           << detail::position_text(model, k, q_given, q, position_change, held(held_positions, k))
+           << "; velocity " << v_given(k);
         if (held(held_velocities, k)) os << " (held)";
         else os << " -> " << v(k) << " (change " << v(k) - v_given(k) << ")";
         os << '\n';

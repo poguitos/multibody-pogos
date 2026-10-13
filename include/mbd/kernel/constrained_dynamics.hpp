@@ -40,33 +40,41 @@ struct SolveInfo {
     bool redundant() const { return rank < equations; }
 };
 
-/// L D L^T with diagonal pivoting of a symmetric positive semi-definite
-/// matrix, which reveals its rank: the pivots come largest first, and those
-/// below kRankTolerance of the largest belong to dependent rows, whose
-/// components solve() sets to zero. The constraint solver and the
-/// initial-condition assembly count rank by this one rule.
+/// P^T A P = L D L^T with diagonal pivoting, for a symmetric positive
+/// semi-definite A, stopped at its numerical rank: at each step the largest
+/// remaining diagonal is the pivot, and the factorization ends when it falls
+/// below kRankTolerance of the first (as LAPACK's pstrf does). The rows left
+/// are dependent on those factorized; solve() gives their components zero.
+/// The constraint solver, the initial-condition assembly and statics count
+/// rank by this one rule.
+///
+/// Stopping matters. Eliminating past the rank, as Eigen's LDLT does (it is
+/// not rank-revealing), divides by pivots made of rounding error; the
+/// quotients can be large enough to pass for pivots and to spoil the solve.
 class RankRevealingLDLT {
 public:
-    /// Pivots below this fraction of the largest are dropped.
+    /// The factorization stops at a pivot below this fraction of the first.
     static constexpr Real kRankTolerance = 1e-10;
 
     /// Storage for n x n matrices.
-    explicit RankRevealingLDLT(Index n = 0) : ldlt_(n) {}
+    explicit RankRevealingLDLT(Index n = 0);
 
-    /// Factorize A. Allocates nothing when A has the size given at construction.
+    /// Factorize A, of which only the lower triangle is read. Allocates
+    /// nothing when A has the size given at construction.
     void compute(const MatX& A);
 
-    /// Pivots kept.
+    /// Pivots kept: the numerical rank of A.
     int rank() const { return rank_; }
 
-    /// x with A x = r, for r in the range of A; the components of the dropped
-    /// pivots are zero. x must not be r. Allocates nothing when x has the
-    /// right size.
+    /// x with A x = r, for r in the range of A; the components of the rows
+    /// not factorized are zero. x must not be r. Allocates nothing when x has
+    /// the right size.
     void solve(const VecX& r, VecX& x) const;
 
 private:
-    Eigen::LDLT<MatX> ldlt_;
-    Real pivot_cut_{0.0};
+    MatX LD_;                     ///< L below the diagonal, D on it (pivoted order)
+    std::vector<Index> pivot_;    ///< Row of A at each position
+    mutable VecX work_;
     int rank_{0};
 };
 
@@ -94,6 +102,12 @@ public:
     /// Baumgarte stabilization rates [1/s]. Zero disables it.
     Real baumgarte_alpha{0.0};
     Real baumgarte_beta{0.0};
+
+    /// When set, forward dynamics takes gamma as zero. At rest (v = 0) gamma
+    /// holds only the prescribed accelerations of time-dependent constraints,
+    /// so this freezes them where they are at t: statics has no inertia
+    /// (static_equilibrium sets it while it evaluates at rest).
+    bool quasi_static{false};
 
     /// phi, J, nu and gamma at (q, v, t), in phi(), J(), nu(), gamma().
     void evaluate(Data& data, const VecX& q, const VecX& v, Real t);

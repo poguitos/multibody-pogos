@@ -342,3 +342,59 @@ and the journal entry of the work refers to them by number
   is exact to second order in the rotation there.
 - **Record.** Journal: initial-condition assembly; `docs/kernel.md`, initial
   conditions.
+
+## D26. Statics: Newton on the accelerations at rest, least-norm steps, relaxation as fallback
+
+- **Context.** Task 3.5 asks for Newton iteration on the static residual with
+  a line search and dynamic relaxation as a fallback, done when the detailed
+  sedan settles in under 20 iterations to accelerations below 1e-6. Three
+  things had to be chosen: the residual and its unknowns, the Jacobian, and
+  what to do where the Jacobian is singular. It is singular for every
+  vehicle on tyres at rest: a tyre gives no horizontal force without slip,
+  so the position on the ground and the heading have neither force nor
+  stiffness. Constraints may also be redundant (the planar four-bar closed in
+  3D, 5 equations of rank 2).
+- **Decision.** The residual is the plan's own criterion, the accelerations
+  of the constrained dynamics at rest, with time-dependent constraints frozen
+  at the current time: a solver flag, `quasi_static`, takes gamma as zero,
+  which at rest removes exactly the drivers' prescribed accelerations. The
+  unknowns are the coordinates on the constraints. The Jacobian comes from
+  central differences, each perturbed configuration projected back onto the
+  constraints, so it vanishes across them and needs no null-space basis. The
+  step is the least, in the weights of the diagonal of the mass matrix, that
+  zeroes the linearized accelerations, solved by the shared
+  `RankRevealingLDLT`: directions with neither stiffness nor force are not
+  moved, and are counted (from a last Jacobian at the equilibrium) and noted.
+  Each step is shortened so that no translation changes by more than 0.02 m
+  and no rotation by more than 10 degrees (ADAMS's TLIMIT and ALIMIT), then
+  halved until the weighted norm of the accelerations decreases; when none
+  does, dynamic relaxation with kinetic damping runs until the accelerations
+  at rest are small, and Newton resumes. Relaxation is driven by the
+  accelerations at rest, not by the full dynamics: damping and tyre slip
+  forces play no part in the equilibrium and are too stiff at low speed for
+  an explicit step. `RankRevealingLDLT` became a pivoted factorization that
+  stops at the numerical rank, because Eigen's LDLT, which eliminates past
+  it, misjudged the rank of the statics Jacobian (journal).
+- **Alternatives.** Newton on the equilibrium equations and the constraints
+  together, in q and the multipliers (Haug, ADAMS): needs the derivative of
+  `J^T lambda`, and its matrix is singular with redundant constraints and
+  with neutral directions, both present here. Minimising the potential
+  energy: needs a potential for every force (tyres, user forces) and cannot
+  hold forces that have none. Coordinate partitioning (independent
+  coordinates chosen from J): needs a rank-revealing decomposition of J and a
+  choice that changes along the motion; the projected differences avoid both.
+  Analytic stiffness from the elements' derivatives (D24): not yet assembled;
+  D24 already planned differences first. Dynamic relaxation alone: robust,
+  but it takes hundreds to thousands of steps where Newton takes a few.
+- **Consequences.** Each iteration costs 2 nv evaluations of the
+  accelerations and as many projections (measured in the journal), fine for
+  setup and too slow for anything per step. Neutral directions keep their
+  given values but for second-order effects, which for a vehicle means where
+  it was put and where it points. Analytic tangent stiffness can replace the
+  differences later without changing the method. The solver has one more
+  setting, which statics sets and restores. Statics follows the model: a
+  template vehicle started with its wheels in the air (no rebound stops, a
+  contact point fixed on the upright) settles with its rear suspension folded,
+  an equilibrium of the model but not of a car.
+- **Record.** Journal: static equilibrium; `docs/kernel.md`, static
+  equilibrium.

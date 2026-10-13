@@ -36,33 +36,72 @@ int total_size(const Model& model,
 
 } // namespace
 
+RankRevealingLDLT::RankRevealingLDLT(Index n)
+    : LD_(MatX::Zero(n, n))
+    , pivot_(static_cast<std::size_t>(n))
+    , work_(VecX::Zero(n))
+{
+}
+
 void RankRevealingLDLT::compute(const MatX& A)
 {
-    ldlt_.compute(A);
-    // Diagonal pivoting puts the largest pivots first; the rows behind
-    // pivots that are negligible next to the largest are dependent.
-    const auto D = ldlt_.vectorD();
-    Real largest = 0.0;
-    for (Index k = 0; k < D.size(); ++k) largest = std::max(largest, std::abs(D(k)));
-    pivot_cut_ = kRankTolerance * largest;
+    const Index n = A.rows();
+    if (LD_.rows() != n) {
+        pivot_.resize(static_cast<std::size_t>(n));
+        work_.resize(n);
+    }
+    // In the lower triangle only: L goes below the diagonal as it is found,
+    // D on it, and the trailing block holds the Schur complement.
+    LD_ = A;
+    for (Index i = 0; i < n; ++i) pivot_[static_cast<std::size_t>(i)] = i;
     rank_ = 0;
-    for (Index k = 0; k < D.size(); ++k) {
-        if (std::abs(D(k)) > pivot_cut_) ++rank_;
+    Real first = 0.0;
+    for (Index k = 0; k < n; ++k) {
+        Index j = k;
+        for (Index i = k + 1; i < n; ++i) {
+            if (LD_(i, i) > LD_(j, j)) j = i;
+        }
+        const Real d = LD_(j, j);
+        if (k == 0) first = d;
+        // Below this, what is left is rounding error: stop.
+        if (!(first > 0.0) || !(d > kRankTolerance * first)) break;
+        if (j != k) {
+            // Swap rows and columns k and j of the symmetric matrix, as
+            // stored in its lower triangle (LAPACK's syswapr).
+            for (Index c = 0; c < k; ++c) std::swap(LD_(k, c), LD_(j, c));
+            std::swap(LD_(k, k), LD_(j, j));
+            for (Index i = k + 1; i < j; ++i) std::swap(LD_(i, k), LD_(j, i));
+            for (Index i = j + 1; i < n; ++i) std::swap(LD_(i, k), LD_(i, j));
+            std::swap(pivot_[static_cast<std::size_t>(k)], pivot_[static_cast<std::size_t>(j)]);
+        }
+        for (Index i = k + 1; i < n; ++i) LD_(i, k) /= d;
+        for (Index c = k + 1; c < n; ++c) {
+            const Real s = LD_(c, k) * d;
+            for (Index i = c; i < n; ++i) LD_(i, c) -= LD_(i, k) * s;
+        }
+        rank_ = static_cast<int>(k + 1);
     }
 }
 
 void RankRevealingLDLT::solve(const VecX& r, VecX& x) const
 {
-    // x = P^T L^-T D^+ L^-1 P r, with D^+ zero for the dropped pivots. When
-    // r is in the range of A this solves A x = r exactly.
-    x = ldlt_.transpositionsP() * r;
-    ldlt_.matrixL().solveInPlace(x);
-    const auto D = ldlt_.vectorD();
-    for (Index k = 0; k < D.size(); ++k) {
-        x(k) = std::abs(D(k)) > pivot_cut_ ? x(k) / D(k) : 0.0;
+    // x = P L^-T D^+ L^-1 P^T r, D^+ zero past the rank. When r is in the
+    // range of A this solves A x = r exactly.
+    const Index n = LD_.rows();
+    const Index rank = rank_;
+    for (Index i = 0; i < n; ++i) work_(i) = r(pivot_[static_cast<std::size_t>(i)]);
+    for (Index k = 0; k < rank; ++k) {
+        const Real wk = work_(k);
+        for (Index i = k + 1; i < n; ++i) work_(i) -= LD_(i, k) * wk;
     }
-    ldlt_.matrixU().solveInPlace(x);
-    x = ldlt_.transpositionsP().transpose() * x;   // swaps in place
+    for (Index k = 0; k < n; ++k) work_(k) = k < rank ? work_(k) / LD_(k, k) : 0.0;
+    for (Index k = rank - 1; k >= 0; --k) {
+        Real s = work_(k);
+        for (Index i = k + 1; i < rank; ++i) s -= LD_(i, k) * work_(i);
+        work_(k) = s;
+    }
+    x.resize(n);
+    for (Index i = 0; i < n; ++i) x(pivot_[static_cast<std::size_t>(i)]) = work_(i);
 }
 
 ConstraintSolver::ConstraintSolver(const Model& model,
@@ -175,7 +214,8 @@ const VecX& ConstraintSolver::forward_dynamics_from_kinematics(Data& data, const
 
     // (J M^-1 J^T) lambda = gamma_stabilized - J v_dot_free.
     factorize_constraint_matrix();
-    rhs_m_ = gamma_;
+    if (quasi_static) rhs_m_.setZero();
+    else rhs_m_ = gamma_;
     if (baumgarte_alpha != 0.0) {
         rhs_m_.noalias() -= (2.0 * baumgarte_alpha) * (J_ * v);
         rhs_m_ += (2.0 * baumgarte_alpha) * nu_;

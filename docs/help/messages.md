@@ -246,11 +246,12 @@ or `AssemblyOptions::hold_joint: there is no jointed body <b>; the jointed bodie
 
 ### MBD-K061
 
-`kernel::assemble: velocity <k> (body <b>) moves no mass, so its correction cannot be weighed (mass matrix entry <w>). validate() names such joints.`
+`<function>: velocity <k> (body <b>) moves no mass, so its correction cannot be weighed (mass matrix entry <w>). validate() names such joints.`
 
-- **Means:** assembly weighs each coordinate's correction by its diagonal
-  entry of the mass matrix, and this one is zero (or not a number): the joint
-  moves nothing with mass or inertia.
+- **Means:** assembly and statics (`kernel::assemble`,
+  `kernel::static_equilibrium`) weigh each coordinate's change by its
+  diagonal entry of the mass matrix, and this one is zero (or not a number):
+  the joint moves nothing with mass or inertia.
 - **What to do:** run `validate()` (MBD-M021 names the joint); give the bodies
   below it a mass and an inertia.
 
@@ -294,6 +295,57 @@ Warning, in `AssemblyReport::warnings`: `Assembly: the smallest correction was n
   correction), or a configuration near a singular position of the mechanism.
 - **What to do:** usually nothing; if the assembled values matter, start
   closer to them, or hold the coordinates you care about.
+
+### MBD-K070
+
+Warning, in `StaticReport::warnings`: `Static equilibrium not found: largest acceleration <a> after <n> Newton iterations and <m> relaxation steps (tolerance <tol>).`
+
+- **Means:** `static_equilibrium` stopped before the accelerations at rest
+  fell below the tolerance. The positions it reached are written to the
+  simulator, at rest; the given ones are in the report (`q_given`).
+- **Usual causes:** a force with nothing to resist it (a body on a free or
+  sliding joint with no spring, a wheel that never reaches the ground), so
+  that no equilibrium exists; a relaxation budget too small for the distance
+  to fall (`max_relaxation_steps`); a relaxation step too long for the
+  stiffest element (`relaxation_step`, which must stay below 2 / omega for
+  the highest natural frequency omega); forces that are not smooth near the
+  equilibrium (a stop or a contact switching on and off).
+- **What to do:** read `report.summary(model)`: the history of the largest
+  acceleration shows whether Newton stalled or relaxation ran out. Check
+  that every degree of freedom with a force on it has something to hold it.
+
+### MBD-K071
+
+Warning, in `StaticReport::warnings`: `Static equilibrium: the given positions could not be brought onto the constraints (|phi| = <r>). assemble() reports why.`
+
+- **Means:** before looking for an equilibrium, statics moves the given
+  positions onto the constraints, and could not.
+- **What to do:** run `assemble(sim)` on the same state: its report explains
+  the failure (MBD-K062, MBD-K063).
+
+### MBD-K072
+
+Note, in `StaticReport::notes`: `<n> of the <d> degrees of freedom have no stiffness at the equilibrium: it is neutral along them, and the Newton steps leave them alone, so they keep their given values but for effects of second order in the other changes.`
+
+- **Means:** along these directions nothing pushes back and nothing pushes:
+  any position along them is an equilibrium, and statics does not move along
+  them. A vehicle on tyres at rest has three: its position on the ground and
+  its heading, because a tyre gives no horizontal force without slip.
+  "Second order": a body that both rises and pitches moves its origin
+  sideways by about half the product of the two (the rigid motion of the
+  free joint is an exponential), so a sedan that rises 2 cm and pitches
+  1.2 mrad moves 1.3e-5 m forward.
+- **What to do:** nothing, unless you expected stiffness there; then look for
+  the element that should provide it.
+
+### MBD-K073
+
+Note, in `StaticReport::notes`: `Dynamic relaxation took <m> steps in <r> runs, where Newton's method could not reduce the accelerations.`
+
+- **Means:** at some point no Newton step reduced the accelerations, usually
+  because a force had no stiffness against it (a wheel above the ground), and
+  the motion under the forces, with kinetic damping, was used to find the
+  support before Newton resumed.
 
 ## M: findings of `validate()`
 

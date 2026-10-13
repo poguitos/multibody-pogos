@@ -12,18 +12,13 @@
 #include "mbd/kernel/constrained_dynamics.hpp"
 #include "mbd/spatial/spatial.hpp"
 
+#include "labels.hpp"
+
 namespace mbd::kernel {
 
 namespace {
 
-std::string body_label(const Model& model, int i)
-{
-    std::string s = "body " + std::to_string(i);
-    if (i >= 0 && i < static_cast<int>(model.name.size()) && !model.name[i].empty()) {
-        s += " (" + model.name[i] + ")";
-    }
-    return s;
-}
+using detail::body_label;
 
 std::string constraint_label(std::size_t k, const ConstraintModel& c)
 {

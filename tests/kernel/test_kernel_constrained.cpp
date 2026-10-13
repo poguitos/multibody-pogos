@@ -197,6 +197,54 @@ TEST_CASE("Kernel constrained dynamics: redundant constraints do not change the 
     CHECK((f2 - f1).norm() < 1e-8 * (1.0 + f1.norm()));
 }
 
+TEST_CASE("Kernel constrained dynamics: the rank-revealing factorization stops at the numerical rank",
+          "[kernel][constrained]")
+{
+    // A = G G^T with G = B C^T + E, 27 x 27: seven directions of sizes 1.4e4
+    // down to 50 (as the statics Jacobian of the sedan has) and twenty of
+    // rounding error, |E| about 1e-6. The numerical rank is 7: the eighth
+    // pivot would be about 1e-12, 1e-20 of the first, the seventh about
+    // 2.5e3, 1e-5 of it. Eliminating past the rank divides by the
+    // rounding-error pivots, which is how Eigen's LDLT came to report 6 and
+    // a wrong solution on the sedan; stopping there leaves A x = r exact for r
+    // in the range of A (to 1e-9: the factorization's rounding against a
+    // condition number of 1e5 on the kept part).
+    Rng rng(57);
+    const Index n = 27, r = 7;
+    const Real sizes[r] = {1.4e4, 1.35e4, 1.3e4, 1.28e4, 124.0, 106.0, 50.0};
+    MatX B(n, r), C(n, r), E(n, n);
+    for (Index j = 0; j < r; ++j) {
+        for (Index i = 0; i < n; ++i) {
+            B(i, j) = rng.range(-1.0, 1.0);
+            C(i, j) = rng.range(-1.0, 1.0);
+        }
+        B.col(j) *= sizes[j] / (B.col(j).norm() * C.col(j).norm());
+    }
+    for (Index i = 0; i < n; ++i) {
+        for (Index j = 0; j < n; ++j) E(i, j) = rng.range(-1.0, 1.0) * 2e-7;
+    }
+    const MatX G = B * C.transpose() + E;
+    const MatX A = G * G.transpose();
+
+    RankRevealingLDLT ldlt(n);
+    ldlt.compute(A);
+    CHECK(ldlt.rank() == r);
+
+    VecX z(n);
+    for (Index i = 0; i < n; ++i) z(i) = rng.range(-1.0, 1.0);
+    const VecX rhs = A * z;
+    VecX x;
+    ldlt.solve(rhs, x);
+    CHECK((A * x - rhs).norm() < 1e-9 * rhs.norm());
+
+    // Exact zeros, as redundant constraints give: the planar loop's 5 x 5
+    // matrix of rank 2 factorizes to rank 2.
+    MatX B2 = MatX::Zero(5, 2);
+    B2 << 1.0, 0.5, -0.3, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+    ldlt.compute(B2 * B2.transpose());
+    CHECK(ldlt.rank() == 2);
+}
+
 TEST_CASE("Kernel constrained dynamics: a four-bar linkage conserves energy",
           "[kernel][constrained]")
 {

@@ -87,8 +87,14 @@ to a validated engine.*
     outside the loop under the full and the diagonal mass matrix); holds that
     over-determine a mechanism, found by comparing ranks. *J: initial-condition
     assembly. D25.*
+20. **Static equilibrium.** Newton on the accelerations at rest; frozen
+    drivers; a Jacobian by differences through projections; least-norm
+    steps and the neutral directions of a vehicle on tyres; increment limits
+    and relaxation on the static forces; what "not rank-revealing" means and
+    how it showed; the folded suspension as a finding about the model.
+    *J: static equilibrium. D26.*
 
-To come in this part: statics, linearisation, contact, events.
+To come in this part: linearisation, contact, events.
 
 ## Part VI onwards: one part per phase still to come
 

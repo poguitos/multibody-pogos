@@ -16,7 +16,8 @@ task that adds or changes a message, an option or a behaviour updates it.
   joints and their coordinates, constraints, axes, signs, naming.
 - [The multibody kernel](../kernel.md): spatial vectors, joint models, Model
   and Data, the recursive algorithms, constraints, the constrained solve, the
-  simulator, initial-condition assembly, the checks and `validate()`.
+  simulator, initial-condition assembly, static equilibrium, the checks and
+  `validate()`.
 
 ## How-to guides
 
@@ -27,6 +28,7 @@ examples:
 |---|---|
 | Build a mechanism with loops | `tests/kernel/test_kernel_constrained.cpp` (four-bar), `tests/kernel/test_kernel_validate.cpp` |
 | Simulate it | `tests/kernel/test_kernel_simulator.cpp`, `tests/kernel/test_kernel_joints_physics.cpp` |
+| Find the static equilibrium (a vehicle settled on its tyres), with its loads | [The kernel, static equilibrium](../kernel.md#static-equilibrium); `static_equilibrium(sim)`; `tests/kernel/test_kernel_statics.cpp`, `tests/vehicle/test_vehicle_statics.cpp` |
 | Make initial positions and velocities satisfy the constraints, holding some coordinates | [The kernel, initial conditions](../kernel.md#initial-conditions); `assemble(sim, options)`; `tests/kernel/test_kernel_assembly.cpp`, `tests/vehicle/test_vehicle_assembly.cpp` |
 | Drive a joint along a prescribed motion | `tests/kernel/test_kernel_simulator.cpp` (driven pendulum) |
 | Drive a point along a path | `tests/kernel/test_kernel_simulator.cpp` (point driven along a circle) |
