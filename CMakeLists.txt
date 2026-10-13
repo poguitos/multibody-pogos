@@ -113,3 +113,27 @@ include(CTest)
 if (BUILD_TESTING)
     add_subdirectory(tests)
 endif()
+
+# API reference (documentation track H, task H.5): `cmake --build <dir>
+# --target docs` writes HTML from the header comments to <dir>/docs/html,
+# when Doxygen is installed. Every warning fails the target, as in CI;
+# undocumented members are listed rather than warned about.
+find_package(Doxygen QUIET)
+if (DOXYGEN_FOUND)
+    set(DOXYGEN_PROJECT_NAME "multibody")
+    set(DOXYGEN_PROJECT_BRIEF "Multibody dynamics for vehicles")
+    set(DOXYGEN_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/docs")
+    set(DOXYGEN_EXTRACT_ALL YES)
+    set(DOXYGEN_EXTRACT_STATIC YES)
+    set(DOXYGEN_RECURSIVE YES)
+    set(DOXYGEN_FILE_PATTERNS "*.hpp")
+    set(DOXYGEN_STRIP_FROM_PATH "${PROJECT_SOURCE_DIR}/include")
+    set(DOXYGEN_FULL_PATH_NAMES YES)
+    set(DOXYGEN_GENERATE_HTML YES)
+    set(DOXYGEN_GENERATE_LATEX NO)
+    set(DOXYGEN_WARN_IF_DOC_ERROR YES)
+    set(DOXYGEN_WARN_AS_ERROR FAIL_ON_WARNINGS)
+    set(DOXYGEN_QUIET YES)
+    doxygen_add_docs(docs "${PROJECT_SOURCE_DIR}/include/mbd"
+                     COMMENT "API reference from the header comments")
+endif()

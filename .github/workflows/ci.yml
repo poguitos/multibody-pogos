@@ -83,3 +83,26 @@ jobs:
         run: |
           ./build-nomalloc/tests/test_kernel "[alloc]"
           ./build-nomalloc/tests/test_alloc
+
+  # The API reference (documentation track H, task H.5): Doxygen from the
+  # header comments, every warning an error.
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ninja and Doxygen
+        run: sudo apt-get update && sudo apt-get install -y ninja-build doxygen
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-docs -G Ninja
+          -DMBD_BUILD_PYTHON=OFF
+          -DBUILD_TESTING=OFF
+
+      - name: Build the API reference
+        run: |
+          doxygen --version
+          cmake --build build-docs --target docs
