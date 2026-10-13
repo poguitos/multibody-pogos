@@ -106,3 +106,10 @@ jobs:
         run: |
           doxygen --version
           cmake --build build-docs --target docs
+
+      - name: Check that the reference was written
+        run: |
+          test -s build-docs/docs/html/index.html
+          test -s build-docs/docs/html/annotated.html
+          grep -q "ConstraintSolver" build-docs/docs/html/annotated.html
+          echo "HTML pages: $(ls build-docs/docs/html/*.html | wc -l)"
