@@ -6,9 +6,12 @@
 #include <algorithm>
 #include <vector>
 
+#include <complex>
+
 #include "mbd/forces/tire.hpp"
 #include "mbd/kernel/algorithms.hpp"
 #include "mbd/kernel/forces.hpp"
+#include "mbd/kernel/linearization.hpp"
 #include "mbd/kernel/simulator.hpp"
 
 // The quarter car on the kernel (plan task 2.7): two bodies sliding vertically,
@@ -193,6 +196,74 @@ TEST_CASE("Quarter-car: undamped natural frequencies match analytical",
     // The dominant mode for a chassis perturbation is body bounce
     // Allow 10% tolerance since both modes are excited and interact
     REQUIRE_THAT(f_measured, WithinAbs(f1_theory, f1_theory * 0.10));
+}
+
+// ============================================================================
+// Linearisation (plan task 3.7)
+// ============================================================================
+
+TEST_CASE("Quarter-car: linearised frequencies and shapes match the analytical ones",
+          "[quarter_car][frequency][linearization]")
+{
+    // About the static equilibrium, undamped: the two natural frequencies
+    // from det(K - w^2 M) = 0, and the shapes from its second row,
+    // x_s / x_u = k_s / (k_s - w^2 m_s). The forces are linear in the heights,
+    // so the central differences are exact but for rounding (relative 1e-12
+    // or so); 1e-8 leaves room.
+    using namespace mbd;
+    auto sys = make_quarter_car(0.0);
+    kernel::Simulator sim(sys);
+    sim.q(0) = y_w_eq();
+    sim.q(1) = y_c_eq();
+
+    const kernel::LinearModel lm = kernel::linearize(sim);
+    INFO(lm.summary(sys.model));
+    REQUIRE(lm.degrees_of_freedom == 2);
+    REQUIRE(lm.modes.size() == 2);
+    CHECK(lm.warnings.empty());
+    const auto [w1, w2] = analytical_frequencies();
+    const Real w[2] = {w1, w2};
+    for (int i = 0; i < 2; ++i) {
+        const kernel::Mode& mode = lm.modes[static_cast<std::size_t>(i)];
+        CHECK(mode.oscillatory());
+        CHECK(std::abs(mode.natural_frequency - w[i]) < 1e-8 * w[i]);
+        CHECK(std::abs(mode.damping_ratio) < 1e-9);
+        const Real ratio = (mode.shape(1) / mode.shape(0)).real();
+        const Real expected = k_s / (k_s - w[i] * w[i] * m_s);
+        CHECK(std::abs(ratio - expected) < 1e-8 * std::abs(expected));
+    }
+}
+
+TEST_CASE("Quarter-car: linearised damped eigenvalues are the roots of det(l^2 M + l C + K)",
+          "[quarter_car][frequency][linearization]")
+{
+    // With the suspension damper: each eigenvalue must make
+    //   (l^2 m_u + l c + k_s + k_t) (l^2 m_s + l c + k_s) - (l c + k_s)^2
+    // vanish. Both modes stay oscillatory (body zeta about 0.29, wheel hop
+    // about 0.26). The residual is relative to the size of its two terms. The
+    // differences' rounding, about 1e-16 x 71 m/s^2 (the wheel's force per
+    // mass at equilibrium) / 1e-6, is 7e-9 in A, 2e-10 of the damping terms
+    // c / m_u = 37.5; with l d(log det)/dl of about 4 that makes residuals
+    // near 1e-9, so the bound is 1e-8.
+    using namespace mbd;
+    auto sys = make_quarter_car(c_s);
+    kernel::Simulator sim(sys);
+    sim.q(0) = y_w_eq();
+    sim.q(1) = y_c_eq();
+
+    const kernel::LinearModel lm = kernel::linearize(sim);
+    INFO(lm.summary(sys.model));
+    REQUIRE(lm.modes.size() == 2);
+    for (const kernel::Mode& mode : lm.modes) {
+        CHECK(mode.oscillatory());
+        CHECK(mode.damping_ratio > 0.0);
+        const std::complex<Real> l = mode.eigenvalue;
+        const std::complex<Real> pu = l * l * m_u + l * c_s + k_s + k_t;
+        const std::complex<Real> ps = l * l * m_s + l * c_s + k_s;
+        const std::complex<Real> pc = l * c_s + k_s;
+        const Real residual = std::abs(pu * ps - pc * pc) / (std::abs(pu * ps) + std::abs(pc * pc));
+        CHECK(residual < 1e-8);
+    }
 }
 
 // ============================================================================

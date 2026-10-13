@@ -93,8 +93,13 @@ to a validated engine.*
     and relaxation on the static forces; what "not rank-revealing" means and
     how it showed; the folded suspension as a finding about the model.
     *J: static equilibrium. D26.*
+21. **Linearisation.** Reduced coordinates on the constraints from the
+    projector's pivoted columns; the state matrix; modes, damping ratios and
+    shapes; the quarter car checked against its closed forms and its
+    characteristic determinant; what the tyre's regularisation does to a
+    vehicle's modes at rest. *J: linearisation. D27.*
 
-To come in this part: linearisation, contact, events.
+To come in this part: contact, events.
 
 ## Part VI onwards: one part per phase still to come
 

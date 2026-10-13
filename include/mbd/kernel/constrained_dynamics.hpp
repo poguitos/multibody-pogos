@@ -66,6 +66,10 @@ public:
     /// Pivots kept: the numerical rank of A.
     int rank() const { return rank_; }
 
+    /// The row of A taken as the k-th pivot. The first rank() of them index
+    /// a set of independent rows (and, A being symmetric, columns).
+    Index pivot(Index k) const { return pivot_[static_cast<std::size_t>(k)]; }
+
     /// x with A x = r, for r in the range of A; the components of the rows
     /// not factorized are zero. x must not be r. Allocates nothing when x has
     /// the right size.

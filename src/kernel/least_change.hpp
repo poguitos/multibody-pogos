@@ -27,7 +27,7 @@ VecX mass_weights(const char* function, const Model& model, Data& data, const Ve
 /// constraints), it drops the dependent equations.
 class LeastChange {
 public:
-    LeastChange(int nv, const std::vector<int>& held)
+    LeastChange(int nv, const std::vector<int>& held) : nv_(nv)
     {
         std::vector<bool> is_held(static_cast<std::size_t>(nv), false);
         for (int k : held) is_held[static_cast<std::size_t>(k)] = true;
@@ -52,10 +52,11 @@ public:
         ldlt_.compute(A_);
     }
 
-    /// x (every velocity): the least change with J_f x_f = r; zero where held.
+    /// x (every velocity, sized here): the least change with J_f x_f = r;
+    /// zero where held.
     void solve(const VecX& r, VecX& x)
     {
-        x.setZero();
+        x.setZero(nv_);
         if (empty_) return;
         ldlt_.solve(r, mu_);
         y_.noalias() = B_.transpose() * mu_;
@@ -67,6 +68,7 @@ public:
     int rank() const { return empty_ ? 0 : ldlt_.rank(); }
 
 private:
+    int nv_;
     std::vector<int> free_;
     VecX scale_, mu_, y_;
     MatX B_, A_;

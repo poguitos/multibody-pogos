@@ -347,6 +347,26 @@ Note, in `StaticReport::notes`: `Dynamic relaxation took <m> steps in <r> runs, 
   the motion under the forces, with kinetic damping, was used to find the
   support before Newton resumed.
 
+### MBD-K080
+
+Warning, in `LinearModel::warnings`: `Linearisation: the operating point did not satisfy the constraints (|phi| = <r>, |J v - nu| = <s>); it was linearised at the nearest point that does.`
+
+- **Means:** the simulator's state was not on the constraints, so the
+  linearisation moved it there first (positions by the least change in the
+  weights of the mass matrix's diagonal, then velocities) and linearised
+  about that point, which `LinearModel::q` and `v` hold.
+- **What to do:** start from an assembled state (`assemble()`) or a static
+  equilibrium (`static_equilibrium()`).
+
+### MBD-K081
+
+Warning, in `LinearModel::warnings`: `Linearisation: the operating point is at rest but not in equilibrium (largest acceleration <a>): the model describes motion about a point the system leaves. static_equilibrium() finds one.`
+
+- **Means:** frequencies and damping describe small motions about an
+  equilibrium; about a point where the system at rest accelerates, they
+  describe a linear model of a motion that does not stay there.
+- **What to do:** run `static_equilibrium(sim)` before `linearize(sim)`.
+
 ## M: findings of `validate()`
 
 `validate(system)` checks a system at its neutral configuration, or

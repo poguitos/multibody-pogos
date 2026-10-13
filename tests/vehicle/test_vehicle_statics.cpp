@@ -3,10 +3,12 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
 #include "mbd/kernel/algorithms.hpp"
+#include "mbd/kernel/linearization.hpp"
 #include "mbd/kernel/simulator.hpp"
 #include "mbd/kernel/statics.hpp"
 #include "mbd/vehicle/vehicle_template.hpp"
@@ -124,4 +126,37 @@ TEST_CASE("Statics: the sedan started 1 cm too high settles to the same equilibr
     CHECK(r.converged);
     CHECK(r.residual < 1e-6);
     CHECK(std::abs(sim.q(cq + 1) - reference.q(cq + 1)) < 1e-6);
+}
+
+TEST_CASE("Linearisation: the sedan at rest has three neutral positions and no unstable mode",
+          "[vehicle][linearization]")
+{
+    // About its static equilibrium: ten degrees of freedom; the position on
+    // the ground and the heading have no stiffness, so three eigenvalues are
+    // zero. Their rates are not free: below V_low a tyre's slip force opposes
+    // any velocity of its contact, so they decay (real, negative
+    // eigenvalues). Springs, dampers and gravity about a stable equilibrium
+    // are passive: no eigenvalue may have a positive real part beyond the
+    // differences' error (relative 1e-6 of the largest).
+    kernel::System sys;
+    auto vh = build_vehicle(sys, sedan());
+    kernel::Simulator sim(sys);
+    set_vehicle_equilibrium(sim, vh);
+    sim.initialize();
+    REQUIRE(kernel::static_equilibrium(sim).converged);
+
+    const kernel::LinearModel lm = kernel::linearize(sim);
+    INFO(lm.summary(sys.model));
+    CHECK(lm.degrees_of_freedom == 10);
+    CHECK(lm.warnings.empty());
+    int zeros = 0;
+    Real largest = 0.0, most_positive = -1e300;
+    for (const kernel::Mode& mode : lm.modes) {
+        const int count = mode.oscillatory() ? 2 : 1;
+        if (mode.natural_frequency < 1e-3) zeros += count;
+        largest = std::max(largest, mode.natural_frequency);
+        most_positive = std::max(most_positive, mode.eigenvalue.real());
+    }
+    CHECK(zeros == 3);
+    CHECK(most_positive < 1e-6 * largest);
 }

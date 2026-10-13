@@ -398,3 +398,35 @@ and the journal entry of the work refers to them by number
   an equilibrium of the model but not of a car.
 - **Record.** Journal: static equilibrium; `docs/kernel.md`, static
   equilibrium.
+
+## D27. Linearisation in reduced coordinates from projected differences
+
+- **Context.** Task 3.7 asks for state matrices about an operating point,
+  natural frequencies, damping and mode shapes, done when the quarter-car
+  frequencies match the analytic ones. With constraints, the coordinates are
+  not independent: the full first-order system in (q, v) has spurious
+  eigenvalues for the directions across the constraints, so a minimal set of
+  coordinates on them is needed. The derivatives of the accelerations had to
+  come from somewhere (D24: differences first).
+- **Decision.** Reduced coordinates along n independent columns of the
+  W-orthogonal projector onto the allowed motions (W the diagonal of the mass
+  matrix), picked by the pivots of the shared `RankRevealingLDLT`; the
+  derivatives of the accelerations along them by central differences, each
+  perturbed position projected back onto the constraints (as in statics);
+  reduction by the W-weighted left inverse of the basis; `A = [[0, I], [A_q,
+  A_v]]`; modes from Eigen's general eigensolver, a complex pair listed once.
+  Everything the simulator applies acts, as at the operating point.
+- **Alternatives.** A null-space basis from an SVD or QR of J: orthonormal,
+  but another heavy decomposition to compile, and the projector's pivoted
+  columns serve as well (they need not be orthonormal). Coordinate
+  partitioning (independent velocities chosen from J): the basis would be
+  made of unit vectors, but the choice changes from one configuration to
+  another. The symmetric generalized eigenproblem `K phi = w^2 M phi`:
+  cheaper and exact for undamped conservative systems, but it has no damping
+  and the plan asks for it.
+- **Consequences.** The general eigensolver costs compile time in one source
+  file only. Linearising about a state in motion uses the same formulas, which
+  are exact for joints whose coordinates add (for quaternion joints the
+  moving frame adds terms not modelled, as noted in the header). Input
+  matrices (B, for control) are left for when a controller needs them.
+- **Record.** Journal: linearisation; `docs/kernel.md`, linearisation.

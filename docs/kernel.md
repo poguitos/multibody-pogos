@@ -430,6 +430,28 @@ the drivers frozen: constraint forces and joint reactions), and coded
 messages (MBD-K070 to K073). The equilibrium is written to the simulator, at
 rest.
 
+## Linearisation
+
+`linearize(sim, options)` (task 3.7, decision D27, `kernel/linearization.hpp`)
+gives the linear model of small motions about the simulator's state, usually
+a static equilibrium:
+
+    d/dt [z; z_dot] = A [z; z_dot],   A = [[0, I], [A_q, A_v]],   dq = N z
+
+in reduced coordinates z on the constraints. The n columns of N are columns
+of the projector onto the allowed motions, orthogonal in the weights of the
+mass matrix's diagonal, picked independent by the pivots of
+`RankRevealingLDLT` (they need not be orthonormal). `A_q` and `A_v` are the
+derivatives of the accelerations along them, by central differences with
+each perturbed position projected back onto the constraints, reduced by the
+weighted left inverse `(N^T W N)^-1 N^T W`. The eigenvalues of A are the
+modes: `-zeta w +- i w sqrt(1 - zeta^2)` for an oscillation, real for an
+overdamped or neutral motion; `LinearModel::modes` lists each complex pair
+once, sorted by natural frequency, with its damping ratio and its shape in
+velocity coordinates (the position part of the eigenvector, mapped by N,
+largest entry 1). A state off the constraints is first moved onto them
+(MBD-K080); a state at rest out of equilibrium is flagged (MBD-K081).
+
 ## Checks
 
 **Always on.** Every entry point of the kernel checks the vectors it is
