@@ -145,7 +145,7 @@ TEST_CASE("Kernel simulator: a constrained pendulum keeps its energy and its len
     CHECK(std::abs(sim.time - 2.0) < 1e-12);
 }
 
-TEST_CASE("Kernel simulator: applied forces and callbacks", "[kernel][simulator]")
+TEST_CASE("Kernel simulator: applied forces and the force callback", "[kernel][simulator]")
 {
     // A 2 kg body, no gravity. A force of 4 N along X, applied through the
     // force callback, gives x = (F / m) t^2 / 2; RK4 is exact for it.
@@ -154,15 +154,15 @@ TEST_CASE("Kernel simulator: applied forces and callbacks", "[kernel][simulator]
     place(sim, Vec3::Zero());
     sim.initialize();
 
-    int pre_force_calls = 0, post_step_calls = 0;
-    sim.pre_force_callback = [&](kernel::Simulator&, Real) { ++pre_force_calls; };
-    sim.post_step_callback = [&](kernel::Simulator&, Real) { ++post_step_calls; };
-    sim.force_callback = [](kernel::Simulator&, Real, VecX& tau) { tau(3) += 4.0; };  // body X = world X
+    int force_calls = 0;
+    sim.force_callback = [&](kernel::Simulator&, Real, VecX& tau) {
+        tau(3) += 4.0;   // body X = world X
+        ++force_calls;
+    };
 
     sim.run(1.0, 0.01);
     CHECK(std::abs(sim.q(0) - 0.5 * 2.0 * 1.0 * 1.0) < 1e-12);
-    CHECK(pre_force_calls == 4 * 100);   // four stages per RK4 step
-    CHECK(post_step_calls == 100);
+    CHECK(force_calls == 4 * 100);   // four stages per RK4 step
 
     // tau acts for one step only: an impulse of 6 N for 0.01 s along Y.
     sim.force_callback = nullptr;

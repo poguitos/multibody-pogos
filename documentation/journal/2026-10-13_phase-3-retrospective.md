@@ -83,8 +83,10 @@ closed-form impact times (events).
 ## Gate
 
 All tasks of the phase meet their "done when" conditions and CI is green on
-`phase-3`. Merging into `main` and tagging `v0.4.0` wait for the author's
-go-ahead.
+`phase-3`. With the author's go-ahead (14 October), `main` was
+fast-forwarded to `4a3a757` and tagged `v0.4.0`; CI run 38530469971 on
+`main` passed all four jobs (Windows, Linux with sanitizers, no-malloc,
+docs).
 
 ## For the book
 

@@ -2,17 +2,37 @@
 
 // Drivetrain model: engine, gearbox, differential, brakes, wheel spin dynamics.
 //
-// Wheel spin is a state of this class, one value per wheel, advanced once per
-// simulation step. It is not yet a degree of freedom of the multibody model
-// (see documentation/Master_plan.md, task 7.3). Every wheel has its own spin,
-// driven or not, and every tyre computes its slip from it, so that brake and
-// drive torques reach the road through the tyre on all four corners.
+// The four wheel spins are the drivetrain's states (plan task 4.1): once
+// connected, the simulator integrates them with the multibody state, by the
+// same method and in the same stages, from
+//
+//     I * d(omega)/dt = T_drive - T_brake sign(omega) - Fx * R,
+//
+// with I the wheel's inertia (and, for a driven wheel, its share of the
+// engine's through the gears), Fx the tyre's longitudinal force at that
+// evaluation and R its rolling radius. The wheels are not yet bodies of the
+// multibody model (task 7.3). Every wheel has its own spin, driven or not, and
+// every tyre computes its slip from it, so brake and drive torques reach the
+// road on all four corners.
+//
+// The brake is dry friction. On a turning wheel it opposes the rotation; a
+// wheel that comes to rest within a step while the brake can hold it (the
+// other torques below the brake torque) is locked at zero, and released when
+// they exceed it or the pedal is let go. Locking and gear shifts are decided
+// at the end of each step (end_step).
+//
+// At low speed the tyre's slip stiffness makes the spin equation stiff:
+// d(Fx R)/d(omega) over I reaches about 2700 per second on an undriven 40 kg
+// wheel below the tyre's V_low, just inside what RK4 at 1 ms can carry (2.8 /
+// dt). Lighter wheels, stiffer tyres or longer steps need the implicit
+// methods of Phase 4.
 
 #include "mbd/core/core.hpp"
 #include "mbd/vehicle/drivetrain_params.hpp"
 #include "mbd/vehicle/vehicle.hpp"
 #include "mbd/vehicle/vehicle_template.hpp"
 #include "mbd/kernel/simulator.hpp"
+#include "mbd/kernel/state_element.hpp"
 
 #include <array>
 #include <vector>
@@ -25,7 +45,7 @@ namespace mbd {
 // Drivetrain class
 // ============================================================================
 
-class Drivetrain {
+class Drivetrain : public kernel::StateElement {
 public:
     /// The four tyres in corner order: FL, FR, RL, RR.
     using TireSet = std::array<FullTireForce*, 4>;
@@ -37,8 +57,13 @@ public:
     Real brake{0.0};       ///< 0..1
 
     // --- State ---
+    /// Wheel spins [rad/s]. Set by initialize(); once connected, the
+    /// simulator holds the spins in its x, and this copy follows them at the
+    /// end of every step.
     std::array<Real, 4> wheel_omega{{0.0, 0.0, 0.0, 0.0}};
     int current_gear{1};   ///< 1-indexed
+    /// Wheels held at rest by their brakes.
+    std::array<bool, 4> wheel_locked{{false, false, false, false}};
 
     // --- Per-wheel data (FL, FR, RL, RR), set by initialize() ---
 
@@ -91,19 +116,18 @@ public:
     /// Initialize from a VehicleHandle (template-built vehicle).
     void initialize(const kernel::Simulator& sim, const VehicleHandle& vh);
 
-    // --- Per-stage callback: hand the wheel spins to the tyres ---
+    // --- As a state element of the simulator (task 4.1) ---
 
-    void apply_to_tires(const TireSet& tires) const;
-
-    void apply_to_tires(const VehicleModel& vm) const;
-
-    // --- Post-step: compute torques, integrate wheel spin, auto-shift ---
-
-    void step(Real dt, const TireSet& tires);
-
-    void step(Real dt, const VehicleModel& vm);
-
-    void step(Real dt, const VehicleHandle& vh);
+    const char* name() const override { return "drivetrain"; }
+    int size() const override { return 4; }
+    /// The spins from wheel_omega.
+    void initial_states(kernel::VecRef x) const override;
+    /// Hands the spins of this evaluation to the tyres.
+    void begin_evaluation(const kernel::Simulator& sim, Real t, kernel::ConstVecRef x) override;
+    /// Engine, drive and brake torques at these spins, and the spins' rates.
+    void rates(const kernel::Simulator& sim, Real t, kernel::ConstVecRef x, kernel::VecRef x_dot) override;
+    /// Locks and releases braked wheels, shifts gear, updates wheel_omega.
+    void end_step(const kernel::Simulator& sim, Real t, kernel::VecRef x) override;
 
     // --- Helpers ---
 
@@ -116,8 +140,9 @@ public:
 
     // --- Convenience: connect to simulator ---
 
-    /// Register this drivetrain's callbacks on a Simulator.
-    /// Call after simulator.initialize().
+    /// Attach this drivetrain to a simulator as a state element driving the
+    /// given tyres: its spins start at wheel_omega (call initialize() first).
+    /// The drivetrain must outlive the simulator.
     void connect(kernel::Simulator& sim, const TireSet& tires);
 
     void connect(kernel::Simulator& sim, const VehicleModel& vm);
@@ -128,19 +153,24 @@ public:
 private:
     static TireSet tires_of(const VehicleHandle& vh);
 
-    /// Mean spin of the driven wheels.
-    Real driven_wheel_speed() const;
+    /// Mean of the driven wheels' spins.
+    Real driven_wheel_speed(const std::array<Real, 4>& omega) const;
+    Real driven_wheel_speed() const { return driven_wheel_speed(wheel_omega); }
 
     void initialize_from_speed(const std::vector<RigidBodyState>& states, BodyIndex chassis,
                                const std::array<Real, 4>& free_radius);
 
-    /// One step of the spin equation of wheel c,
-    ///
-    ///     I * d(omega)/dt = T_drive + T_brake - Fx * R,
-    ///
-    /// with Fx the longitudinal tyre force (positive = traction) and R the
-    /// rolling radius. Returns the new spin.
-    Real advance_wheel(int c, Real dt, const FullTireForce& tire) const;
+    /// Engine speed and torque, drive and brake torques at these spins, in
+    /// the telemetry members (no gear change).
+    void update_torques(const std::array<Real, 4>& omega);
+
+    /// The torque on wheel c apart from the brake, at the tyre's last
+    /// evaluation: T_drive - Fx * R.
+    Real free_torque(int c) const;
+
+    TireSet tires_{{nullptr, nullptr, nullptr, nullptr}};
+    std::array<Real, 4> omega_last_step_{{0.0, 0.0, 0.0, 0.0}};
+    Real last_step_time_{0.0};
 };
 
 } // namespace mbd

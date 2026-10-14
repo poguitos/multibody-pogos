@@ -105,9 +105,20 @@ to a validated engine.*
     just past the crossing; what endpoint detection cannot see (the bouncing
     ball near its end); the guard against endless chains. *J: events. D29.*
 
-## Part VI onwards: one part per phase still to come
+## Part VI. Time integration (Phase 4)
 
-Time integration (4), validation (5), Python
+24. **States beyond the bodies.** First-order states owned by elements and
+    integrated with the bodies in every stage; the order a lag shows when it
+    is, and is not; the drivetrain's wheel spins as a hybrid system,
+    continuous spins with discrete decisions (lock, gear) at the ends of
+    steps; why a brake's hold is a lock and not a steep friction curve; the
+    chatter of dry friction inside RK4's stages, and the lock on a wheel
+    about to stop; the braking result that became independent of the step.
+    *J: the integrator interface and state elements. D30.*
+
+## Part VII onwards: one part per phase still to come
+
+Validation (5), Python
 (6), vehicle subsystems (7), the vehicle builder (8), vehicle analyses (9),
 lap time (10), aerodynamics and CFD, including the in-house CFD solver (11),
 real time on Windows and Linux (12), optimisation and AI (13), flexible bodies

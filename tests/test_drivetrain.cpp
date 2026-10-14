@@ -358,6 +358,54 @@ TEST_CASE("Drivetrain: full braking decelerates at the grip limit",
     }
 }
 
+TEST_CASE("Drivetrain: braking to a stop locks the wheels, and the car stays stopped",
+          "[drivetrain][braking]")
+{
+    // From 5 m/s with full pedal. The front brakes (1950 Nm each) beat the
+    // front tyres' sliding torque (about 0.65 x 5.6 kN x 0.34 m = 1.2 kNm), so
+    // the front wheels stop and are locked at exactly zero (task 4.1's
+    // dry-friction lock); the rear wheels roll on until the car stops, about
+    // v / (0.9 mu_slide g) = 0.9 s later, and are locked then. After that
+    // nothing drives the car: what remains is the body's motion on its
+    // suspension, which decays at the suspension's damping rate, so the
+    // residual speed must at least halve from one half second to the next and
+    // end below 0.1 mm/s, stopped by any practical measure.
+    using namespace mbd;
+
+    kernel::System sys;
+    VehicleParams vp;
+    auto vm = build_simple_vehicle(sys, vp);
+    kernel::Simulator sim(sys);
+    set_vehicle_equilibrium(sim, vm);
+    sim.v(3) = 5.0;
+    sim.initialize();
+
+    Drivetrain dt;
+    dt.initialize(sim, vm);
+    dt.connect(sim, vm);
+    sim.run(0.3, 0.001);
+
+    dt.brake = 1.0;
+    Real slowest_spin = 0.0;
+    Real fastest_late = 0.0, fastest_last = 0.0;   // |vx| over 2.0-2.5 s and 2.5-3.0 s
+    for (int i = 1; i <= 3000; ++i) {
+        sim.step(0.001);
+        for (int c = 0; c < 4; ++c) slowest_spin = std::min(slowest_spin, dt.wheel_omega[c]);
+        if (i > 2000 && i <= 2500) fastest_late = std::max(fastest_late, std::abs(vx(sim)));
+        if (i > 2500) fastest_last = std::max(fastest_last, std::abs(vx(sim)));
+    }
+    INFO("largest speed over 2.0-2.5 s " << fastest_late << " m/s, over 2.5-3.0 s " << fastest_last
+         << " m/s, at the end " << vx(sim) << " m/s");
+    CHECK(fastest_last < 0.5 * fastest_late);
+    CHECK(std::abs(vx(sim)) < 1e-4);
+    CHECK(slowest_spin >= 0.0);   // no wheel turned backwards
+    for (int c = 0; c < 4; ++c) {
+        INFO("corner " << c);
+        CHECK(dt.wheel_locked[c]);
+        CHECK(dt.wheel_omega[c] == 0.0);
+    }
+}
+
 // ============================================================================
 // Coasting (no throttle, no brake) maintains speed approximately
 // ============================================================================
@@ -426,21 +474,23 @@ TEST_CASE("Drivetrain: auto-shift changes up at the shift speed of each gear",
         return gp.shift_up_rpm * 2.0 * pi / 60.0 / (gp.ratios[gear - 1] * gp.final_drive);
     };
 
-    // Accelerate with full throttle and watch every gear change.
+    // Accelerate with full throttle and watch every gear change. The gearbox
+    // decides at the end of each step, on the spins of that state (the
+    // drivetrain's end_step), so each shift is checked against them.
     dt.throttle = 1.0;
     Real omega_max = 0.0;
     int upshifts = 0;
     for (int i = 0; i < 10500; ++i) {
         const int gear_before = dt.current_gear;
-        const Real omega_before = 0.5 * (dt.wheel_omega[2] + dt.wheel_omega[3]);
         sim.step(0.001);
-        omega_max = std::max(omega_max, omega_before);
+        const Real omega_after = 0.5 * (dt.wheel_omega[2] + dt.wheel_omega[3]);
+        omega_max = std::max(omega_max, omega_after);
 
         if (dt.current_gear != gear_before) {
             // Only upward, one gear at a time, and only once the driven wheels
             // have passed the shift speed of the gear that is left.
             REQUIRE(dt.current_gear == gear_before + 1);
-            REQUIRE(omega_before > shift_speed(gear_before));
+            REQUIRE(omega_after > shift_speed(gear_before));
             ++upshifts;
         }
     }

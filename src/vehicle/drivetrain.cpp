@@ -55,49 +55,30 @@ void Drivetrain::initialize(const kernel::Simulator& sim, const VehicleHandle& v
     initialize_from_speed(sim.states(), vh.chassis_body, {{R_f, R_f, R_r, R_r}});
 }
 
-void Drivetrain::apply_to_tires(const TireSet& tires) const
+void Drivetrain::initial_states(kernel::VecRef x) const
+{
+    for (int c = 0; c < 4; ++c) x(c) = wheel_omega[c];
+}
+
+void Drivetrain::begin_evaluation(const kernel::Simulator& /*sim*/, Real /*t*/, kernel::ConstVecRef x)
 {
     for (int c = 0; c < 4; ++c) {
-        tires[c]->omega_wheel = wheel_omega[c];
-        tires[c]->auto_free_roll = false;
+        tires_[c]->omega_wheel = x(c);
+        tires_[c]->auto_free_roll = false;
     }
 }
 
-void Drivetrain::apply_to_tires(const VehicleModel& vm) const
-{
-    apply_to_tires(vm.tires);
-}
-
-void Drivetrain::step(Real dt, const TireSet& tires)
+void Drivetrain::update_torques(const std::array<Real, 4>& omega)
 {
     const auto& ep = params.engine;
     const auto& gp = params.gearbox;
     const auto& bp = params.brakes;
 
-    // --- Average driven wheel omega for RPM computation ---
-    const Real omega_driven_avg = driven_wheel_speed();
-
-    // --- Engine RPM ---
-    engine_rpm = omega_to_rpm(omega_driven_avg);
-    engine_rpm = std::max(engine_rpm, ep.idle_rpm);
-
-    // --- Auto shift ---
-    if (engine_rpm > gp.shift_up_rpm && current_gear < num_gears()) {
-        current_gear++;
-        engine_rpm = omega_to_rpm(omega_driven_avg);
-    } else if (engine_rpm < gp.shift_down_rpm && current_gear > 1) {
-        current_gear--;
-        engine_rpm = omega_to_rpm(omega_driven_avg);
-    }
-    engine_rpm = std::max(engine_rpm, ep.idle_rpm);
-
-    // --- Engine torque ---
+    engine_rpm = std::max(omega_to_rpm(driven_wheel_speed(omega)), ep.idle_rpm);
     engine_torque_out = compute_engine_torque(engine_rpm, throttle, ep);
 
-    // --- Drive torque distribution ---
+    // Drive torque, shared among the driven wheels.
     const Real T_at_wheels = engine_torque_out * total_ratio() * gp.efficiency;
-
-    // Distribute to driven wheels
     drive_torque.fill(0.0);
     switch (params.layout) {
         case DriveLayout::RWD:
@@ -119,31 +100,88 @@ void Drivetrain::step(Real dt, const TireSet& tires)
         }
     }
 
-    // --- Brake torque ---
-    // bp.max_torque is the sum over the four wheels at full pedal.
+    // Brake torque. bp.max_torque is the sum over the four wheels at full
+    // pedal.
     const Real pedal = std::clamp(brake, Real(0.0), Real(1.0));
     const Real T_front_wheel = pedal * bp.max_torque * bp.front_bias * Real(0.5);
     const Real T_rear_wheel  = pedal * bp.max_torque * (Real(1.0) - bp.front_bias) * Real(0.5);
-
     brake_torque_out[0] = T_front_wheel;
     brake_torque_out[1] = T_front_wheel;
     brake_torque_out[2] = T_rear_wheel;
     brake_torque_out[3] = T_rear_wheel;
+}
 
-    // --- Integrate wheel spin ODE per wheel ---
+Real Drivetrain::free_torque(int c) const
+{
+    return drive_torque[c] - tires_[c]->get_Fx() * tires_[c]->get_rolling_radius();
+}
+
+void Drivetrain::rates(const kernel::Simulator& /*sim*/, Real /*t*/, kernel::ConstVecRef x, kernel::VecRef x_dot)
+{
+    const std::array<Real, 4> omega{{x(0), x(1), x(2), x(3)}};
+    update_torques(omega);
     for (int c = 0; c < 4; ++c) {
-        wheel_omega[c] = advance_wheel(c, dt, *tires[c]);
+        if (wheel_locked[c]) {
+            x_dot(c) = 0.0;
+            continue;
+        }
+        // The brake opposes the rotation; at rest exactly it has no
+        // direction, and end_step decides whether it holds the wheel.
+        const Real direction = omega[c] > 0.0 ? 1.0 : (omega[c] < 0.0 ? -1.0 : 0.0);
+        x_dot(c) = (free_torque(c) - direction * brake_torque_out[c]) / compute_effective_inertia(c);
     }
 }
 
-void Drivetrain::step(Real dt, const VehicleModel& vm)
+void Drivetrain::end_step(const kernel::Simulator& /*sim*/, Real t, kernel::VecRef x)
 {
-    step(dt, vm.tires);
-}
+    std::array<Real, 4> omega{{x(0), x(1), x(2), x(3)}};
+    update_torques(omega);
 
-void Drivetrain::step(Real dt, const VehicleHandle& vh)
-{
-    step(dt, tires_of(vh));
+    // Dry friction: a braked wheel that reached rest within the step (its
+    // spin passed zero, or it started there), or that the brake will stop
+    // within the next step, is locked if the brake can hold it; a locked
+    // wheel is released when the other torques exceed the brake. The torques
+    // are those of the step's last evaluation. Locking a wheel the brake is
+    // about to stop matters: left free, the friction's sign flips inside the
+    // next step's stages and the spin chatters about zero, ending each step
+    // slightly positive, never passing zero at a step's end.
+    const Real dt = t - last_step_time_;
+    last_step_time_ = t;
+    for (int c = 0; c < 4; ++c) {
+        const Real T_brake = brake_torque_out[c];
+        const Real T_free = free_torque(c);
+        if (T_brake <= 0.0) {
+            wheel_locked[c] = false;
+        } else if (wheel_locked[c]) {
+            if (std::abs(T_free) > T_brake) wheel_locked[c] = false;
+        } else {
+            const Real before = omega_last_step_[c];
+            const Real direction = omega[c] > 0.0 ? 1.0 : (omega[c] < 0.0 ? -1.0 : 0.0);
+            const Real rate = (T_free - direction * T_brake) / compute_effective_inertia(c);
+            const bool stops_next = rate * omega[c] < 0.0 && std::abs(omega[c]) <= std::abs(rate) * dt;
+            const bool reached_rest = before == 0.0 || before * omega[c] <= 0.0 || stops_next;
+            if (reached_rest && std::abs(T_free) <= T_brake) {
+                wheel_locked[c] = true;
+                omega[c] = 0.0;
+                x(c) = 0.0;
+            }
+        }
+    }
+
+    // Gear: shift up or down by engine speed.
+    const auto& ep = params.engine;
+    const auto& gp = params.gearbox;
+    const Real omega_driven = driven_wheel_speed(omega);
+    engine_rpm = std::max(omega_to_rpm(omega_driven), ep.idle_rpm);
+    if (engine_rpm > gp.shift_up_rpm && current_gear < num_gears()) {
+        ++current_gear;
+    } else if (engine_rpm < gp.shift_down_rpm && current_gear > 1) {
+        --current_gear;
+    }
+    engine_rpm = std::max(omega_to_rpm(omega_driven), ep.idle_rpm);
+
+    wheel_omega = omega;
+    omega_last_step_ = omega;
 }
 
 bool Drivetrain::is_driven(int corner) const
@@ -176,13 +214,11 @@ Real Drivetrain::compute_effective_inertia(int corner) const
 
 void Drivetrain::connect(kernel::Simulator& sim, const TireSet& tires)
 {
-    sim.pre_force_callback = [this, tires](kernel::Simulator& /*sim*/, Real /*t*/) {
-        apply_to_tires(tires);
-    };
-
-    sim.post_step_callback = [this, tires](kernel::Simulator& /*sim*/, Real dt) {
-        step(dt, tires);
-    };
+    tires_ = tires;
+    omega_last_step_ = wheel_omega;
+    last_step_time_ = sim.time;
+    wheel_locked.fill(false);
+    sim.attach(*this);
 }
 
 void Drivetrain::connect(kernel::Simulator& sim, const VehicleModel& vm)
@@ -201,13 +237,13 @@ Drivetrain::TireSet Drivetrain::tires_of(const VehicleHandle& vh)
              vh.corners[2].tire, vh.corners[3].tire}};
 }
 
-Real Drivetrain::driven_wheel_speed() const
+Real Drivetrain::driven_wheel_speed(const std::array<Real, 4>& omega) const
 {
     Real sum = Real(0.0);
     int n_driven = 0;
     for (int c = 0; c < 4; ++c) {
         if (is_driven(c)) {
-            sum += wheel_omega[c];
+            sum += omega[c];
             ++n_driven;
         }
     }
@@ -240,50 +276,6 @@ void Drivetrain::initialize_from_speed(const std::vector<RigidBodyState>& states
     }
 
     engine_rpm = std::max(omega_to_rpm(omega_init), params.engine.idle_rpm);
-}
-
-Real Drivetrain::advance_wheel(int c, Real dt, const FullTireForce& tire) const
-{
-    const Real R = tire.get_rolling_radius();
-    const Real I = compute_effective_inertia(c);
-
-    // Torque on the wheel apart from the brake.
-    const Real T_free = drive_torque[c] - tire.get_Fx() * R;
-
-    // The tyre force rises steeply with wheel spin: at low speed
-    // d(Fx * R)/d(omega) is several thousand N m s/rad, far too stiff for
-    // an explicit 1 ms step on a wheel of a few kg m^2. That slope is
-    // therefore taken implicitly (linearly implicit Euler):
-    //
-    //     (I + dt * k) * (omega_new - omega) = dt * T(omega),
-    //     k = d(Fx * R)/d(omega) >= 0.
-    const Real k = tire.longitudinal_force_slope() * R;
-    const Real I_step = I + dt * k;
-
-    const Real omega   = wheel_omega[c];
-    const Real T_brake = brake_torque_out[c];
-
-    if (T_brake <= Real(0.0)) {
-        return omega + dt * T_free / I_step;
-    }
-
-    // The brake is dry friction. It holds a stationary wheel as long as
-    // the other torques do not exceed it ...
-    if (omega == Real(0.0)) {
-        if (std::abs(T_free) <= T_brake) return Real(0.0);
-        const Real sign = (T_free > Real(0.0)) ? Real(1.0) : Real(-1.0);
-        return dt * (T_free - sign * T_brake) / I_step;
-    }
-
-    // ... and opposes the rotation of a turning one.
-    const Real direction = (omega > Real(0.0)) ? Real(1.0) : Real(-1.0);
-    const Real omega_new = omega + dt * (T_free - direction * T_brake) / I_step;
-
-    // Friction cannot reverse the rotation: a wheel brought to rest within
-    // this step stays at rest, and the next step decides whether the brake
-    // holds it.
-    if (omega_new * direction <= Real(0.0)) return Real(0.0);
-    return omega_new;
 }
 
 } // namespace mbd

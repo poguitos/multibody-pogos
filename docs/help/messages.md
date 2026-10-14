@@ -202,6 +202,17 @@ and warning in the sources carries a code.
 - **Means:** the joint force acts on the joint of a body that does not exist.
   The ground (body 0) has no joint. See also MBD-M036.
 
+### MBD-K044
+
+`kernel::Simulator::attach: the state element (<name>) is attached already`
+or `... has <n> states`
+
+- **Means:** a state element (task 4.1) was attached to the same simulator
+  twice, which would integrate its states twice over, or reports a negative
+  number of states.
+- **What to do:** attach each element once, after building the simulator and
+  before stepping.
+
 ### MBD-K050
 
 Warning: `Redundant constraints: <m> equations of rank <r>. The motion is unaffected; the multipliers of the redundant equations are set to zero.`

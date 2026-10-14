@@ -189,9 +189,25 @@ rest condition. *(Events.)*
 back across zero while both directions are watched makes an endless chain.
 Watch one direction. *(Events.)*
 
-**Braking results differ from a hand calculation by about 0.2 %.** Wheel spin
-is advanced outside the integrator until the wheels become bodies (task
-7.3). *(Phase 1.)*
+**Braking results differ from a hand calculation by about 0.2 %.** Since task
+4.1 the wheel spins are integrated with the bodies and the result no longer
+depends on the step (to nine digits between 1 and 0.25 ms); the difference
+comes from the hand calculation, which takes the static rolling radius and no
+tyre slip. Before task 4.1 the spins were advanced once per step, which added
+an error of the same size. *(Phase 1; the integrator interface.)*
+
+**A vehicle with a drivetrain becomes unstable at standstill.** Below the
+tyre's `V_low` the wheel spin equation is stiff: the tyre's slip stiffness
+over an undriven 40 kg wheel's inertia is about 2700 per second, just inside
+RK4's limit at 1 ms (2.8 / dt) and outside explicit Euler's (2 / dt). Use RK4
+at 1 ms or shorter steps; lighter wheels or stiffer tyres need the implicit
+methods of Phase 4. *(The integrator interface.)*
+
+**A braked wheel's spin chatters about zero.** Coulomb friction changes sign
+when the spin does, and inside one step's stages that sign can flip back and
+forth. The drivetrain locks a wheel that its brake will stop within the next
+step; an element of your own with dry friction needs the same kind of
+discrete decision in its `end_step`. *(The integrator interface.)*
 
 **A step allocates memory.** `test_alloc` counts every `operator new`; the CI
 job `kernel-no-malloc` also catches Eigen's own allocations. The usual cause
@@ -275,3 +291,4 @@ Before building on it (working rule 2):
 | Phase 3: simple contact | Integrator's momentum error in bounds (Numerical traps: derived bounds); creep (Simulations) |
 | Phase 3: events | Missed out-and-back crossings, exact zeros (Simulations, Numerical traps); endless chains (Simulations) |
 | Debugging aids | Neutral configuration in `describe()` (Models); conflicting drivers in a trace (Models); slow machine (Builds) |
+| Phase 4: the integrator interface | Braking result now step-independent; stiffness at standstill; chattering dry friction (Simulations); a test checking a decision against out-of-date state (fixed in the test) |

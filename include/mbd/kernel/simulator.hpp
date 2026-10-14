@@ -1,16 +1,20 @@
 #pragma once
 
-// Time integration on the multibody kernel (plan task 2.7). Phase 4 builds
-// the integrator interface proper on top of this.
+// Time integration on the multibody kernel (plan tasks 2.7, 4.1). The state
+// is (q, v, x): coordinates, velocities, and the first-order states of the
+// attached StateElements (state_element.hpp), integrated together.
 //
-// Each evaluation of the accelerations at (q, v, t):
+// Each evaluation at (q, v, x, t):
 //   1. kinematics, and the world states of the bodies;
-//   2. pre_force_callback (for example, the drivetrain hands wheel spins to
-//      the tyres);
-//   3. the force elements, whose world forces become generalized forces;
+//   2. each state element's begin_evaluation (the drivetrain hands its wheel
+//      spins to the tyres);
+//   3. the force elements, whose world forces become generalized forces, and
+//      the joint forces;
 //   4. tau, then force_callback;
-//   5. the constrained forward dynamics (ConstraintSolver).
-// After each step the state is projected onto the constraints.
+//   5. the constrained forward dynamics (ConstraintSolver);
+//   6. each state element's rates.
+// After each step the state is projected onto the constraints, and each state
+// element's end_step makes its discrete changes.
 
 #include <cstddef>
 #include <functional>
@@ -23,6 +27,7 @@
 #include "mbd/kernel/constraints.hpp"
 #include "mbd/kernel/joint_forces.hpp"
 #include "mbd/kernel/model.hpp"
+#include "mbd/kernel/state_element.hpp"
 #include "mbd/model/rigid_body.hpp"
 
 namespace mbd::kernel {
@@ -101,7 +106,16 @@ public:
     // --- State ----------------------------------------------------------------
     VecX q;            ///< Coordinates
     VecX v;            ///< Velocities
+    VecX x;            ///< States of the attached state elements, in the order attached
     Real time{0.0};
+
+    /// Integrate `element`'s states with the multibody state from now on; its
+    /// states start at its initial_states(). The element is not owned: it
+    /// must outlive the simulator. Allocates; attach before stepping.
+    void attach(StateElement& element);
+    /// The attached elements, and where each one's states start in x.
+    const std::vector<StateElement*>& state_elements() const { return state_elements_; }
+    int state_offset(std::size_t element) const { return state_offsets_[element]; }
 
     // --- Settings ---------------------------------------------------------------
     Integrator method{Integrator::RK4};
@@ -109,14 +123,10 @@ public:
     Real projection_tolerance{1e-10};
     VecX tau;                           ///< Generalized forces for the next step; cleared after it
 
-    /// Called at every evaluation, before the force elements. These two may
-    /// read states() and data(), but must not call acceleration() or
-    /// refresh(): the evaluation in progress uses the kinematics in data().
-    std::function<void(Simulator&, Real t)> pre_force_callback;
-    /// Adds generalized forces at every evaluation.
+    /// Adds generalized forces at every evaluation. It may read states() and
+    /// data(), but must not call acceleration() or refresh(): the evaluation
+    /// in progress uses the kinematics in data().
     std::function<void(Simulator&, Real t, VecX& tau)> force_callback;
-    /// Called after every completed step.
-    std::function<void(Simulator&, Real dt)> post_step_callback;
 
     /// Events watched at every step; see Event.
     std::vector<Event> events;
@@ -150,9 +160,17 @@ public:
     /// Kinematics and body states at the current (q, v).
     void refresh();
 
-    /// The accelerations at (q, v, t) with everything applied. The result is
-    /// valid until the next evaluation.
+    /// The accelerations at (q, v, t) with everything applied, the state
+    /// elements at the simulator's x. The result is valid until the next
+    /// evaluation.
     const VecX& acceleration(const VecX& q_at, const VecX& v_at, Real t);
+
+    /// The same at the state elements' states x_at; their rates are then in
+    /// state_rates().
+    const VecX& acceleration(const VecX& q_at, const VecX& v_at, const VecX& x_at, Real t);
+
+    /// The state elements' rates at the last evaluation.
+    const VecX& state_rates() const { return x_dot_; }
 
     /// Kinematics at the current state (after initialize, step or refresh).
     const Data& data() const { return data_; }
@@ -185,11 +203,14 @@ private:
     VecX tau_total_, tau_forces_;
     VecX q0_, v0_, q_stage_, v_stage_;
     VecX kq_[4], kv_[4];
+    std::vector<StateElement*> state_elements_;
+    std::vector<int> state_offsets_;
+    VecX x_dot_, x0_, x_stage_, kx_[4];
     ProjectionInfo last_projection_;
     int projection_failures_{0};
     bool projection_failure_reported_{false};
     bool redundancy_reported_{false};
-    VecX event_q0_, event_v0_;
+    VecX event_q0_, event_v0_, event_x0_;
     std::vector<Real> event_g0_;
     std::vector<FiredEvent> event_log_;
     bool event_chain_reported_{false};

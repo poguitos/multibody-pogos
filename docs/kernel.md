@@ -317,13 +317,26 @@ their derivatives, as every element's law does.
 
 **`kernel::System`** is a `Model` with its loop constraints, force elements
 and joint forces: what the vehicle builders fill. **`kernel::Simulator`** advances
-one. It owns the state (`q`, `v`, `time`) and, at every evaluation of the
-accelerations, computes the kinematics and body states, calls
-`pre_force_callback` (the drivetrain hands wheel spins to the tyres there),
-applies the force elements, adds `tau` and `force_callback`, and solves the
-constrained dynamics with `ConstraintSolver`, from the same kinematics pass. RK4 combines the stages'
-`q_dot` and normalizes once per step; semi-implicit Euler moves q through
-`integrate`. After each step the state is projected onto the constraints.
+one. It owns the state (`q`, `v`, `x`, `time`), `x` being the first-order states
+of the attached state elements, and, at every evaluation, computes the
+kinematics and body states, calls each state element's `begin_evaluation`
+(the drivetrain hands its wheel spins to the tyres there), applies the force
+elements and joint forces, adds `tau` and `force_callback`, solves the
+constrained dynamics with `ConstraintSolver` from the same kinematics pass, and
+asks each state element for its `rates`. RK4 carries `x` through its stages
+like `q` and `v`, combines the stages' `q_dot` and normalizes once per step;
+semi-implicit Euler moves q through `integrate` and `x` by explicit Euler.
+After each step the state is projected onto the constraints and each state
+element's `end_step` makes its discrete changes.
+
+**State elements** (task 4.1, decision D30, `kernel/state_element.hpp`)
+replace the callbacks before the forces and after each step: an element that
+owns first-order states (a drivetrain's wheel spins, a tyre's lag, an
+actuator, a controller) is attached with `sim.attach(element)` and its states
+are integrated by the same method and in the same stages as the bodies, so a
+force that depends on them is as accurate as the integrator. The drivetrain is
+one: its wheel spins are integrated states, its brakes lock a wheel at rest as
+a discrete decision at the end of a step, and it shifts gear there.
 
 **Outputs** (task 3.3, `kernel/outputs.hpp`). `compute_loads(sim)` evaluates
 the accelerations at the simulator's state and returns them with the

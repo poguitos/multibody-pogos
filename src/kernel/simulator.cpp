@@ -57,10 +57,38 @@ Simulator::Simulator(System& sys)
     for (int k = 0; k < 4; ++k) {
         kq_[k] = VecX::Zero(model.nq);
         kv_[k] = VecX::Zero(model.nv);
+        kx_[k] = VecX::Zero(0);
     }
+    x = VecX::Zero(0);
+    x_dot_ = x;
+    x0_ = x;
+    x_stage_ = x;
+    event_x0_ = x;
     states_.resize(static_cast<std::size_t>(model.nbodies()));
     forces_.resize(static_cast<std::size_t>(model.nbodies()));
     refresh();
+}
+
+void Simulator::attach(StateElement& element)
+{
+    for (const StateElement* e : state_elements_) {
+        MBD_THROW_IF(e == &element, "MBD-K044: kernel::Simulator::attach: the state element ("
+                                        + std::string(element.name()) + ") is attached already");
+    }
+    const int n = element.size();
+    MBD_THROW_IF(n < 0, "MBD-K044: kernel::Simulator::attach: the state element ("
+                            + std::string(element.name()) + ") has " + std::to_string(n) + " states");
+    const int offset = static_cast<int>(x.size());
+    state_elements_.push_back(&element);
+    state_offsets_.push_back(offset);
+    x.conservativeResize(offset + n);
+    element.initial_states(x.segment(offset, n));
+    const Index total = x.size();
+    x_dot_ = VecX::Zero(total);
+    x0_ = x;
+    x_stage_ = x;
+    event_x0_ = x;
+    for (int k = 0; k < 4; ++k) kx_[k] = VecX::Zero(total);
 }
 
 void Simulator::refresh()
@@ -81,16 +109,24 @@ void Simulator::initialize()
 
 const VecX& Simulator::acceleration(const VecX& q_at, const VecX& v_at, Real t)
 {
+    return acceleration(q_at, v_at, x, t);
+}
+
+const VecX& Simulator::acceleration(const VecX& q_at, const VecX& v_at, const VecX& x_at, Real t)
+{
     const Model& model = system.model;
     checks::q("kernel::Simulator::acceleration", model, q_at);
     checks::v("kernel::Simulator::acceleration", model, v_at);
+    checks::size("kernel::Simulator::acceleration", "x", x_at, "states", static_cast<int>(x.size()));
     // One kinematics pass serves the forces and the dynamics: with zero joint
     // accelerations it also gives the velocity-product terms the constraints
     // need.
     forward_kinematics(model, data_, q_at, v_at, data_.zero_v);
     body_states(model, data_, states_);
 
-    if (pre_force_callback) pre_force_callback(*this, t);
+    for (std::size_t i = 0; i < state_elements_.size(); ++i) {
+        state_elements_[i]->begin_evaluation(*this, t, x_at.segment(state_offsets_[i], state_elements_[i]->size()));
+    }
 
     for (auto& f : forces_) {
         f.f_W.setZero();
@@ -111,6 +147,11 @@ const VecX& Simulator::acceleration(const VecX& q_at, const VecX& v_at, Real t)
                        + ". The motion is unaffected; the multipliers of the redundant "
                          "equations are set to zero.");
     }
+    for (std::size_t i = 0; i < state_elements_.size(); ++i) {
+        const Index n = state_elements_[i]->size();
+        state_elements_[i]->rates(*this, t, x_at.segment(state_offsets_[i], n),
+                                  x_dot_.segment(state_offsets_[i], n));
+    }
     return v_dot;
 }
 
@@ -119,27 +160,35 @@ void Simulator::step_rk4(Real dt)
     const Model& model = system.model;
     q0_ = q;
     v0_ = v;
+    x0_ = x;
     const Real stage_dt[4] = {0.0, 0.5 * dt, 0.5 * dt, dt};
     for (int k = 0; k < 4; ++k) {
         if (k == 0) {
             q_stage_ = q0_;
             v_stage_ = v0_;
+            x_stage_ = x0_;
         } else {
             q_stage_ = q0_ + stage_dt[k] * kq_[k - 1];
             v_stage_ = v0_ + stage_dt[k] * kv_[k - 1];
+            x_stage_ = x0_ + stage_dt[k] * kx_[k - 1];
         }
-        kv_[k] = acceleration(q_stage_, v_stage_, time + stage_dt[k]);
+        kv_[k] = acceleration(q_stage_, v_stage_, x_stage_, time + stage_dt[k]);
+        kx_[k] = x_dot_;
         q_dot(model, q_stage_, v_stage_, kq_[k]);
     }
     // Combine the stages linearly and normalize once (see kernel::q_dot).
     q = q0_ + (dt / 6.0) * (kq_[0] + 2.0 * kq_[1] + 2.0 * kq_[2] + kq_[3]);
     v = v0_ + (dt / 6.0) * (kv_[0] + 2.0 * kv_[1] + 2.0 * kv_[2] + kv_[3]);
+    x = x0_ + (dt / 6.0) * (kx_[0] + 2.0 * kx_[1] + 2.0 * kx_[2] + kx_[3]);
     normalize(model, q);
 }
 
 void Simulator::step_semi_implicit_euler(Real dt)
 {
-    v += dt * acceleration(q, v, time);
+    // The states x advance by explicit Euler, from the rates at the step's
+    // start.
+    v += dt * acceleration(q, v, x, time);
+    x += dt * x_dot_;
     integrate(system.model, q, v, dt, q);
 }
 
@@ -151,6 +200,9 @@ void Simulator::step(Real dt)
     const std::size_t events_before = event_log_.size();
     if (events.empty()) advance(dt);
     else step_with_events(dt);
+    for (std::size_t i = 0; i < state_elements_.size(); ++i) {
+        state_elements_[i]->end_step(*this, time, x.segment(state_offsets_[i], state_elements_[i]->size()));
+    }
     if (trace_steps) {
         StepRecord r;
         r.time = time;
@@ -168,7 +220,6 @@ void Simulator::step(Real dt)
         trace_.push_back(r);
     }
     tau.setZero();
-    if (post_step_callback) post_step_callback(*this, dt);
 }
 
 void Simulator::write_trace(const std::string& path) const
@@ -212,6 +263,7 @@ void Simulator::step_with_events(Real dt)
     while (remaining > 0.0) {
         event_q0_ = q;
         event_v0_ = v;
+        event_x0_ = x;
         const Real t0 = time;
         for (std::size_t i = 0; i < n; ++i) event_g0_[i] = events[i].function(*this);
         advance(remaining);
@@ -232,6 +284,7 @@ void Simulator::step_with_events(Real dt)
 
         q = event_q0_;
         v = event_v0_;
+        x = event_x0_;
         time = t0;
         advance(first_length);
         event_log_.push_back({first, time});
@@ -265,6 +318,7 @@ Real Simulator::locate_event(std::size_t i, Real t0, Real g0, Real length, Real 
         if (!(c > left && c < right)) c = 0.5 * (left + right);
         q = event_q0_;
         v = event_v0_;
+        x = event_x0_;
         time = t0;
         advance(c);
         const Real g = events[i].function(*this);

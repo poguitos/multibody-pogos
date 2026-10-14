@@ -494,3 +494,45 @@ and the journal entry of the work refers to them by number
   variable steps address it. Each located event costs one extra step per
   trial of the root finder.
 - **Record.** Journal: events; `docs/kernel.md`, events.
+
+## D30. State elements: first-order states integrated with the bodies
+
+- **Context.** Task 4.1 asks for one integrator interface, with extra
+  first-order states (tyre lag, actuators, controllers) registered by the
+  elements that own them, replacing the callbacks before the forces and after
+  each step; done when the drivetrain no longer uses callbacks. The
+  drivetrain advanced its wheel spins once per step in its own linearly
+  implicit Euler step (Phase 1), outside the integrator, which left an O(dt)
+  error of about 0.2 % in braking and could not benefit from a better
+  integrator.
+- **Decision.** A `StateElement` owns a number of states, gives their initial
+  values, receives the states of every evaluation before the forces
+  (`begin_evaluation`), returns their rates after the dynamics (`rates`), and
+  makes discrete changes after every completed step (`end_step`). The
+  simulator's state is (q, v, x); every integrator carries x through its
+  stages; events save and restore it. Elements are attached to a simulator
+  (`attach`), not owned by it, as the callbacks captured their owners. The
+  callbacks before the forces and after the step are removed;
+  `force_callback`, a plain input of generalized forces, stays. The
+  drivetrain becomes a state element: its spins are integrated states, its
+  engine torque follows the spins within a step, its brake is Coulomb
+  friction on a turning wheel and a lock decided at the end of a step for a
+  wheel at rest, and it shifts gear there.
+- **Alternatives.** Keeping the drivetrain's own implicit step behind the new
+  interface (a "discrete state"): robust at standstill, but the spins would
+  still not be integrated, and the plan's later tasks (implicit methods,
+  multirate) need them to be. A regularised brake (friction times
+  tanh(omega / omega_0)): continuous, but stiff enough near zero to defeat an
+  explicit step unless omega_0 is so large that a braked wheel creeps; the
+  lock keeps a stopped wheel exactly stopped. Owned elements (shared
+  pointers in the System): uniform with force elements, but the drivetrain is
+  built after the simulator, from its state, and its users hold it by value.
+- **Consequences.** At low speed the spin equation is stiff (the tyre's slip
+  stiffness over the wheel's inertia is about 2700 per second on an undriven
+  40 kg wheel below V_low), just inside RK4's limit at 1 ms (2.8 / dt) and
+  outside explicit Euler's (2 / dt): with the drivetrain, semi-implicit Euler
+  at 1 ms is not stable at standstill, and lighter wheels or longer steps
+  need the implicit methods of tasks 4.3 to 4.5. Locking is decided once per
+  step, so a wheel stops to within a step.
+- **Record.** Journal: the integrator interface and state elements;
+  `docs/kernel.md`, forces and simulation.
