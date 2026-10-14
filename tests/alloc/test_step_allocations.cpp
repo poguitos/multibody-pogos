@@ -41,9 +41,11 @@ long allocations_in_steps(kernel::Simulator& sim, int steps)
 TEST_CASE("Stepping the double-wishbone sedan allocates no memory", "[alloc][vehicle]")
 {
     // Chassis, steering rack, four corners closed by constraints, springs,
-    // dampers, tyres and the drivetrain: everything a step does, with RK4 and
-    // with Dormand-Prince's error control.
-    for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::DormandPrince}) {
+    // dampers, tyres and the drivetrain: everything a step does, with RK4,
+    // with Dormand-Prince's error control, and with generalised-alpha's Newton
+    // iterations (its work is sized in the first step).
+    for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::DormandPrince,
+                              kernel::Integrator::GeneralizedAlpha}) {
         auto tmpl = VehicleTemplate::DefaultSedan();
         tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
         tmpl.rear_axle.suspension_type = SuspensionType::DoubleWishbone;
@@ -96,7 +98,7 @@ TEST_CASE("Stepping a constrained mechanism allocates no memory", "[alloc][kerne
         0, coupler, Vec3(1.0, 2.0, 0.0), Vec3(1.0, 0.0, 0.0), 50.0, 2.0, 0.5));
 
     for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::SemiImplicitEuler,
-                              kernel::Integrator::DormandPrince}) {
+                              kernel::Integrator::DormandPrince, kernel::Integrator::GeneralizedAlpha}) {
         kernel::Simulator sim(sys);
         sim.method = method;
         sim.v(0) = 1.0;

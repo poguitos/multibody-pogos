@@ -123,6 +123,13 @@ to a validated engine.*
     continuous extension; a discontinuity that error control cannot cross,
     and the brake that keeps its direction through a step. *J: the
     Dormand-Prince pair. D31.*
+26. **Stiffness and the implicit method.** Stability against accuracy;
+    generalised-alpha and its one parameter; the recurrence as the test; the
+    transient of a non-normal step matrix; Newton against rounding; a lock
+    that must hold exactly whatever the tolerance; RK4 past its limit that
+    does not blow up but chatters, bounded by a tyre's saturation, and the
+    estimate on the wrong side of the limit that a test exposed. *J:
+    generalised-alpha. D32 (and D30's correction).*
 
 ## Part VII onwards: one part per phase still to come
 

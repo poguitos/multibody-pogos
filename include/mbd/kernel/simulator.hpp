@@ -54,9 +54,17 @@ enum class Integrator {
     /// control (StepControl) and a fourth-order continuous extension
     /// (Simulator::interpolate); Dormand and Prince 1980 (task 4.2).
     DormandPrince,
+    /// Implicit and second order, for stiff models: the generalised-alpha
+    /// method of Chung and Hulbert (1993), stable at any step, with the
+    /// damping of motions too fast for the step set by
+    /// ImplicitControl::rho_infinity; each step solved by Newton's method
+    /// (task 4.3).
+    GeneralizedAlpha,
 };
 
-/// How Integrator::DormandPrince chooses its steps (task 4.2).
+/// How Integrator::DormandPrince chooses its steps (task 4.2), and how
+/// closely Integrator::GeneralizedAlpha solves each of its own (the
+/// tolerances; see ImplicitControl).
 ///
 /// Each step's error estimate is weighed entry by entry, over q, v and x, by
 /// absolute_tolerance + relative_tolerance * |entry|, and the root mean
@@ -82,6 +90,29 @@ struct StepControl {
     int max_steps{100000};
 };
 
+/// How Integrator::GeneralizedAlpha takes its steps (task 4.3).
+///
+/// Each step solves for the new accelerations, and the state elements' new
+/// rates, by Newton's method. Its iteration matrix comes from derivatives of
+/// the accelerations and rates by forward differences (one evaluation per
+/// velocity, twice over, and one per state), kept from step to step while
+/// Newton converges quickly and rebuilt when it slows. Newton stops when its
+/// last correction to the velocities and the states, weighed as in
+/// StepControl by absolute_tolerance + relative_tolerance |entry| (but never
+/// finer than the rounding of the terms the step adds up), has a root mean
+/// square of at most 1.
+struct ImplicitControl {
+    /// The factor by which motions much too fast for the step shrink in each
+    /// step, from 0 to 1: 1 keeps them (the trapezoidal rule, no damping at
+    /// all), 0 removes them within a step. The lower it is, the more the slow
+    /// motions are damped as well, though far less.
+    Real rho_infinity{0.8};
+    /// Newton iterations per step. Past them, or if the corrections grow, the
+    /// iteration matrix is rebuilt and the step taken again; a second failure
+    /// throws MBD-K058.
+    int max_iterations{10};
+};
+
 /// What the integrator has done since the simulator was built.
 struct IntegratorStats {
     long long steps{0};         ///< Steps taken: for DormandPrince its own, accepted
@@ -91,6 +122,10 @@ struct IntegratorStats {
     /// DormandPrince: the last accepted step's error measure (1 = at the
     /// tolerance; see StepControl).
     Real error{0.0};
+    /// GeneralizedAlpha: Newton iterations (one evaluation each), and
+    /// iteration matrices built by finite differences.
+    long long newton_iterations{0};
+    long long jacobians{0};
 };
 
 class Simulator;
@@ -170,8 +205,10 @@ public:
 
     // --- Settings ---------------------------------------------------------------
     Integrator method{Integrator::RK4};
-    /// For Integrator::DormandPrince.
+    /// For Integrator::DormandPrince, and the tolerances of GeneralizedAlpha.
     StepControl step_control;
+    /// For Integrator::GeneralizedAlpha.
+    ImplicitControl implicit_control;
     bool project_constraints{true};     ///< Project q and v after each step
     Real projection_tolerance{1e-10};
     VecX tau;                           ///< Generalized forces for the next step; cleared after it
@@ -258,6 +295,12 @@ private:
     /// the earliest event that crossed within it, found on the interpolant;
     /// the state is moved there and the action runs. Returns whether one did.
     bool dormand_prince_event();
+    /// One generalised-alpha step of dt (simulator_implicit.cpp).
+    void step_generalized_alpha(Real dt);
+    /// The derivatives of the accelerations and the states' rates with
+    /// respect to q (along the velocities), v and x at the current state, by
+    /// forward differences from implicit_qdd_ and implicit_xd_.
+    void implicit_jacobian();
     /// Project the state onto the constraints after a step.
     void project_step();
     /// One step of the integrator, the projection, time and kinematics.
@@ -286,6 +329,20 @@ private:
     VecX dense_q_[5], dense_v_[5], dense_x_[5];
     Real dense_t0_{0.0}, dense_h_{0.0};
     Real next_step_{0.0};
+    // Generalised-alpha: the method's acceleration-like variables of the last
+    // step (for v and for x), the accelerations and rates at the start of the
+    // step, the state the last step left (the history holds only while
+    // nothing else has changed it), the derivatives [d/dq d/dv d/dx] of the
+    // accelerations and rates, the iteration matrix factorized in place with
+    // its pivots, and work vectors.
+    VecX implicit_a_, implicit_w_, implicit_qdd_, implicit_xd_;
+    VecX implicit_q_, implicit_v_, implicit_x_;
+    Real implicit_time_{0.0};
+    bool implicit_history_{false};
+    MatX implicit_jacobian_, implicit_matrix_;
+    std::vector<Index> implicit_pivots_;
+    bool implicit_jacobian_valid_{false};
+    VecX implicit_a_new_, implicit_w_new_, implicit_residual_, implicit_dq_;
     ProjectionInfo last_projection_;
     int projection_failures_{0};
     bool projection_failure_reported_{false};

@@ -113,6 +113,9 @@ Numbers and commands in the data file `2026-10-14_dormand-prince.md`.
   per millisecond, no rejection, seven evaluations against RK4's four; no
   allocation per step with either.
 - **The refusals:** K054 to K057 each raised by a case built to need it.
+- CI run 38536380293 on `b70e614`: Windows, Linux with sanitizers,
+  no-malloc (Eigen's own allocation checks on the Dormand-Prince path) and
+  docs all passed.
 
 ## Open ends
 

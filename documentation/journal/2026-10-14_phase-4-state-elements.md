@@ -107,6 +107,9 @@ Three new test cases and one rewritten, 427 tests in all:
 
 - The spin equation is stiff at low speed: RK4 at 1 ms carries the default
   wheels with little margin, explicit Euler does not. Tasks 4.3 to 4.5.
+  *Corrected during task 4.3:* measured, RK4 at 1 ms does not carry them;
+  the rate is 2800 to 3100 per second, and the front spins chatter by up to
+  2.8 % below V_low (journal: generalised-alpha).
 - Locking is decided once per step; an event (task 3.9's machinery inside an
   element) would find the instant.
 - The tyre's relaxation length (a lag on slip) is the next natural state

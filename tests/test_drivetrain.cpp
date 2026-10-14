@@ -1,8 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <Eigen/Geometry>
+#include <array>
 #include <cmath>
+#include <algorithm>
 #include <iomanip>
+#include <string>
 
 #include "mbd/vehicle/drivetrain.hpp"
 
@@ -375,10 +378,15 @@ TEST_CASE("Drivetrain: braking to a stop locks the wheels, and the car stays sto
     // The same with Dormand-Prince (task 4.2), whose error control would
     // shrink its steps without end if the brake's sign flipped within a step
     // as a spin crossed zero: the brake keeps its direction through each step.
+    // And with generalised-alpha (task 4.3), whose history starts afresh when
+    // a lock changes a spin between steps.
     using namespace mbd;
 
-    for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::DormandPrince}) {
-        INFO((method == kernel::Integrator::RK4 ? "RK4" : "Dormand-Prince"));
+    for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::DormandPrince,
+                              kernel::Integrator::GeneralizedAlpha}) {
+        INFO((method == kernel::Integrator::RK4             ? "RK4"
+              : method == kernel::Integrator::DormandPrince ? "Dormand-Prince"
+                                                            : "generalised-alpha"));
         kernel::System sys;
         VehicleParams vp;
         auto vm = build_simple_vehicle(sys, vp);
@@ -495,6 +503,67 @@ TEST_CASE("Drivetrain: coasting approximately maintains speed", "[drivetrain][co
     // speed must stay where it is.
     const Real speed_loss_fraction = (V_start - V_end) / V_start;
     REQUIRE(std::abs(speed_loss_fraction) < 1e-3);
+}
+
+TEST_CASE("Drivetrain: generalised-alpha rolls the car at low speed in steps of 5 ms, where RK4 cannot",
+          "[drivetrain][coast][integrators][implicit]")
+{
+    // At 0.5 m/s, below the tyres' V_low of 1 m/s, a front wheel's spin
+    // relaxes to free rolling at between 2800 and 3100 per second on this car
+    // (measured: RK4, whose limit on the negative real axis is 2.785 / h,
+    // keeps it at 0.9 ms but not at 1 ms). At 5 ms RK4 is far outside (about
+    // 15 against 2.785): the spins cannot settle, and chatter until the tyres'
+    // saturation bounds them, by more than 5 % of the speed (14 % measured).
+    // Generalised-alpha, stable at any step, rolls the car on as RK4 does at
+    // 0.5 ms: every wheel within 1e-3 of free rolling (RK4 at 0.5 ms stays
+    // within 4e-5, the tyres' own slip as the car settles), the speed the
+    // same to 1e-4. Nothing takes energy
+    // out of the coasting car (as in the test above), and the method's
+    // damping acts on the motions too fast for the step, not on the speed,
+    // which holds to 1e-3.
+    using namespace mbd;
+    struct Run {
+        Real V_start, V_end, worst;   // worst: largest |spin x rolling radius - speed| / speed
+        kernel::IntegratorStats stats;
+    };
+    auto coast = [](kernel::Integrator method, Real h) {
+        kernel::System sys;
+        VehicleParams vp;
+        auto vm = build_simple_vehicle(sys, vp);
+        kernel::Simulator sim(sys);
+        sim.method = method;
+        set_vehicle_equilibrium(sim, vm);
+        sim.v(3) = 0.5;
+        sim.initialize();
+        Drivetrain dt;
+        dt.initialize(sim, vm);
+        dt.connect(sim, vm);
+        sim.run(0.3, h);
+        Run r{vx(sim), 0.0, 0.0, {}};
+        const int steps = static_cast<int>(std::round(2.0 / h));
+        for (int k = 0; k < steps; ++k) {
+            sim.step(h);
+            for (int c = 0; c < 4; ++c) {
+                const Real rolling = dt.wheel_omega[c] * vm.tires[c]->get_rolling_radius();
+                r.worst = std::max(r.worst, std::abs(rolling - vx(sim)) / vx(sim));
+            }
+        }
+        r.V_end = vx(sim);
+        r.stats = sim.integrator_stats();
+        return r;
+    };
+    const Run alpha = coast(kernel::Integrator::GeneralizedAlpha, 0.005);
+    const Run reference = coast(kernel::Integrator::RK4, 0.0005);
+    const Run rk4 = coast(kernel::Integrator::RK4, 0.005);
+    INFO("generalised-alpha at 5 ms: speed " << alpha.V_start << " -> " << alpha.V_end << " m/s, rolling within "
+         << alpha.worst << "; " << alpha.stats.steps << " steps, " << alpha.stats.newton_iterations
+         << " Newton iterations, " << alpha.stats.jacobians << " iteration matrices, " << alpha.stats.evaluations
+         << " evaluations. RK4 at 0.5 ms: " << reference.V_end << " m/s, within " << reference.worst
+         << ". RK4 at 5 ms: " << rk4.V_end << " m/s, within " << rk4.worst);
+    CHECK(alpha.worst < 1e-3);
+    CHECK(std::abs(alpha.V_end - alpha.V_start) < 1e-3 * alpha.V_start);
+    CHECK(std::abs(alpha.V_end - reference.V_end) < 1e-4 * reference.V_end);
+    CHECK(rk4.worst > 0.05);
 }
 
 // ============================================================================

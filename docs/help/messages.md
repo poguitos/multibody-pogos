@@ -320,6 +320,33 @@ Warning: `<n> events in one step at t = <t> s; the rest of the step ignores even
 - **What to do:** call `interpolate` right after `step`, for times within the
   step just taken; for other times, step there.
 
+### MBD-K058
+
+`kernel::Simulator: the generalised-alpha step of <h> s from t = <t> s did not converge within <n> Newton iterations, with an iteration matrix built at its start.` or `...: the iteration matrix is singular.`, then `The forces change too fast across the step, or are not finite.`
+
+- **Means:** the implicit method (task 4.3) could not solve a step: Newton's
+  corrections did not fall below the tolerance (`step_control`) within
+  `implicit_control.max_iterations`, or grew, even with an iteration matrix
+  just rebuilt from the current state; or that matrix has a zero pivot. The
+  state is the one at the start of the step.
+- **Usual causes:** a force that is NaN or infinite (the matrix built from
+  it has no pivot); a force that jumps within the step (contact that starts,
+  a friction sign, a table without interpolation), which Newton on a smooth
+  model of it cannot follow; a step so long that the forces change their
+  character across it (a tyre leaving the ground, a mechanism passing a
+  singular position).
+- **What to do:** check the forces at that state (`dump_state`); shorten
+  the step there; make a jump continuous or decide it at the end of a step;
+  raise `max_iterations` only if the corrections were still falling.
+
+### MBD-K059
+
+`kernel::Simulator: implicit_control needs rho_infinity from 0 to 1 and max_iterations >= 1; it has <rho> and <n>.`
+
+- **Means:** a setting of the generalised-alpha method is out of range. Its
+  parameters follow from `rho_infinity`, and outside [0, 1] the method loses
+  its stability or its order.
+
 ### MBD-K060
 
 `kernel::assemble: cannot hold velocity <k>; the model's velocities are 0 to <n>.`

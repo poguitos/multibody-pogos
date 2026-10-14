@@ -25,10 +25,12 @@
 // are decided at the end of each step (end_step).
 //
 // At low speed the tyre's slip stiffness makes the spin equation stiff:
-// d(Fx R)/d(omega) over I reaches about 2700 per second on an undriven 40 kg
-// wheel below the tyre's V_low, just inside what RK4 at 1 ms can carry (2.8 /
-// dt). Lighter wheels, stiffer tyres or longer steps need the implicit
-// methods of Phase 4.
+// below the tyre's V_low an undriven 40 kg wheel's spin relaxes to free
+// rolling at 2800 to 3100 per second (measured on the simple vehicle at 0.5
+// m/s: RK4 holds it at 0.9 ms, not at 1 ms, its limit being 2.785 / dt).
+// Beyond that limit RK4's spins do not blow up but chatter, bounded by the
+// tyre's saturation (a few per cent of the speed at 1 ms). Use shorter
+// steps, or Integrator::GeneralizedAlpha (task 4.3), stable at any step.
 
 #include "mbd/core/core.hpp"
 #include "mbd/vehicle/drivetrain_params.hpp"

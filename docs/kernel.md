@@ -363,6 +363,26 @@ undamped oscillator the global error over a span T came out within 1 % of
 of 1 ms it takes one step per call, seven evaluations against RK4's four.
 Codes MBD-K054 to K057.
 
+`GeneralizedAlpha` (task 4.3, decision D32) is implicit and second order,
+for stiff models: the generalised-alpha method of Chung and Hulbert, stable
+at any step on linear systems, its parameters set by one number,
+`implicit_control.rho_infinity` (0.8 by default): the factor by which motions
+far too fast for the step shrink at each step (1: the trapezoidal rule, no
+damping; 0: removed within a step). Positions move through the joints'
+exponential maps; the state elements' states follow the same formulas with
+their rates. Each step is solved by Newton's method on an iteration matrix
+from forward differences (2 nv + nx evaluations), kept from step to step and
+rebuilt when Newton slows; the convergence test uses `step_control`'s
+tolerances on the velocities and states, with a floor at the rounding of the
+step's terms. A step costs one evaluation at its start and one per Newton
+iteration: three on the sedan at 1 ms, against RK4's four. Its history
+restarts where something other than its own step changed the state (q and v
+together, each state element's state on its own). Constraints are handled as
+for the explicit methods. On a linear system its steps equal the method's
+recurrence to rounding (`tests/kernel/test_kernel_integrators.cpp`); the car
+rolling at 0.5 m/s runs at 5 ms, where RK4's wheel spins chatter. Codes
+MBD-K058 and K059.
+
 **Outputs** (task 3.3, `kernel/outputs.hpp`). `compute_loads(sim)` evaluates
 the accelerations at the simulator's state and returns them with the
 multipliers, each constraint's wrench on each body, and each joint's reaction.

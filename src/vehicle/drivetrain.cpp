@@ -154,7 +154,15 @@ void Drivetrain::end_step(const kernel::Simulator& /*sim*/, Real t, kernel::VecR
         if (T_brake <= 0.0) {
             wheel_locked[c] = false;
         } else if (wheel_locked[c]) {
-            if (std::abs(T_free) > T_brake) wheel_locked[c] = false;
+            if (std::abs(T_free) > T_brake) {
+                wheel_locked[c] = false;
+            } else {
+                // Held at exactly zero: an implicit method's Newton
+                // corrections, solved to a tolerance, can leave a locked
+                // spin a little off it.
+                omega[c] = 0.0;
+                x(c) = 0.0;
+            }
         } else {
             const Real before = omega_last_step_[c];
             const Real direction = omega[c] > 0.0 ? 1.0 : (omega[c] < 0.0 ? -1.0 : 0.0);

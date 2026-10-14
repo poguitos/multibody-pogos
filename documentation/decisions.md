@@ -534,6 +534,12 @@ and the journal entry of the work refers to them by number
   at 1 ms is not stable at standstill, and lighter wheels or longer steps
   need the implicit methods of tasks 4.3 to 4.5. Locking is decided once per
   step, so a wheel stops to within a step.
+  *Correction, 14 Oct 2026 (task 4.3):* the figure of 2700 per second was an
+  estimate. Measured on the simple vehicle at 0.5 m/s, RK4 keeps the front
+  spins at 0.9 ms but not at 1 ms, so the rate is 2800 to 3100 per second,
+  just outside RK4's limit at 1 ms, not inside it; beyond the limit the spins
+  chatter by a few per cent, bounded by the tyre's saturation, rather than
+  blow up. Generalised-alpha (D32) carries them at any step.
 - **Record.** Journal: the integrator interface and state elements;
   `docs/kernel.md`, forces and simulation.
 
@@ -584,3 +590,60 @@ and the journal entry of the work refers to them by number
   the lock decides at the step's end in both cases.
 - **Record.** Journal: the Dormand-Prince pair; data
   `2026-10-14_dormand-prince.md`; `docs/kernel.md`, integrators.
+
+## D32. Generalised-alpha on the state-space accelerations, with Newton on difference Jacobians
+
+- **Context.** Task 4.3 asks for an implicit method for stiff models,
+  starting with generalised-alpha (HHT), with finite-difference Jacobians
+  first and the force elements' analytic derivatives later; done when a
+  spring 1000 times too stiff for RK4 at 1 ms runs stably. The simulator's
+  accelerations already include the constraint forces (the constrained
+  dynamics at acceleration level, then a projection after each step), and
+  since task 4.1 the state elements' states are integrated with the bodies.
+- **Decision.** `Integrator::GeneralizedAlpha`: the Chung-Hulbert method in
+  the Arnold-Bruls form, its four parameters from one number, the spectral
+  radius at an infinite step (`rho_infinity`, 0.8 by default), applied to the
+  accelerations the simulator already computes. Positions move through the
+  joints' exponential maps, so quaternions stay unit (the Lie-group form).
+  The state elements' states follow the same formulas a level down, with
+  their rates for the accelerations. Each step solves for the new
+  acceleration-like variables by Newton's method; the iteration matrix
+  comes from forward differences of the accelerations and rates with respect
+  to q (along the velocities), v and x (2 nv + nx evaluations), is kept from
+  step to step, re-formed for each step length (cheap: only the matrix
+  arithmetic and its LU), and rebuilt when Newton slows (four iterations, or
+  a contraction worse than one half) or fails (then the step is retried
+  once). The accelerations at each step's start are evaluated afresh, so
+  inputs changed between steps take effect; the method's history is kept
+  only while nothing but its own step and the projection has changed the
+  state. The LU is a short in-place factorization with partial pivoting,
+  allocation-free. Constraints stay as for the explicit methods:
+  accelerations from the constrained dynamics, projection after each step.
+- **Alternatives.** HHT-alpha proper (alpha_m = 0): the member of the family
+  at rho_infinity = 0.5; Chung-Hulbert's choice damps the slow motions less
+  for the same high-frequency damping. An index-3 formulation with the
+  multipliers as unknowns (as in Arnold-Bruls): the natural form for
+  generalised-alpha with constraints and the subject of task 4.7, but a
+  second solver path beside the one every other method uses. Analytic
+  Jacobians from the force elements' `law()` derivatives now: they need the
+  derivative of the constrained forward dynamics as well, and the
+  difference Jacobian, built rarely, is not where the time goes in these
+  tests; deferred to task 4.5, where a fixed cost per step depends on it.
+  Eigen's `PartialPivLU` as a member: it reallocates when resized and
+  brings its own compile cost to the simulator's header.
+- **Consequences.** A stiff model runs at any step, with its fast motions
+  damped by rho_infinity per step; second order, with a phase lag of 0.088
+  (w h)^2 per radian at the default (1/12 at rho_infinity = 1). The first
+  step of a run, and a step after a lock, an event or a user's change,
+  restarts the history (q and v together, each state on its own). The
+  iteration matrix costs 2 nv + nx evaluations (24 on the simple vehicle),
+  paid rarely: one matrix served a whole 2.3 s run of the rolling car. A
+  step costs one evaluation plus one per Newton iteration: three on the sedan
+  at 1 ms against RK4's four, plus forming and factorizing an (nv + nx)
+  square matrix (not timed). Newton's test has a floor at the rounding of
+  the step's terms, without which a stiff spring at a long step cannot
+  converge. A discrete decision a state element must hold exactly (a lock)
+  is enforced in its end_step: Newton solves only to the tolerance. No error
+  control yet (fixed steps; task 4.4 brings an error estimate).
+- **Record.** Journal: generalised-alpha; data
+  `2026-10-14_generalized-alpha.md`; `docs/kernel.md`, integrators.

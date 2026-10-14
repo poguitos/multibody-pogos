@@ -666,18 +666,24 @@ void Simulator::project_step()
 void Simulator::advance(Real dt)
 {
     switch (method) {
-        case Integrator::RK4:
-        case Integrator::SemiImplicitEuler:
-            if (method == Integrator::RK4) step_rk4(dt);
-            else step_semi_implicit_euler(dt);
-            time += dt;
-            ++stats_.steps;
-            stats_.step_size = dt;
-            project_step();
-            break;
+        case Integrator::RK4:               step_rk4(dt); break;
+        case Integrator::SemiImplicitEuler: step_semi_implicit_euler(dt); break;
+        case Integrator::GeneralizedAlpha:  step_generalized_alpha(dt); break;
         case Integrator::DormandPrince:
-            step_dormand_prince(dt);   // projects after each of its steps
-            break;
+            step_dormand_prince(dt);   // takes steps of its own, each projected
+            refresh();
+            return;
+    }
+    time += dt;
+    ++stats_.steps;
+    stats_.step_size = dt;
+    project_step();
+    if (method == Integrator::GeneralizedAlpha) {
+        // What the method's history belongs to.
+        implicit_q_ = q;
+        implicit_v_ = v;
+        implicit_x_ = x;
+        implicit_time_ = time;
     }
     refresh();
 }

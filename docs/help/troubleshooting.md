@@ -198,12 +198,39 @@ comes from the hand calculation, which takes the static rolling radius and no
 tyre slip. Before task 4.1 the spins were advanced once per step, which added
 an error of the same size. *(Phase 1; the integrator interface.)*
 
-**A vehicle with a drivetrain becomes unstable at standstill.** Below the
-tyre's `V_low` the wheel spin equation is stiff: the tyre's slip stiffness
-over an undriven 40 kg wheel's inertia is about 2700 per second, just inside
-RK4's limit at 1 ms (2.8 / dt) and outside explicit Euler's (2 / dt). Use RK4
-at 1 ms or shorter steps; lighter wheels or stiffer tyres need the implicit
-methods of Phase 4. *(The integrator interface.)*
+**Wheel spins chatter at low speed, or a vehicle with a drivetrain becomes
+unstable at standstill.** Below the tyre's `V_low` the wheel spin equation is
+stiff: an undriven 40 kg wheel's spin relaxes to free rolling at 2800 to 3100
+per second (measured on the simple vehicle at 0.5 m/s), just outside RK4's
+limit at 1 ms (2.785 / dt) and far outside explicit Euler's (2 / dt). Beyond
+the limit RK4 does not blow up: the spins chatter about free rolling, bounded
+by the tyre's saturation, by 2.8 % of the speed at 1 ms and 14 % at 5 ms,
+while the car's speed looks right. Use RK4 at 0.9 ms or less there, or
+`Integrator::GeneralizedAlpha`, which is stable at any step (the car rolls at
+walking pace in steps of 5 ms with its wheels within 1e-3 of free rolling).
+*(The integrator interface; generalised-alpha.)*
+
+**A stiff model needs tiny steps.** A very stiff spring, bushing or contact
+limits an explicit method by stability, not accuracy: RK4 needs w h <= 2.8
+for the fastest frequency w, even when nothing in the answer moves that
+fast. `Integrator::GeneralizedAlpha` is stable at any step; its
+`implicit_control.rho_infinity` (0.8) sets how fast the motions too quick for
+the step are damped away. Each step costs one evaluation plus one per Newton
+iteration (one or two at the default tolerances on the vehicles: three
+evaluations a step on the sedan at 1 ms, against RK4's four), and an
+occasional iteration matrix (2 nv + nx evaluations). *(Generalised-alpha.)*
+
+**Generalised-alpha stops with MBD-K058.** Newton could not solve a step,
+even with a fresh iteration matrix: a force that is NaN or infinite, a force
+that jumps within the step, or a step so long that the forces change their
+character across it. Check the forces at that state, shorten the step there,
+or make the jump continuous (or decide it at a step's end). *(Generalised-alpha.)*
+
+**A locked or stuck state drifts slightly with the implicit method.**
+Newton solves each step only to the tolerance, so a state that should stay
+exactly fixed by a discrete decision (a wheel locked by its brake) can move
+by about the tolerance. Enforce the decision in the element's `end_step`, as
+the drivetrain does. *(Generalised-alpha.)*
 
 **A braked wheel's spin chatters about zero.** Coulomb friction changes sign
 when the spin does, and inside one step's stages that sign can flip back and
@@ -284,6 +311,19 @@ because its "exact" value was wrong (PowerShell built a complex number from
 same script and right to four digits, showed the stages were not at fault.
 *(The Dormand-Prince pair.)*
 
+**A bound from one step of a stable method.** A method that is stable can
+still let a quantity grow for several steps before it decays, when its step
+matrix is far from normal (generalised-alpha at very long steps: its
+eigenvalues cluster near -rho_infinity, and the amplitude doubles first).
+Compare with the method's own recurrence rather than a hand-made bound.
+*(Generalised-alpha.)*
+
+**A Newton tolerance below the rounding.** When an update adds terms much
+larger than its result (a stiff spring at a long step: h^2 |a| far above the
+displacement), the result carries their rounding, and Newton's corrections
+cannot fall below it. The implicit method's convergence test has a floor at
+that rounding; a test of your own should too. *(Generalised-alpha.)*
+
 **An integrator test that only looks at the order.** A ratio near 2^p shows
 the order but not that the method is the one intended. For a linear test
 problem every Runge-Kutta step multiplies the state by its stability
@@ -330,3 +370,4 @@ Before building on it (working rule 2):
 | Debugging aids | Neutral configuration in `describe()` (Models); conflicting drivers in a trace (Models); slow machine (Builds) |
 | Phase 4: the integrator interface | Braking result now step-independent; stiffness at standstill; chattering dry friction (Simulations); a test checking a decision against out-of-date state (fixed in the test) |
 | Phase 4: the Dormand-Prince pair | A sign flip that would shrink the steps without end (Simulations: K055 and K056; chattering friction); cost at short output steps (Simulations); a wrong reference in a scratch check; testing more than the order (Numerical traps) |
+| Phase 4: generalised-alpha | A bound guessed from one step; Newton against rounding (Numerical traps); a locked wheel that crept (Simulations); stiff models and K058 (Simulations) |

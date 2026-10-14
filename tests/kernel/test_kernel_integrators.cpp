@@ -28,13 +28,32 @@
 //     with a constant that follows from R and E;
 //   - bad settings, a step below min_step, too many steps, and interpolation
 //     outside the last step are refused with their codes.
+//
+// The generalised-alpha method (plan task 4.3), on the same oscillator and on
+// a stiff two-mass system, against the method's own recurrence written out
+// for a linear system (q'' = -w^2 q, a0 = qdd0):
+//
+//     a+ = (-(1 - af) w^2 (q + h v + h^2 (1/2 - beta) a) - am a + af qdd)
+//          / ((1 - am) + (1 - af) beta h^2 w^2)
+//     q+ = q + h v + h^2 ((1/2 - beta) a + beta a+),  v+ = v + h ((1 - gamma) a + gamma a+)
+//
+//   - the simulator's steps are this recurrence, to Newton's tolerance, at
+//     second order;
+//   - a spring 1000 times too stiff for RK4 at 1 ms (RK4 needs w h <= 2
+//     sqrt(2): |R(iy)|^2 = 1 - y^6/72 + y^8/576) runs stably, damped as
+//     rho_infinity says, or energy-conserving at rho_infinity = 1;
+//   - with such a spring linking two masses, the slow motion keeps the
+//     method's second-order accuracy;
+//   - bad settings and a step that cannot be solved are refused.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <cmath>
 #include <complex>
+#include <limits>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "mbd/core/core.hpp"
@@ -48,15 +67,17 @@ using Complex = std::complex<Real>;
 
 namespace {
 
-/// A linear spring on the slider's coordinate.
+/// A linear spring on the coordinate of a slider (body's joint, at index i).
 class Spring : public JointForce {
 public:
-    explicit Spring(Real k) : k_(k) {}
+    Spring(int body, Index i, Real k) : body_(body), i_(i), k_(k) {}
     const char* name() const override { return "spring"; }
-    std::vector<int> bodies() const override { return {1}; }
-    void apply(const VecX& q, const VecX&, VecX& tau) const override { tau(0) -= k_ * q(0); }
+    std::vector<int> bodies() const override { return {body_}; }
+    void apply(const VecX& q, const VecX&, VecX& tau) const override { tau(i_) -= k_ * q(i_); }
 
 private:
+    int body_;
+    Index i_;
     Real k_;
 };
 
@@ -71,7 +92,7 @@ struct Oscillator {
         sys.model.gravity = Vec3::Zero();
         sys.model.add_body(0, std::make_shared<PrismaticJointModel>(), Transform3(), Transform3(),
                            RigidBodyInertia::from_solid_box(1.0, Vec3(0.1, 0.1, 0.1)), "block");
-        sys.joint_forces.push_back(std::make_shared<Spring>(k));
+        sys.joint_forces.push_back(std::make_shared<Spring>(1, 0, k));
     }
 
     std::unique_ptr<Simulator> simulator()
@@ -96,6 +117,52 @@ Complex estimate(Complex z)
 {
     return -97.0 / 120000.0 * std::pow(z, 5) + 13.0 / 40000.0 * std::pow(z, 6) - 1.0 / 24000.0 * std::pow(z, 7);
 }
+
+/// Generalised-alpha's recurrence for q'' = -w^2 q, started from a = qdd.
+struct AlphaRecurrence {
+    Real W, h, am, af, g, b, q, v, a;
+
+    AlphaRecurrence(Real w, Real h_, Real rho, Real q0, Real v0)
+        : W(w * w), h(h_), am((2.0 * rho - 1.0) / (rho + 1.0)), af(rho / (rho + 1.0)),
+          g(0.5 - am + af), b(0.25 * (g + 0.5) * (g + 0.5)), q(q0), v(v0), a(-W * q0)
+    {}
+
+    void step()
+    {
+        const Real qdd = -W * q;
+        const Real a1 = (-(1.0 - af) * W * (q + h * v + h * h * (0.5 - b) * a) - am * a + af * qdd)
+                        / ((1.0 - am) + (1.0 - af) * b * h * h * W);
+        q += h * v + h * h * ((0.5 - b) * a + b * a1);
+        v += h * ((1.0 - g) * a + g * a1);
+        a = a1;
+    }
+};
+
+/// N steps of the recurrence; returns (q, v).
+std::pair<Real, Real> alpha_recurrence(Real w, Real h, int N, Real rho, Real q, Real v)
+{
+    AlphaRecurrence r(w, h, rho, q, v);
+    for (int k = 0; k < N; ++k) r.step();
+    return {r.q, r.v};
+}
+
+/// Two 1 kg blocks along Z: the first on a slider to the ground with a soft
+/// spring k_s, the second on a slider on the first with a stiff spring k_t.
+/// In the sliders' coordinates M = [[2, 1], [1, 1]], K = diag(k_s, k_t).
+struct TwoMasses {
+    System sys;
+    TwoMasses(Real k_s, Real k_t)
+    {
+        sys.model.gravity = Vec3::Zero();
+        const auto inertia = RigidBodyInertia::from_solid_box(1.0, Vec3(0.1, 0.1, 0.1));
+        const int b1 = sys.model.add_body(0, std::make_shared<PrismaticJointModel>(), Transform3(), Transform3(),
+                                          inertia, "first");
+        const int b2 = sys.model.add_body(b1, std::make_shared<PrismaticJointModel>(), Transform3(), Transform3(),
+                                          inertia, "second");
+        sys.joint_forces.push_back(std::make_shared<Spring>(b1, 0, k_s));
+        sys.joint_forces.push_back(std::make_shared<Spring>(b2, 1, k_t));
+    }
+};
 
 } // namespace
 
@@ -253,5 +320,185 @@ TEST_CASE("Dormand-Prince: bad settings, too short a step, too many steps and in
         auto sim = osc.simulator();
         sim->step_control.min_step = 1e-3;
         CHECK_THROWS_WITH(sim->step(0.01), ContainsSubstring("MBD-K055"));
+    }
+}
+
+TEST_CASE("Generalised-alpha: the steps are the method's recurrence, at second order",
+          "[kernel][integrators][implicit]")
+{
+    // Against the recurrence: equal to rounding, Newton's tolerance being set
+    // to 1e-13 here (with an iteration matrix exact for a linear system, two
+    // iterations reach it). Against the exact solution the error is the
+    // method's phase lag, 0.0880 (w h)^2 radians per radian for rho_infinity
+    // = 0.8 (computed from the recurrence; 1/12 at rho_infinity = 1, the
+    // trapezoidal rule's): 3.5e-5 m after 10 s at h = 0.02 s. Halving the
+    // step divides it by 4.
+    Oscillator osc;
+    const Real T = 10.0;
+    auto error_at = [&](Real h, IntegratorStats& stats) {
+        auto sim = osc.simulator();
+        sim->method = Integrator::GeneralizedAlpha;
+        sim->step_control.relative_tolerance = 0.0;
+        sim->step_control.absolute_tolerance = 1e-13;
+        const int steps = sim->run(T, h);
+        const auto [q, v] = alpha_recurrence(1.0, h, steps, 0.8, Oscillator::a, 0.0);
+        INFO("h = " << h << ": q " << sim->q(0) << ", v " << sim->v(0) << "; recurrence " << q << ", " << v);
+        CHECK(std::abs(sim->q(0) - q) < 1e-12);
+        CHECK(std::abs(sim->v(0) - v) < 1e-12);
+        stats = sim->integrator_stats();
+        // One evaluation at each step's start and one per Newton iteration;
+        // two more, once, for the iteration matrix (d/dq and d/dv).
+        CHECK(stats.evaluations == steps + stats.newton_iterations + 2);
+        return std::abs(w_of(*sim) - Oscillator::a * std::exp(Complex(0.0, T)));
+    };
+    IntegratorStats s1, s2;
+    const Real e1 = error_at(0.02, s1), e2 = error_at(0.01, s2);
+    const Real lag = Oscillator::a * 0.0880 * T * 0.02 * 0.02;
+    INFO("errors " << e1 << " and " << e2 << ", predicted " << lag << " at h = 0.02 s; Newton iterations "
+                   << s1.newton_iterations << " and " << s2.newton_iterations << " in " << s1.steps << " and "
+                   << s2.steps << " steps; iteration matrices " << s1.jacobians << ", " << s2.jacobians);
+    CHECK(std::abs(e1 / lag - 1.0) < 0.01);
+    CHECK(e1 / e2 > 3.95);
+    CHECK(e1 / e2 < 4.05);
+    // The system is linear: one iteration matrix serves the whole run.
+    CHECK(s1.jacobians == 1);
+    CHECK(s2.jacobians == 1);
+    CHECK(s1.newton_iterations <= 2 * s1.steps);
+}
+
+TEST_CASE("Generalised-alpha: a spring 1000 times too stiff for RK4 at 1 ms runs stably",
+          "[kernel][integrators][implicit]")
+{
+    // RK4 at step h is stable on an undamped oscillator while w h <= 2
+    // sqrt(2), since |R(iy)|^2 = 1 - y^6/72 + y^8/576: at 1 ms and 1 kg, for
+    // springs up to 8e6 N/m. Just inside (w h = 0.95 x 2 sqrt(2)) the
+    // amplitude never grows (|R| = 0.70); just outside (1.05 x, |R| = 1.40) it
+    // passes 1000 times its start within 100 steps. A spring 1000 times
+    // stiffer, 8e9 N/m (w h = 89.4): generalised-alpha stays bounded and, its
+    // spectral radius there being near rho_infinity = 0.8, has removed the
+    // motion within 1000 steps. On the way the amplitude first grows, to
+    // about twice its start: at such a step the step matrix's eigenvalues lie
+    // close together near -rho_infinity, and a matrix like that stretches a
+    // vector before it shrinks it. The recurrence does the same, to the
+    // digit. At rho_infinity = 1 (no damping) the energy is kept, to Newton's
+    // tolerance.
+    const Real h = 1e-3, w_limit = 2.0 * std::sqrt(2.0) / h;
+    auto amplitude = [](const Simulator& s, Real w) { return std::hypot(s.q(0), s.v(0) / w); };
+    {
+        const Real w = 0.95 * w_limit;
+        Oscillator osc(w * w);
+        auto sim = osc.simulator();
+        sim->method = Integrator::RK4;
+        Real largest = 0.0;
+        for (int k = 0; k < 1000; ++k) {
+            sim->step(h);
+            largest = std::max(largest, amplitude(*sim, w));
+        }
+        CHECK(largest <= Oscillator::a * (1.0 + 1e-12));
+    }
+    {
+        const Real w = 1.05 * w_limit;
+        Oscillator osc(w * w);
+        auto sim = osc.simulator();
+        sim->method = Integrator::RK4;
+        sim->run(0.1, h);
+        CHECK(amplitude(*sim, w) > 1e3 * Oscillator::a);
+    }
+    const Real w = std::sqrt(1000.0) * w_limit;
+    for (const Real rho : {0.8, 1.0}) {
+        Oscillator osc(w * w);
+        auto sim = osc.simulator();
+        sim->method = Integrator::GeneralizedAlpha;
+        sim->implicit_control.rho_infinity = rho;
+        sim->step_control.relative_tolerance = 1e-12;
+        sim->step_control.absolute_tolerance = 1e-12;
+        auto energy = [&] { return 0.5 * sim->v(0) * sim->v(0) + 0.5 * w * w * sim->q(0) * sim->q(0); };
+        const Real E0 = energy();
+        AlphaRecurrence recurrence(w, h, rho, Oscillator::a, 0.0);
+        Real largest = 0.0, largest_recurrence = 0.0;
+        for (int k = 0; k < 1000; ++k) {
+            sim->step(h);
+            recurrence.step();
+            largest = std::max(largest, amplitude(*sim, w));
+            largest_recurrence = std::max(largest_recurrence, std::hypot(recurrence.q, recurrence.v / w));
+        }
+        INFO("rho_infinity " << rho << ": largest amplitude " << largest << " m (recurrence "
+                             << largest_recurrence << " m), at the end " << amplitude(*sim, w) << " m; energy "
+                             << energy() / E0 << " of the start; " << sim->integrator_stats().newton_iterations
+                             << " Newton iterations, " << sim->integrator_stats().jacobians
+                             << " iteration matrices");
+        CHECK(std::abs(largest / largest_recurrence - 1.0) < 1e-9);
+        if (rho < 1.0) CHECK(amplitude(*sim, w) < 1e-6 * Oscillator::a);
+        else CHECK(std::abs(energy() / E0 - 1.0) < 1e-8);
+    }
+}
+
+TEST_CASE("Generalised-alpha: a stiff link leaves the slow motion second-order accurate",
+          "[kernel][integrators][implicit]")
+{
+    // k_s = 2 (2 pi)^2 N/m gives a slow mode near 1 Hz; k_t = 4e9 N/m a
+    // stiff one of w2 h = 89 at 1 ms, 1000 times beyond RK4's reach. The
+    // modes: w^4 - (k_s + 2 k_t) w^2 + k_s k_t = 0, shapes (1, w^2 / (k_t -
+    // w^2)). Released from q = (a, 0) at rest, the stiff mode's share is about
+    // k_s / (4 k_t) a = 5e-9 a. The method is linear, and the same in every
+    // mode, so the simulator must equal the recurrence run mode by mode; and
+    // the slow motion must lag the exact one by the method's phase error,
+    // 0.0880 (w1 h)^2 per radian: 4.4e-5 a after 2 s.
+    const Real a = 0.01, h = 1e-3, T = 2.0;
+    const Real k_s = 2.0 * std::pow(2.0 * pi, 2), k_t = 4e9;
+    const Real B = k_s + 2.0 * k_t, W2 = 0.5 * (B + std::sqrt(B * B - 4.0 * k_s * k_t)), W1 = k_s * k_t / W2;
+    const Real w1 = std::sqrt(W1), w2 = std::sqrt(W2);
+    const Real r1 = W1 / (k_t - W1), r2 = W2 / (k_t - W2);
+    const Real c1 = a * r2 / (r2 - r1), c2 = -a * r1 / (r2 - r1);
+
+    TwoMasses tm(k_s, k_t);
+    Simulator sim(tm.sys);
+    sim.method = Integrator::GeneralizedAlpha;
+    sim.step_control.relative_tolerance = 1e-12;
+    sim.step_control.absolute_tolerance = 1e-14;
+    sim.q(0) = a;
+    const int steps = sim.run(T, h);
+
+    const auto [slow, slow_rate] = alpha_recurrence(w1, h, steps, 0.8, c1, 0.0);
+    const auto [fast, fast_rate] = alpha_recurrence(w2, h, steps, 0.8, c2, 0.0);
+    INFO("w1 " << w1 << ", w2 " << w2 << " rad/s; stiff share " << c2 / a << " of a");
+    CHECK(std::abs(sim.q(0) - (slow + fast)) < 1e-10 * a);
+    CHECK(std::abs(sim.q(1) - (r1 * slow + r2 * fast)) < 1e-10 * a);
+    CHECK(std::abs(sim.v(0) - (slow_rate + fast_rate)) < 1e-10 * a * w1);
+
+    const Real error = std::abs(Complex(sim.q(0), -sim.v(0) / w1) - c1 * std::exp(Complex(0.0, w1 * T)));
+    const Real lag = c1 * 0.0880 * w1 * T * (w1 * h) * (w1 * h);
+    INFO("slow motion's error " << error / a << " a, predicted " << lag / a << " a; " << sim.integrator_stats().jacobians
+                                << " iteration matrices, " << sim.integrator_stats().newton_iterations
+                                << " Newton iterations in " << steps << " steps");
+    CHECK(std::abs(error / lag - 1.0) < 0.05);
+}
+
+TEST_CASE("Generalised-alpha: bad settings and a step that cannot be solved are refused",
+          "[kernel][integrators][implicit]")
+{
+    {
+        Oscillator osc;
+        auto sim = osc.simulator();
+        sim->method = Integrator::GeneralizedAlpha;
+        sim->implicit_control.rho_infinity = 1.5;
+        CHECK_THROWS_WITH(sim->step(1e-3), ContainsSubstring("MBD-K059"));
+    }
+    {
+        // A force that is not a number: the iteration matrix built from it
+        // has no pivot.
+        struct NotANumber : JointForce {
+            const char* name() const override { return "not a number"; }
+            std::vector<int> bodies() const override { return {1}; }
+            void apply(const VecX&, const VecX&, VecX& tau) const override
+            {
+                tau(0) += std::numeric_limits<Real>::quiet_NaN();
+            }
+        };
+        Oscillator osc;
+        osc.sys.joint_forces.push_back(std::make_shared<NotANumber>());
+        auto sim = osc.simulator();
+        sim->method = Integrator::GeneralizedAlpha;
+        CHECK_THROWS_WITH(sim->step(1e-3), ContainsSubstring("MBD-K058"));
     }
 }
