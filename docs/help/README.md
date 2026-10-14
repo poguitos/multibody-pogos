@@ -28,6 +28,7 @@ examples:
 |---|---|
 | Build a mechanism with loops | `tests/kernel/test_kernel_constrained.cpp` (four-bar), `tests/kernel/test_kernel_validate.cpp` |
 | Simulate it | `tests/kernel/test_kernel_simulator.cpp`, `tests/kernel/test_kernel_joints_physics.cpp` |
+| Simulate to a tolerance instead of a fixed step, see the steps taken, read the state between steps | [The kernel, forces and simulation](../kernel.md#forces-and-simulation) (integrators); `Integrator::DormandPrince`, `step_control`, `integrator_stats()`, `interpolate()`; `tests/kernel/test_kernel_integrators.cpp` |
 | Add states of your own (an actuator lag, a controller) integrated with the bodies | [The kernel, forces and simulation](../kernel.md#forces-and-simulation); `StateElement`, `sim.attach()`; `tests/kernel/test_kernel_states.cpp` |
 | Stop at the moment something happens (an impact, a threshold) and act on it | [The kernel, events](../kernel.md#events); `Simulator::events`; `tests/kernel/test_kernel_events.cpp` |
 | Natural frequencies, damping and mode shapes about an equilibrium | [The kernel, linearisation](../kernel.md#linearisation); `linearize(sim)`; `tests/kernel/test_kernel_linearization.cpp`, `tests/test_quarter_car.cpp` |

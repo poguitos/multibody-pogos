@@ -100,6 +100,8 @@ Three new test cases and one rewritten, 427 tests in all:
 - `test_alloc` still counts no allocation in 100 steps of the sedan with its
   drivetrain, now evaluated in every stage. The cost added per evaluation is
   a few arithmetic operations per wheel; it was not timed.
+- CI run 38533479960 on `aa8876c`: Windows, Linux with sanitizers,
+  no-malloc and docs all passed.
 
 ## Open ends
 

@@ -2,6 +2,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <Eigen/Geometry>
 #include <cmath>
+#include <iomanip>
 
 #include "mbd/vehicle/drivetrain.hpp"
 
@@ -370,40 +371,92 @@ TEST_CASE("Drivetrain: braking to a stop locks the wheels, and the car stays sto
     // suspension, which decays at the suspension's damping rate, so the
     // residual speed must at least halve from one half second to the next and
     // end below 0.1 mm/s, stopped by any practical measure.
+    //
+    // The same with Dormand-Prince (task 4.2), whose error control would
+    // shrink its steps without end if the brake's sign flipped within a step
+    // as a spin crossed zero: the brake keeps its direction through each step.
     using namespace mbd;
 
-    kernel::System sys;
-    VehicleParams vp;
-    auto vm = build_simple_vehicle(sys, vp);
-    kernel::Simulator sim(sys);
-    set_vehicle_equilibrium(sim, vm);
-    sim.v(3) = 5.0;
-    sim.initialize();
+    for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::DormandPrince}) {
+        INFO((method == kernel::Integrator::RK4 ? "RK4" : "Dormand-Prince"));
+        kernel::System sys;
+        VehicleParams vp;
+        auto vm = build_simple_vehicle(sys, vp);
+        kernel::Simulator sim(sys);
+        sim.method = method;
+        set_vehicle_equilibrium(sim, vm);
+        sim.v(3) = 5.0;
+        sim.initialize();
 
-    Drivetrain dt;
-    dt.initialize(sim, vm);
-    dt.connect(sim, vm);
-    sim.run(0.3, 0.001);
+        Drivetrain dt;
+        dt.initialize(sim, vm);
+        dt.connect(sim, vm);
+        sim.run(0.3, 0.001);
 
-    dt.brake = 1.0;
-    Real slowest_spin = 0.0;
-    Real fastest_late = 0.0, fastest_last = 0.0;   // |vx| over 2.0-2.5 s and 2.5-3.0 s
-    for (int i = 1; i <= 3000; ++i) {
-        sim.step(0.001);
-        for (int c = 0; c < 4; ++c) slowest_spin = std::min(slowest_spin, dt.wheel_omega[c]);
-        if (i > 2000 && i <= 2500) fastest_late = std::max(fastest_late, std::abs(vx(sim)));
-        if (i > 2500) fastest_last = std::max(fastest_last, std::abs(vx(sim)));
+        dt.brake = 1.0;
+        Real slowest_spin = 0.0;
+        Real fastest_late = 0.0, fastest_last = 0.0;   // |vx| over 2.0-2.5 s and 2.5-3.0 s
+        for (int i = 1; i <= 3000; ++i) {
+            sim.step(0.001);
+            for (int c = 0; c < 4; ++c) slowest_spin = std::min(slowest_spin, dt.wheel_omega[c]);
+            if (i > 2000 && i <= 2500) fastest_late = std::max(fastest_late, std::abs(vx(sim)));
+            if (i > 2500) fastest_last = std::max(fastest_last, std::abs(vx(sim)));
+        }
+        INFO("largest speed over 2.0-2.5 s " << fastest_late << " m/s, over 2.5-3.0 s " << fastest_last
+             << " m/s, at the end " << vx(sim) << " m/s; " << sim.integrator_stats().steps << " steps, "
+             << sim.integrator_stats().rejected << " rejected");
+        CHECK(fastest_last < 0.5 * fastest_late);
+        CHECK(std::abs(vx(sim)) < 1e-4);
+        CHECK(slowest_spin >= 0.0);   // no wheel turned backwards
+        for (int c = 0; c < 4; ++c) {
+            INFO("corner " << c);
+            CHECK(dt.wheel_locked[c]);
+            CHECK(dt.wheel_omega[c] == 0.0);
+        }
     }
-    INFO("largest speed over 2.0-2.5 s " << fastest_late << " m/s, over 2.5-3.0 s " << fastest_last
-         << " m/s, at the end " << vx(sim) << " m/s");
-    CHECK(fastest_last < 0.5 * fastest_late);
-    CHECK(std::abs(vx(sim)) < 1e-4);
-    CHECK(slowest_spin >= 0.0);   // no wheel turned backwards
-    for (int c = 0; c < 4; ++c) {
-        INFO("corner " << c);
-        CHECK(dt.wheel_locked[c]);
-        CHECK(dt.wheel_omega[c] == 0.0);
-    }
+}
+
+TEST_CASE("Drivetrain: Dormand-Prince reproduces RK4's braking deceleration",
+          "[drivetrain][braking][integrators]")
+{
+    // The half-pedal braking of the hand-calculation test, measured with both
+    // integrators. RK4's result no longer depends on the step (identical to
+    // nine digits at 1, 0.5 and 0.25 ms, task 4.1), so it is exact to about
+    // 1e-8; Dormand-Prince, fifth order with its steps at most the 1 ms of
+    // step() and error control at its default tolerances, must agree with it
+    // to well within 1e-6. A different method of a different order reaching
+    // the same number checks both.
+    using namespace mbd;
+
+    auto deceleration = [](kernel::Integrator method, kernel::IntegratorStats& stats) {
+        kernel::System sys;
+        VehicleParams vp;
+        auto vm = build_simple_vehicle(sys, vp);
+        kernel::Simulator sim(sys);
+        sim.method = method;
+        set_vehicle_equilibrium(sim, vm);
+        sim.v(3) = 20.0;
+        sim.initialize();
+        Drivetrain dt;
+        dt.params.layout = DriveLayout::RWD;
+        dt.params.engine.inertia = 0.0;
+        dt.initialize(sim, vm);
+        dt.connect(sim, vm);
+        sim.run(0.3, 0.001);
+        dt.brake = 0.5;
+        sim.run(0.5, 0.001);
+        const Real V1 = vx(sim);
+        sim.run(1.0, 0.001);
+        stats = sim.integrator_stats();
+        return V1 - vx(sim);
+    };
+    kernel::IntegratorStats rk4_stats, dp_stats;
+    const Real a_rk4 = deceleration(kernel::Integrator::RK4, rk4_stats);
+    const Real a_dp = deceleration(kernel::Integrator::DormandPrince, dp_stats);
+    INFO("RK4 " << std::setprecision(10) << a_rk4 << " m/s^2 (" << rk4_stats.evaluations
+                << " evaluations), Dormand-Prince " << a_dp << " m/s^2 (" << dp_stats.steps << " steps, "
+                << dp_stats.rejected << " rejected, " << dp_stats.evaluations << " evaluations)");
+    CHECK_THAT(a_dp, WithinRel(a_rk4, 1e-6));
 }
 
 // ============================================================================

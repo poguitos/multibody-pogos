@@ -69,4 +69,5 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 13 Oct 2026 | [The troubleshooting guide](2026-10-13_troubleshooting-guide.md) | H.3 | `ba4ece4` | At the time |
 | 13 Oct 2026 | [The API reference in CI](2026-10-13_api-reference.md) | H.5 | `5a2e38f`, `9be974a`, `f811714` | At the time |
 | 13 Oct 2026 | [Phase 3 retrospective](2026-10-13_phase-3-retrospective.md) | Phase 3 gate, tag `v0.4.0` | `49b96bc` to `4a3a757` | At the time |
-| 14 Oct 2026 | [Phase 4: the integrator interface and state elements](2026-10-14_phase-4-state-elements.md) | 4.1, D30 | see git log | At the time |
+| 14 Oct 2026 | [Phase 4: the integrator interface and state elements](2026-10-14_phase-4-state-elements.md) | 4.1, D30 | `aa8876c` | At the time |
+| 14 Oct 2026 | [Phase 4: the Dormand-Prince pair](2026-10-14_phase-4-dormand-prince.md) | 4.2, D31 | see git log | At the time |

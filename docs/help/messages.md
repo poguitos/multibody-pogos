@@ -267,6 +267,59 @@ Warning: `<n> events in one step at t = <t> s; the rest of the step ignores even
   another program (a spreadsheet keeps CSV files locked on Windows), or a full
   disk.
 
+### MBD-K054
+
+`kernel::Simulator: step_control needs absolute_tolerance > 0, relative_tolerance >= 0, min_step >= 0 and max_steps >= 1; it has <values>.`
+
+- **Means:** `Simulator::step_control`, the settings of the Dormand-Prince
+  integrator (task 4.2), holds a value it cannot work with. An absolute
+  tolerance of zero would divide by zero wherever an entry of the state is
+  zero.
+- **What to do:** keep `absolute_tolerance` positive; to control the relative
+  error mainly, make it small against the entries' sizes (1e-9 for a state
+  of order one).
+
+### MBD-K055
+
+`kernel::Simulator: Dormand-Prince needs a step of <h> s at t = <t> s, below step_control.min_step (<min> s); the error measure of the last try was <e>. The model is stiff or discontinuous here.`
+
+- **Means:** to meet its tolerances the integrator would have to take a step
+  shorter than `step_control.min_step` (1e-12 s by default), or so short that
+  the time no longer changes. The state is the last one reached, before t.
+- **Usual causes:** a stiff force (a very stiff spring or contact, a tyre at
+  low speed on a light wheel), whose stability limit is far shorter than the
+  motion needs; a force that jumps (a sign that flips with a velocity, a
+  table without interpolation) or a kink taken with very tight tolerances;
+  a state that has become NaN or infinite (the measure is then infinite).
+- **What to do:** look at the forces at that time (`dump_state`, the step
+  trace); make a jump continuous (regularise it, or decide it at the end of a
+  step as the drivetrain's brake does); for a stiff model use RK4 at a step
+  inside its limit, or the implicit methods of Phase 4 when they come; loosen
+  the tolerances if they are tighter than the model deserves.
+
+### MBD-K056
+
+`kernel::Simulator: Dormand-Prince took <n> steps within one step of <dt> s and reached only t = <t> s (step_control.max_steps). The model is stiff or discontinuous here, or the tolerances are too tight for it.`
+
+- **Means:** within one call to `step(dt)` the integrator tried more steps,
+  accepted or rejected, than `step_control.max_steps` (100000 by default).
+  The state is the last one reached.
+- **Usual causes:** as for MBD-K055, short of reaching `min_step`: a stiff
+  model takes steps at its stability limit, which may be thousands of times
+  shorter than `dt`. Also a `dt` much longer than the motion's time scale.
+- **What to do:** as for MBD-K055; `integrator_stats()` gives the steps and
+  rejections so far, and the step length reached.
+
+### MBD-K057
+
+`kernel::Simulator::interpolate: t = <t> s is outside the last Dormand-Prince step (<t0> to <t1> s)` or `(none taken yet)`
+
+- **Means:** the continuous extension exists only within the last step the
+  Dormand-Prince integrator took (task 4.2). That step may be much shorter
+  than the last `step(dt)`: the error control chooses it.
+- **What to do:** call `interpolate` right after `step`, for times within the
+  step just taken; for other times, step there.
+
 ### MBD-K060
 
 `kernel::assemble: cannot hold velocity <k>; the model's velocities are 0 to <n>.`

@@ -183,7 +183,9 @@ needs shorter steps. *(Simple contact.)*
 **An event was missed.** Only the signs at the ends of each stretch of a step
 are compared, so a function that goes out and back within one step (a bounce
 shorter than the step) is not seen. Shorten the step, or give the action a
-rest condition. *(Events.)*
+rest condition. With Dormand-Prince the stretch is one of its own steps,
+which the error control may make longer than you expect where the motion is
+smooth. *(Events; the Dormand-Prince pair.)*
 
 **MBD-K052: too many events in one step.** An action that sends its function
 back across zero while both directions are watched makes an endless chain.
@@ -205,9 +207,30 @@ methods of Phase 4. *(The integrator interface.)*
 
 **A braked wheel's spin chatters about zero.** Coulomb friction changes sign
 when the spin does, and inside one step's stages that sign can flip back and
-forth. The drivetrain locks a wheel that its brake will stop within the next
-step; an element of your own with dry friction needs the same kind of
-discrete decision in its `end_step`. *(The integrator interface.)*
+forth. The drivetrain keeps each brake's direction through a step, locks a
+wheel that its brake will stop within the next step, and decides both at the
+step's end; an element of your own with dry friction needs the same kind of
+discrete decision in its `end_step`. *(The integrator interface; the
+Dormand-Prince pair.)*
+
+**Dormand-Prince stops with MBD-K055 or MBD-K056.** Its error control asked
+for steps too short (K055) or too many within one `step(dt)` (K056). The
+error estimate shrinks with the step only where the forces are smooth: a
+force that jumps with the state (a friction sign taken at each evaluation, a
+table read without interpolation) leaves an error of the order of the jump
+in every step that straddles it, and the step shrinks without end. Make the
+force continuous, or decide the jump at the end of a step in a state
+element. A stiff model gives the same symptom more slowly: the steps settle
+at the stability limit (about 3.3 divided by the largest decay rate), which
+may be far shorter than `dt`. `integrator_stats()` gives the steps,
+rejections and the last step length. *(The Dormand-Prince pair.)*
+
+**Dormand-Prince is slower than RK4 at the same output step.** Each of its
+steps costs six or seven evaluations against RK4's four, and its steps never
+pass the end of `step(dt)`: with output steps as short as RK4's, it takes at
+least one full step per call. It pays where the error control matters: a
+tolerance to meet, a model whose time scales change, long output steps.
+*(The Dormand-Prince pair.)*
 
 **A step allocates memory.** `test_alloc` counts every `operator new`; the CI
 job `kernel-no-malloc` also catches Eigen's own allocations. The usual cause
@@ -254,6 +277,20 @@ passes whatever the code does. Make every check able to fail; Phase 1's
 invariant tests failed on the old code exactly where its defects were.
 *(Phase 2: constraints; Phase 1.)*
 
+**A check of published coefficients fails.** Check the reference first. A
+scratch calculation of the Dormand-Prince extension reported first order
+because its "exact" value was wrong (PowerShell built a complex number from
+`New-Object Complex(0, $x)` in command mode); the endpoint, computed in the
+same script and right to four digits, showed the stages were not at fault.
+*(The Dormand-Prince pair.)*
+
+**An integrator test that only looks at the order.** A ratio near 2^p shows
+the order but not that the method is the one intended. For a linear test
+problem every Runge-Kutta step multiplies the state by its stability
+polynomial, known from the coefficients; compare the program's state with
+it to rounding, as `tests/kernel/test_kernel_integrators.cpp` does.
+*(The Dormand-Prince pair.)*
+
 ## Checking a new joint, constraint or force
 
 Before building on it (working rule 2):
@@ -292,3 +329,4 @@ Before building on it (working rule 2):
 | Phase 3: events | Missed out-and-back crossings, exact zeros (Simulations, Numerical traps); endless chains (Simulations) |
 | Debugging aids | Neutral configuration in `describe()` (Models); conflicting drivers in a trace (Models); slow machine (Builds) |
 | Phase 4: the integrator interface | Braking result now step-independent; stiffness at standstill; chattering dry friction (Simulations); a test checking a decision against out-of-date state (fixed in the test) |
+| Phase 4: the Dormand-Prince pair | A sign flip that would shrink the steps without end (Simulations: K055 and K056; chattering friction); cost at short output steps (Simulations); a wrong reference in a scratch check; testing more than the order (Numerical traps) |

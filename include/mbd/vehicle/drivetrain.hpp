@@ -15,11 +15,14 @@
 // every tyre computes its slip from it, so brake and drive torques reach the
 // road on all four corners.
 //
-// The brake is dry friction. On a turning wheel it opposes the rotation; a
-// wheel that comes to rest within a step while the brake can hold it (the
-// other torques below the brake torque) is locked at zero, and released when
-// they exceed it or the pedal is let go. Locking and gear shifts are decided
-// at the end of each step (end_step).
+// The brake is dry friction. On a turning wheel it opposes the rotation, in
+// the direction the wheel turned at the start of the step, kept through the
+// step so that the rates stay smooth within it (task 4.2: an error-controlled
+// step would otherwise shrink without end where the sign flips); a wheel that
+// comes to rest within a step while the brake can hold it (the other torques
+// below the brake torque) is locked at zero, and released when they exceed
+// it or the pedal is let go. Locking, the brake's direction and gear shifts
+// are decided at the end of each step (end_step).
 //
 // At low speed the tyre's slip stiffness makes the spin equation stiff:
 // d(Fx R)/d(omega) over I reaches about 2700 per second on an undriven 40 kg
@@ -171,6 +174,9 @@ private:
     TireSet tires_{{nullptr, nullptr, nullptr, nullptr}};
     std::array<Real, 4> omega_last_step_{{0.0, 0.0, 0.0, 0.0}};
     Real last_step_time_{0.0};
+    /// The sign the brake torque opposes during the current step (0 for a
+    /// locked wheel), set at the end of the step before.
+    std::array<Real, 4> brake_direction_{{0.0, 0.0, 0.0, 0.0}};
 };
 
 } // namespace mbd

@@ -338,6 +338,31 @@ force that depends on them is as accurate as the integrator. The drivetrain is
 one: its wheel spins are integrated states, its brakes lock a wheel at rest as
 a discrete decision at the end of a step, and it shifts gear there.
 
+**Integrators** (`Simulator::method`). `RK4` (fourth order, the default) and
+`SemiImplicitEuler` (first order, symplectic) take one step per `step(dt)`.
+`DormandPrince` (task 4.2, decision D31) is the Dormand-Prince 5(4) pair: a
+fifth-order step with an embedded fourth-order solution whose difference
+estimates the error, and a fourth-order continuous extension. Within each
+`step(dt)` it takes steps of its own: each step's error estimate, weighed
+entry by entry over q, v and x by `absolute_tolerance + relative_tolerance
+|entry|` (`Simulator::step_control`, 1e-6 both by default), must have a root
+mean square of at most 1, or the step is taken again, shorter; the next
+length aims at about 0.6 (safety factor 0.9 on the fifth root, growth at most
+fivefold, none after a rejection). Steps end exactly at t + dt and the
+length reached carries over to the next call, so the state after each call
+is the integrator's own and inputs changed between calls apply from there.
+Every step is projected onto the constraints, and events are watched at the
+end of each and located on the continuous extension, which costs kinematics
+only. `interpolate(t, q, v, x)` evaluates the extension within the last step;
+`integrator_stats()` counts steps, rejections and evaluations for every
+method. With `step_control.adaptive` off it takes one step per call, with no
+error control, for measuring orders. The tolerances are local: on an
+undamped oscillator the global error over a span T came out within 1 % of
+0.287 T tol, the value derived from the method's coefficients
+(`tests/kernel/test_kernel_integrators.cpp`). On the vehicles at output steps
+of 1 ms it takes one step per call, seven evaluations against RK4's four.
+Codes MBD-K054 to K057.
+
 **Outputs** (task 3.3, `kernel/outputs.hpp`). `compute_loads(sim)` evaluates
 the accelerations at the simulator's state and returns them with the
 multipliers, each constraint's wrench on each body, and each joint's reaction.
@@ -495,7 +520,9 @@ and allocate nothing per step. Two limits: only the signs at the ends of each
 stretch are compared, so a function that goes out and back within one step
 is not seen; and a chain of events that never ends (an action that sends its
 function back across zero while both directions are watched) is cut after
-`max_events_per_step` with a warning (MBD-K052).
+`max_events_per_step` with a warning (MBD-K052). With Dormand-Prince the
+signs are compared at the ends of each of its own steps, and the crossing is
+found on the step's continuous extension instead of by integrating again.
 
 ## Checks
 

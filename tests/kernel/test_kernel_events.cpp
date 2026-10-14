@@ -88,6 +88,42 @@ TEST_CASE("Events: a bouncing ball's impact times match the closed form", "[kern
     CHECK(std::abs(sim.time - 3.0) < 1e-12);
 }
 
+TEST_CASE("Events: with Dormand-Prince the impacts are found on the interpolant, at the exact times",
+          "[kernel][events][integrators]")
+{
+    // The same bouncing ball. Dormand-Prince watches the events at the ends
+    // of its own steps and finds each crossing on the step's continuous
+    // extension, which is exact for a motion quadratic in time (it is of
+    // fourth order), as the step itself is: the times are exact to within the
+    // event tolerance, as with RK4, without integrating again.
+    const Real h = 1.0, e = 0.8;
+    System sys = falling_ball();
+    Simulator sim(sys);
+    sim.method = Integrator::DormandPrince;
+    sim.q(0) = h;
+    std::vector<Real> impacts;
+    Event ground = level_crossing("ground", 0.0);
+    ground.action = [&](Simulator& s) {
+        impacts.push_back(s.time);
+        s.v(0) = -e * s.v(0);
+    };
+    sim.events.push_back(ground);
+    sim.run(3.0, 0.01);
+
+    const Real v1 = std::sqrt(2.0 * g_accel * h);
+    std::vector<Real> expected{std::sqrt(2.0 * h / g_accel)};
+    for (Real speed = e * v1; expected.back() + 2.0 * speed / g_accel < 3.0; speed *= e) {
+        expected.push_back(expected.back() + 2.0 * speed / g_accel);
+    }
+    REQUIRE(impacts.size() == expected.size());
+    Real worst = 0.0;
+    for (std::size_t k = 0; k < impacts.size(); ++k) worst = std::max(worst, std::abs(impacts[k] - expected[k]));
+    INFO("worst impact time error " << worst << " s; " << sim.integrator_stats().evaluations << " evaluations");
+    CHECK(worst < 1e-9);
+    CHECK(sim.event_log().size() == expected.size());
+    CHECK(std::abs(sim.time - 3.0) < 1e-12);
+}
+
 TEST_CASE("Events: several in one step are handled in order, and the step keeps its length",
           "[kernel][events]")
 {

@@ -1,5 +1,6 @@
 #include "mbd/kernel/simulator.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <string>
@@ -11,6 +12,27 @@
 #include "checks.hpp"
 
 namespace mbd::kernel {
+
+namespace {
+
+/// Whether a function went from g0 to g1 across zero in the watched
+/// direction (-1 falling, +1 rising, 0 either).
+bool crossed(Real g0, Real g1, int direction)
+{
+    const bool rising = g0 < 0.0 && g1 >= 0.0;
+    const bool falling = g0 > 0.0 && g1 <= 0.0;
+    return (rising && direction >= 0) || (falling && direction <= 0);
+}
+
+void report_event_chain(int fired, Real time)
+{
+    report_warning("MBD-K052: " + std::to_string(fired) + " events in one step at t = " + std::to_string(time)
+                   + " s; the rest of the step ignores events. An action that sends its function back across "
+                     "zero makes a chain that never ends unless only one direction is watched. Further chains "
+                     "are not reported.");
+}
+
+} // namespace
 
 Simulator::Simulator(System& sys)
     : system(sys)
@@ -54,16 +76,24 @@ Simulator::Simulator(System& sys)
     q_stage_ = q;
     v0_ = v;
     v_stage_ = v;
-    for (int k = 0; k < 4; ++k) {
+    for (int k = 0; k < 7; ++k) {
         kq_[k] = VecX::Zero(model.nq);
         kv_[k] = VecX::Zero(model.nv);
         kx_[k] = VecX::Zero(0);
+    }
+    error_q_ = VecX::Zero(model.nq);
+    error_v_ = VecX::Zero(model.nv);
+    for (int k = 0; k < 5; ++k) {
+        dense_q_[k] = VecX::Zero(model.nq);
+        dense_v_[k] = VecX::Zero(model.nv);
     }
     x = VecX::Zero(0);
     x_dot_ = x;
     x0_ = x;
     x_stage_ = x;
     event_x0_ = x;
+    error_x_ = x;
+    for (auto& d : dense_x_) d = x;
     states_.resize(static_cast<std::size_t>(model.nbodies()));
     forces_.resize(static_cast<std::size_t>(model.nbodies()));
     refresh();
@@ -88,7 +118,10 @@ void Simulator::attach(StateElement& element)
     x0_ = x;
     x_stage_ = x;
     event_x0_ = x;
-    for (int k = 0; k < 4; ++k) kx_[k] = VecX::Zero(total);
+    error_x_ = x;
+    for (auto& k : kx_) k = VecX::Zero(total);
+    for (auto& d : dense_x_) d = x;
+    dense_h_ = 0.0;   // the last step's continuous extension has no x of this size
 }
 
 void Simulator::refresh()
@@ -155,6 +188,12 @@ const VecX& Simulator::acceleration(const VecX& q_at, const VecX& v_at, const Ve
     return v_dot;
 }
 
+const VecX& Simulator::evaluate(const VecX& q_at, const VecX& v_at, const VecX& x_at, Real t)
+{
+    ++stats_.evaluations;
+    return acceleration(q_at, v_at, x_at, t);
+}
+
 void Simulator::step_rk4(Real dt)
 {
     const Model& model = system.model;
@@ -172,7 +211,7 @@ void Simulator::step_rk4(Real dt)
             v_stage_ = v0_ + stage_dt[k] * kv_[k - 1];
             x_stage_ = x0_ + stage_dt[k] * kx_[k - 1];
         }
-        kv_[k] = acceleration(q_stage_, v_stage_, x_stage_, time + stage_dt[k]);
+        kv_[k] = evaluate(q_stage_, v_stage_, x_stage_, time + stage_dt[k]);
         kx_[k] = x_dot_;
         q_dot(model, q_stage_, v_stage_, kq_[k]);
     }
@@ -187,9 +226,293 @@ void Simulator::step_semi_implicit_euler(Real dt)
 {
     // The states x advance by explicit Euler, from the rates at the step's
     // start.
-    v += dt * acceleration(q, v, x, time);
+    v += dt * evaluate(q, v, x, time);
     x += dt * x_dot_;
     integrate(system.model, q, v, dt, q);
+}
+
+namespace {
+
+// The Dormand-Prince 5(4) pair (Dormand and Prince 1980; Hairer, Norsett and
+// Wanner, Solving Ordinary Differential Equations I, section II.5): nodes,
+// stage coefficients, the weights of the error estimate (the fifth-order
+// solution less the embedded fourth-order one) and of the continuous
+// extension (Hairer's DOPRI5, after Shampine 1986). The seventh stage is
+// evaluated at the new state, so it is also the next step's first.
+constexpr Real dp_c[7] = {0.0, 1.0 / 5.0, 3.0 / 10.0, 4.0 / 5.0, 8.0 / 9.0, 1.0, 1.0};
+constexpr Real dp_a[7][6] = {
+    {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+    {1.0 / 5.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+    {3.0 / 40.0, 9.0 / 40.0, 0.0, 0.0, 0.0, 0.0},
+    {44.0 / 45.0, -56.0 / 15.0, 32.0 / 9.0, 0.0, 0.0, 0.0},
+    {19372.0 / 6561.0, -25360.0 / 2187.0, 64448.0 / 6561.0, -212.0 / 729.0, 0.0, 0.0},
+    {9017.0 / 3168.0, -355.0 / 33.0, 46732.0 / 5247.0, 49.0 / 176.0, -5103.0 / 18656.0, 0.0},
+    {35.0 / 384.0, 0.0, 500.0 / 1113.0, 125.0 / 192.0, -2187.0 / 6784.0, 11.0 / 84.0}};
+constexpr Real dp_e[7] = {71.0 / 57600.0, 0.0, -71.0 / 16695.0, 71.0 / 1920.0,
+                          -17253.0 / 339200.0, 22.0 / 525.0, -1.0 / 40.0};
+constexpr Real dp_d[7] = {-12715105075.0 / 11282082432.0, 0.0, 87487479700.0 / 32700410799.0,
+                          -10690763975.0 / 1880347072.0, 701980252875.0 / 199316789632.0,
+                          -1453857185.0 / 822651844.0, 69997945.0 / 29380423.0};
+
+/// Stage i's state: y0 + h sum_j a_ij k_j.
+void dp_stage(VecX& out, const VecX& y0, const VecX (&k)[7], int i, Real h)
+{
+    out = y0;
+    for (int j = 0; j < i; ++j) {
+        if (dp_a[i][j] != 0.0) out += (h * dp_a[i][j]) * k[j];
+    }
+}
+
+/// The error estimate h sum_j e_j k_j into err; returns the sum of its
+/// squared entries weighed by atol + rtol max(|y0|, |y1|).
+Real dp_error(VecX& err, const VecX& y0, const VecX& y1, const VecX (&k)[7], Real h, Real atol, Real rtol)
+{
+    err.setZero();
+    for (int j = 0; j < 7; ++j) {
+        if (dp_e[j] != 0.0) err += (h * dp_e[j]) * k[j];
+    }
+    return (err.array() / (atol + rtol * y0.array().abs().max(y1.array().abs()))).square().sum();
+}
+
+/// The continuous extension's coefficients from y0, y1, the stages and h.
+void dp_dense(VecX (&c)[5], const VecX& y0, const VecX& y1, const VecX (&k)[7], Real h)
+{
+    c[0] = y0;
+    c[1] = y1 - y0;
+    c[2] = h * k[0] - c[1];
+    c[3] = c[1] - h * k[6] - c[2];
+    c[4].setZero();
+    for (int j = 0; j < 7; ++j) {
+        if (dp_d[j] != 0.0) c[4] += (h * dp_d[j]) * k[j];
+    }
+}
+
+/// The continuous extension at s in [0, 1] of the step.
+void dp_interpolate(VecX& out, const VecX (&c)[5], Real s)
+{
+    const Real s1 = 1.0 - s;
+    out = c[0] + s * (c[1] + s1 * (c[2] + s * (c[3] + s1 * c[4])));
+}
+
+} // namespace
+
+void Simulator::step_dormand_prince(Real dt)
+{
+    const Model& model = system.model;
+    const StepControl& sc = step_control;
+    MBD_THROW_IF(!(sc.absolute_tolerance > 0.0) || !(sc.relative_tolerance >= 0.0) || !(sc.min_step >= 0.0)
+                     || sc.max_steps < 1,
+                 "MBD-K054: kernel::Simulator: step_control needs absolute_tolerance > 0, relative_tolerance >= 0, "
+                 "min_step >= 0 and max_steps >= 1; it has "
+                     + std::to_string(sc.absolute_tolerance) + ", " + std::to_string(sc.relative_tolerance) + ", "
+                     + std::to_string(sc.min_step) + " and " + std::to_string(sc.max_steps) + ".");
+    const Real t_end = time + dt;
+    const Index n = q.size() + v.size() + x.size();
+    // The seventh stage is the derivative at the new state, and so the next
+    // step's first, unless the state is changed after it: by the
+    // normalization of quaternions, the projection, or an event. Across calls
+    // it is never reused: tau, the inputs read by the state elements and
+    // their end_step may all change between them.
+    const bool reuse_last_stage = model.nq == model.nv && !(project_constraints && solver_.size() > 0);
+    bool first_stage_known = false;
+    bool after_rejection = false;
+    Real h = sc.adaptive && next_step_ > 0.0 ? std::min(next_step_, dt) : dt;
+
+    const std::size_t n_events = events.size();
+    int fired = 0;
+    if (n_events > 0) {
+        event_g0_.resize(n_events);
+        event_g1_.resize(n_events);
+        refresh();   // the event functions read the kinematics
+        for (std::size_t i = 0; i < n_events; ++i) event_g0_[i] = events[i].function(*this);
+    }
+
+    int tried = 0;
+    while (time < t_end) {
+        MBD_THROW_IF(++tried > sc.max_steps,
+                     "MBD-K056: kernel::Simulator: Dormand-Prince took " + std::to_string(sc.max_steps)
+                         + " steps within one step of " + std::to_string(dt) + " s and reached only t = "
+                         + std::to_string(time) + " s (step_control.max_steps). The model is stiff or "
+                           "discontinuous here, or the tolerances are too tight for it.");
+        // A step that would leave less than a hundredth of itself to the end
+        // takes the rest.
+        const Real remaining = t_end - time;
+        const bool last = 1.01 * h >= remaining;
+        const Real step = last ? remaining : h;
+
+        if (!first_stage_known) {
+            kv_[0] = evaluate(q, v, x, time);
+            kx_[0] = x_dot_;
+            q_dot(model, q, v, kq_[0]);
+        }
+        for (int i = 1; i < 7; ++i) {
+            dp_stage(q_stage_, q, kq_, i, step);
+            dp_stage(v_stage_, v, kv_, i, step);
+            dp_stage(x_stage_, x, kx_, i, step);
+            kv_[i] = evaluate(q_stage_, v_stage_, x_stage_, time + dp_c[i] * step);
+            kx_[i] = x_dot_;
+            q_dot(model, q_stage_, v_stage_, kq_[i]);
+        }
+        // The stage states now hold the fifth-order solution, where the
+        // seventh stage was evaluated.
+        const Real atol = sc.absolute_tolerance, rtol = sc.relative_tolerance;
+        const Real sum = dp_error(error_q_, q, q_stage_, kq_, step, atol, rtol)
+                         + dp_error(error_v_, v, v_stage_, kv_, step, atol, rtol)
+                         + dp_error(error_x_, x, x_stage_, kx_, step, atol, rtol);
+        const Real error = n > 0 ? std::sqrt(sum / static_cast<Real>(n)) : 0.0;
+
+        if (sc.adaptive && !(error <= 1.0)) {
+            // Rejected: shorter, from the same state, whose derivative stays.
+            ++stats_.rejected;
+            h = step * (std::isfinite(error) ? std::max(0.2, 0.9 * std::pow(error, -0.2)) : 0.2);
+            MBD_THROW_IF(h < sc.min_step || time + h == time,
+                         "MBD-K055: kernel::Simulator: Dormand-Prince needs a step of " + std::to_string(h)
+                             + " s at t = " + std::to_string(time) + " s, below step_control.min_step ("
+                             + std::to_string(sc.min_step) + " s); the error measure of the last try was "
+                             + std::to_string(error) + ". The model is stiff or discontinuous here.");
+            first_stage_known = true;
+            after_rejection = true;
+            continue;
+        }
+
+        // Accepted.
+        dp_dense(dense_q_, q, q_stage_, kq_, step);
+        dp_dense(dense_v_, v, v_stage_, kv_, step);
+        dp_dense(dense_x_, x, x_stage_, kx_, step);
+        dense_t0_ = time;
+        dense_h_ = step;
+        q.swap(q_stage_);
+        v.swap(v_stage_);
+        x.swap(x_stage_);
+        normalize(model, q);
+        time = last ? t_end : time + step;
+        ++stats_.steps;
+        stats_.step_size = step;
+        stats_.error = error;
+        if (sc.adaptive) {
+            const Real grow = after_rejection ? 1.0 : 5.0;
+            const Real proposal = step * (error > 0.0 ? std::min(grow, std::max(0.2, 0.9 * std::pow(error, -0.2)))
+                                                      : grow);
+            // A last step cut short to the end says little about the length
+            // the next call can take.
+            h = last && step < h ? std::max(h, proposal) : proposal;
+        }
+        after_rejection = false;
+        project_step();
+        kq_[0].swap(kq_[6]);
+        kv_[0].swap(kv_[6]);
+        kx_[0].swap(kx_[6]);
+        first_stage_known = reuse_last_stage;
+
+        if (n_events > 0 && fired < max_events_per_step) {
+            refresh();
+            if (dormand_prince_event()) {
+                first_stage_known = false;
+                if (++fired >= max_events_per_step && !event_chain_reported_) {
+                    event_chain_reported_ = true;
+                    report_event_chain(fired, time);
+                }
+            }
+        }
+    }
+    next_step_ = h;
+}
+
+bool Simulator::dormand_prince_event()
+{
+    const std::size_t n = events.size();
+    bool any = false;
+    for (std::size_t i = 0; i < n; ++i) {
+        event_g1_[i] = events[i].function(*this);
+        any = any || crossed(event_g0_[i], event_g1_[i], events[i].direction);
+    }
+    if (!any) {
+        event_g0_.swap(event_g1_);
+        return false;
+    }
+
+    // The earliest crossing on the interpolant, by the Illinois method as in
+    // locate_event. The search moves the state; the step's end is kept.
+    event_q0_ = q;
+    event_v0_ = v;
+    event_x0_ = x;
+    const Real t1 = time;
+    std::size_t first = n;
+    Real first_length = dense_h_;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!crossed(event_g0_[i], event_g1_[i], events[i].direction)) continue;
+        const Real g0 = event_g0_[i];
+        auto g_at = [&](Real length) {
+            interpolate(dense_t0_ + length, q, v, x);
+            time = dense_t0_ + length;
+            refresh();
+            return events[i].function(*this);
+        };
+        auto before = [g0](Real g) { return g0 > 0.0 ? g > 0.0 : g < 0.0; };
+        Real left = 0.0, g_left = g0, right = dense_h_, g_right = g_at(dense_h_);
+        // The interpolant ends before the projection: a crossing that only
+        // the projection made is at the step's end.
+        if (!before(g_right)) {
+            int side = 0;
+            for (int iteration = 0; iteration < 200 && right - left > event_tolerance; ++iteration) {
+                Real c = (left * g_right - right * g_left) / (g_right - g_left);
+                if (!(c > left && c < right)) c = 0.5 * (left + right);
+                const Real g = g_at(c);
+                if (before(g)) {
+                    left = c;
+                    g_left = g;
+                    if (side == -1) g_right *= 0.5;
+                    side = -1;
+                } else {
+                    right = c;
+                    g_right = g;
+                    if (side == +1) g_left *= 0.5;
+                    side = +1;
+                }
+            }
+        }
+        if (first == n || right < first_length) {
+            first = i;
+            first_length = right;
+        }
+    }
+
+    if (first_length >= dense_h_) {
+        // At the step's end: the state there, as projected.
+        q = event_q0_;
+        v = event_v0_;
+        x = event_x0_;
+        time = t1;
+    } else {
+        interpolate(dense_t0_ + first_length, q, v, x);
+        time = dense_t0_ + first_length;
+        project_step();
+    }
+    refresh();
+    event_log_.push_back({first, time});
+    if (events[first].action) {
+        events[first].action(*this);
+        refresh();
+    }
+    for (std::size_t i = 0; i < n; ++i) event_g0_[i] = events[i].function(*this);
+    return true;
+}
+
+void Simulator::interpolate(Real t, VecX& q_out, VecX& v_out, VecX& x_out) const
+{
+    const Real slack = 1e-12 * std::max(Real(1.0), std::abs(dense_t0_ + dense_h_));
+    MBD_THROW_IF(!(dense_h_ > 0.0) || !(t >= dense_t0_ - slack && t <= dense_t0_ + dense_h_ + slack),
+                 "MBD-K057: kernel::Simulator::interpolate: t = " + std::to_string(t)
+                     + " s is outside the last Dormand-Prince step"
+                     + (dense_h_ > 0.0 ? " (" + std::to_string(dense_t0_) + " to "
+                                             + std::to_string(dense_t0_ + dense_h_) + " s)"
+                                       : std::string(" (none taken yet)"))
+                     + ".");
+    const Real s = std::clamp((t - dense_t0_) / dense_h_, Real(0.0), Real(1.0));
+    dp_interpolate(q_out, dense_q_, s);
+    dp_interpolate(v_out, dense_v_, s);
+    dp_interpolate(x_out, dense_x_, s);
+    normalize(system.model, q_out);
 }
 
 void Simulator::step(Real dt)
@@ -198,7 +521,8 @@ void Simulator::step(Real dt)
     checks::v("kernel::Simulator::step", system.model, v);
     checks::v("kernel::Simulator::step", system.model, tau, "tau");
     const std::size_t events_before = event_log_.size();
-    if (events.empty()) advance(dt);
+    // Dormand-Prince watches events within its own steps.
+    if (events.empty() || method == Integrator::DormandPrince) advance(dt);
     else step_with_events(dt);
     for (std::size_t i = 0; i < state_elements_.size(); ++i) {
         state_elements_[i]->end_step(*this, time, x.segment(state_offsets_[i], state_elements_[i]->size()));
@@ -238,19 +562,6 @@ void Simulator::write_trace(const std::string& path) const
     out.flush();
     MBD_THROW_IF(!out, "MBD-K053: Simulator::write_trace: writing \"" + path + "\" failed");
 }
-
-namespace {
-
-/// Whether a function went from g0 to g1 across zero in the watched
-/// direction (-1 falling, +1 rising, 0 either).
-bool crossed(Real g0, Real g1, int direction)
-{
-    const bool rising = g0 < 0.0 && g1 >= 0.0;
-    const bool falling = g0 > 0.0 && g1 <= 0.0;
-    return (rising && direction >= 0) || (falling && direction <= 0);
-}
-
-} // namespace
 
 void Simulator::step_with_events(Real dt)
 {
@@ -296,10 +607,7 @@ void Simulator::step_with_events(Real dt)
         if (++fired >= max_events_per_step) {
             if (!event_chain_reported_) {
                 event_chain_reported_ = true;
-                report_warning("MBD-K052: " + std::to_string(fired) + " events in one step at t = "
-                               + std::to_string(time) + " s; the rest of the step ignores events. An action "
-                                 "that sends its function back across zero makes a chain that never ends "
-                                 "unless only one direction is watched. Further chains are not reported.");
+                report_event_chain(fired, time);
             }
             if (remaining > 0.0) advance(remaining);
             break;
@@ -338,27 +646,38 @@ Real Simulator::locate_event(std::size_t i, Real t0, Real g0, Real length, Real 
     return right;
 }
 
+void Simulator::project_step()
+{
+    last_projection_ = ProjectionInfo{};
+    if (!project_constraints || solver_.size() == 0) return;
+    last_projection_ = solver_.project(data_, q, v, time, projection_tolerance);
+    if (!last_projection_.converged) {
+        ++projection_failures_;
+        if (!projection_failure_reported_) {
+            projection_failure_reported_ = true;
+            report_warning("MBD-K051: Constraint projection did not converge at t = " + std::to_string(time)
+                           + " s: residual " + std::to_string(last_projection_.position_residual) + " after "
+                           + std::to_string(last_projection_.iterations)
+                           + " iterations. Further failures are counted, not reported.");
+        }
+    }
+}
+
 void Simulator::advance(Real dt)
 {
     switch (method) {
-        case Integrator::RK4:               step_rk4(dt); break;
-        case Integrator::SemiImplicitEuler: step_semi_implicit_euler(dt); break;
-    }
-    time += dt;
-
-    last_projection_ = ProjectionInfo{};
-    if (project_constraints && solver_.size() > 0) {
-        last_projection_ = solver_.project(data_, q, v, time, projection_tolerance);
-        if (!last_projection_.converged) {
-            ++projection_failures_;
-            if (!projection_failure_reported_) {
-                projection_failure_reported_ = true;
-                report_warning("MBD-K051: Constraint projection did not converge at t = " + std::to_string(time)
-                               + " s: residual " + std::to_string(last_projection_.position_residual)
-                               + " after " + std::to_string(last_projection_.iterations)
-                               + " iterations. Further failures are counted, not reported.");
-            }
-        }
+        case Integrator::RK4:
+        case Integrator::SemiImplicitEuler:
+            if (method == Integrator::RK4) step_rk4(dt);
+            else step_semi_implicit_euler(dt);
+            time += dt;
+            ++stats_.steps;
+            stats_.step_size = dt;
+            project_step();
+            break;
+        case Integrator::DormandPrince:
+            step_dormand_prince(dt);   // projects after each of its steps
+            break;
     }
     refresh();
 }

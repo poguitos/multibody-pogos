@@ -1,8 +1,10 @@
 #pragma once
 
-// Time integration on the multibody kernel (plan tasks 2.7, 4.1). The state
-// is (q, v, x): coordinates, velocities, and the first-order states of the
-// attached StateElements (state_element.hpp), integrated together.
+// Time integration on the multibody kernel (plan tasks 2.7, 4.1, 4.2). The
+// state is (q, v, x): coordinates, velocities, and the first-order states of
+// the attached StateElements (state_element.hpp), integrated together, by
+// RK4, semi-implicit Euler, or the Dormand-Prince pair with step control and
+// a continuous extension.
 //
 // Each evaluation at (q, v, x, t):
 //   1. kinematics, and the world states of the bodies;
@@ -14,7 +16,10 @@
 //   5. the constrained forward dynamics (ConstraintSolver);
 //   6. each state element's rates.
 // After each step the state is projected onto the constraints, and each state
-// element's end_step makes its discrete changes.
+// element's end_step makes its discrete changes. Dormand-Prince takes as many
+// steps of its own within step(dt) as its error control asks for, the last
+// one ending at t + dt exactly, and projects after each; end_step runs once,
+// after the last.
 
 #include <cstddef>
 #include <functional>
@@ -45,6 +50,47 @@ struct System {
 enum class Integrator {
     RK4,                ///< Classical fourth order
     SemiImplicitEuler,  ///< First order and symplectic: velocities, then positions
+    /// Fifth order with an embedded fourth-order error estimate, step
+    /// control (StepControl) and a fourth-order continuous extension
+    /// (Simulator::interpolate); Dormand and Prince 1980 (task 4.2).
+    DormandPrince,
+};
+
+/// How Integrator::DormandPrince chooses its steps (task 4.2).
+///
+/// Each step's error estimate is weighed entry by entry, over q, v and x, by
+/// absolute_tolerance + relative_tolerance * |entry|, and the root mean
+/// square of the weighted entries must not exceed 1; a step that exceeds it
+/// is taken again, shorter. After each step the next length is chosen to
+/// bring that measure to about 0.6 (a safety factor of 0.9 on the fifth root),
+/// growing at most fivefold, and not at all after a rejected step. Steps
+/// never pass the end of step(dt), and the length reached carries over to the
+/// next call. The tolerances are local: the global error is roughly
+/// proportional to them, by a factor that depends on the model and the span.
+struct StepControl {
+    /// Off: one step of the whole step(dt) (or of what remains of it after an
+    /// event), with no error control; for measuring convergence orders.
+    bool adaptive{true};
+    Real relative_tolerance{1e-6};
+    /// The entries mix units (m, rad, m/s, rad/s, the states'); one value
+    /// for all.
+    Real absolute_tolerance{1e-6};
+    /// A step that would have to be shorter than this throws MBD-K055 [s].
+    Real min_step{1e-12};
+    /// Steps tried, accepted or rejected, within one call to step(); more
+    /// throw MBD-K056.
+    int max_steps{100000};
+};
+
+/// What the integrator has done since the simulator was built.
+struct IntegratorStats {
+    long long steps{0};         ///< Steps taken: for DormandPrince its own, accepted
+    long long rejected{0};      ///< Steps rejected by the error control
+    long long evaluations{0};   ///< Evaluations of the accelerations by the integrator
+    Real step_size{0.0};        ///< Length of the last step taken [s]
+    /// DormandPrince: the last accepted step's error measure (1 = at the
+    /// tolerance; see StepControl).
+    Real error{0.0};
 };
 
 class Simulator;
@@ -60,6 +106,11 @@ class Simulator;
 /// stretch of a step are compared, so a function that goes out and back
 /// within one step (a bounce shorter than the step) is not seen: steps must
 /// be short against the time the function spends on one side.
+///
+/// With Integrator::DormandPrince the signs are compared at the ends of each
+/// of its own steps, and a crossing is found on the step's continuous
+/// extension instead of by integrating again: the search costs kinematics
+/// only, no evaluation of the forces.
 struct Event {
     std::string name;
     /// Of the simulator's state (q, v, time, and its kinematics: states()).
@@ -119,6 +170,8 @@ public:
 
     // --- Settings ---------------------------------------------------------------
     Integrator method{Integrator::RK4};
+    /// For Integrator::DormandPrince.
+    StepControl step_control;
     bool project_constraints{true};     ///< Project q and v after each step
     Real projection_tolerance{1e-10};
     VecX tau;                           ///< Generalized forces for the next step; cleared after it
@@ -172,6 +225,15 @@ public:
     /// The state elements' rates at the last evaluation.
     const VecX& state_rates() const { return x_dot_; }
 
+    /// What the integrator has done so far.
+    const IntegratorStats& integrator_stats() const { return stats_; }
+
+    /// Integrator::DormandPrince: the state at time t within its last step,
+    /// from the step's continuous extension (fourth order; it passes through
+    /// the state before the projection). q_out is normalized. Throws MBD-K057
+    /// for a t outside the last step, or before Dormand-Prince has taken one.
+    void interpolate(Real t, VecX& q_out, VecX& v_out, VecX& x_out) const;
+
     /// Kinematics at the current state (after initialize, step or refresh).
     const Data& data() const { return data_; }
     /// World states of the bodies at the current state.
@@ -185,8 +247,19 @@ public:
     int projection_failures() const { return projection_failures_; }
 
 private:
+    /// acceleration(), counted in the integrator's statistics.
+    const VecX& evaluate(const VecX& q_at, const VecX& v_at, const VecX& x_at, Real t);
     void step_rk4(Real dt);
     void step_semi_implicit_euler(Real dt);
+    /// Dormand-Prince's own steps from time to time + dt, each projected,
+    /// with events watched after each.
+    void step_dormand_prince(Real dt);
+    /// After an accepted Dormand-Prince step, with the kinematics at its end:
+    /// the earliest event that crossed within it, found on the interpolant;
+    /// the state is moved there and the action runs. Returns whether one did.
+    bool dormand_prince_event();
+    /// Project the state onto the constraints after a step.
+    void project_step();
     /// One step of the integrator, the projection, time and kinematics.
     void advance(Real dt);
     /// A step of dt that stops at each event on the way.
@@ -202,16 +275,23 @@ private:
     std::vector<RigidBodyForces> forces_;
     VecX tau_total_, tau_forces_;
     VecX q0_, v0_, q_stage_, v_stage_;
-    VecX kq_[4], kv_[4];
+    VecX kq_[7], kv_[7];                  // stage derivatives: RK4 uses four, Dormand-Prince seven
     std::vector<StateElement*> state_elements_;
     std::vector<int> state_offsets_;
-    VecX x_dot_, x0_, x_stage_, kx_[4];
+    VecX x_dot_, x0_, x_stage_, kx_[7];
+    IntegratorStats stats_;
+    // Dormand-Prince: error estimates, the last step's continuous extension
+    // (five coefficient vectors each) and the step length carried over.
+    VecX error_q_, error_v_, error_x_;
+    VecX dense_q_[5], dense_v_[5], dense_x_[5];
+    Real dense_t0_{0.0}, dense_h_{0.0};
+    Real next_step_{0.0};
     ProjectionInfo last_projection_;
     int projection_failures_{0};
     bool projection_failure_reported_{false};
     bool redundancy_reported_{false};
     VecX event_q0_, event_v0_, event_x0_;
-    std::vector<Real> event_g0_;
+    std::vector<Real> event_g0_, event_g1_;
     std::vector<FiredEvent> event_log_;
     bool event_chain_reported_{false};
     std::vector<StepRecord> trace_;

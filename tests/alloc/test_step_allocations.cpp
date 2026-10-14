@@ -41,29 +41,39 @@ long allocations_in_steps(kernel::Simulator& sim, int steps)
 TEST_CASE("Stepping the double-wishbone sedan allocates no memory", "[alloc][vehicle]")
 {
     // Chassis, steering rack, four corners closed by constraints, springs,
-    // dampers, tyres and the drivetrain: everything a step does.
-    auto tmpl = VehicleTemplate::DefaultSedan();
-    tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
-    tmpl.rear_axle.suspension_type = SuspensionType::DoubleWishbone;
-    kernel::System sys;
-    auto vh = build_vehicle(sys, tmpl);
-    kernel::Simulator sim(sys);
-    set_vehicle_equilibrium(sim, vh);
-    sim.initialize();
-    Drivetrain dt(tmpl.drivetrain);
-    dt.initialize(sim, vh);
-    dt.connect(sim, vh);
-    dt.throttle = 0.3;
-    vh.set_steering(0.02);
-    sim.run(0.05, 1e-3);   // past the first steps, which may report warnings
+    // dampers, tyres and the drivetrain: everything a step does, with RK4 and
+    // with Dormand-Prince's error control.
+    for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::DormandPrince}) {
+        auto tmpl = VehicleTemplate::DefaultSedan();
+        tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
+        tmpl.rear_axle.suspension_type = SuspensionType::DoubleWishbone;
+        kernel::System sys;
+        auto vh = build_vehicle(sys, tmpl);
+        kernel::Simulator sim(sys);
+        sim.method = method;
+        set_vehicle_equilibrium(sim, vh);
+        sim.initialize();
+        Drivetrain dt(tmpl.drivetrain);
+        dt.initialize(sim, vh);
+        dt.connect(sim, vh);
+        dt.throttle = 0.3;
+        vh.set_steering(0.02);
+        sim.run(0.05, 1e-3);   // past the first steps, which may report warnings
 
-    CHECK(allocations_in_steps(sim, 100) == 0);
+        const kernel::IntegratorStats before = sim.integrator_stats();
+        CHECK(allocations_in_steps(sim, 100) == 0);
+        const kernel::IntegratorStats& after = sim.integrator_stats();
+        INFO("in 100 steps: " << after.steps - before.steps << " integrator steps, "
+             << after.rejected - before.rejected << " rejected, " << after.evaluations - before.evaluations
+             << " evaluations");
+        CHECK(after.steps - before.steps >= 100);
+    }
 }
 
 TEST_CASE("Stepping a constrained mechanism allocates no memory", "[alloc][kernel]")
 {
     // A planar four-bar closed in 3D (redundant equations) on a spring, with
-    // both integrators.
+    // each integrator.
     kernel::System sys;
     const auto revolute = std::make_shared<kernel::RevoluteJointModel>();
     auto link = [](Real mass, const Vec3& com) {
@@ -85,7 +95,8 @@ TEST_CASE("Stepping a constrained mechanism allocates no memory", "[alloc][kerne
     sys.force_elements.push_back(std::make_shared<LinearSpringDamper>(
         0, coupler, Vec3(1.0, 2.0, 0.0), Vec3(1.0, 0.0, 0.0), 50.0, 2.0, 0.5));
 
-    for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::SemiImplicitEuler}) {
+    for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::SemiImplicitEuler,
+                              kernel::Integrator::DormandPrince}) {
         kernel::Simulator sim(sys);
         sim.method = method;
         sim.v(0) = 1.0;

@@ -125,10 +125,12 @@ void Drivetrain::rates(const kernel::Simulator& /*sim*/, Real /*t*/, kernel::Con
             x_dot(c) = 0.0;
             continue;
         }
-        // The brake opposes the rotation; at rest exactly it has no
-        // direction, and end_step decides whether it holds the wheel.
-        const Real direction = omega[c] > 0.0 ? 1.0 : (omega[c] < 0.0 ? -1.0 : 0.0);
-        x_dot(c) = (free_torque(c) - direction * brake_torque_out[c]) / compute_effective_inertia(c);
+        // The brake opposes the rotation in the direction it had at the start
+        // of the step, kept for the whole step: if the spin crosses zero
+        // within it, end_step decides whether the brake holds the wheel. A
+        // sign taken at each evaluation would flip between the stages and
+        // make the rates discontinuous within a step.
+        x_dot(c) = (free_torque(c) - brake_direction_[c] * brake_torque_out[c]) / compute_effective_inertia(c);
     }
 }
 
@@ -142,9 +144,8 @@ void Drivetrain::end_step(const kernel::Simulator& /*sim*/, Real t, kernel::VecR
     // within the next step, is locked if the brake can hold it; a locked
     // wheel is released when the other torques exceed the brake. The torques
     // are those of the step's last evaluation. Locking a wheel the brake is
-    // about to stop matters: left free, the friction's sign flips inside the
-    // next step's stages and the spin chatters about zero, ending each step
-    // slightly positive, never passing zero at a step's end.
+    // about to stop saves the step in which the spin would pass zero and
+    // end, unlocked, slightly the other way.
     const Real dt = t - last_step_time_;
     last_step_time_ = t;
     for (int c = 0; c < 4; ++c) {
@@ -166,6 +167,10 @@ void Drivetrain::end_step(const kernel::Simulator& /*sim*/, Real t, kernel::VecR
                 x(c) = 0.0;
             }
         }
+        // The brake's direction for the next step: against the spin, or,
+        // from rest, against the torque that turns the wheel.
+        const Real turning = omega[c] != 0.0 ? omega[c] : T_free;
+        brake_direction_[c] = wheel_locked[c] ? 0.0 : (turning > 0.0 ? 1.0 : (turning < 0.0 ? -1.0 : 0.0));
     }
 
     // Gear: shift up or down by engine speed.
@@ -218,6 +223,9 @@ void Drivetrain::connect(kernel::Simulator& sim, const TireSet& tires)
     omega_last_step_ = wheel_omega;
     last_step_time_ = sim.time;
     wheel_locked.fill(false);
+    for (int c = 0; c < 4; ++c) {
+        brake_direction_[c] = wheel_omega[c] > 0.0 ? 1.0 : (wheel_omega[c] < 0.0 ? -1.0 : 0.0);
+    }
     sim.attach(*this);
 }
 

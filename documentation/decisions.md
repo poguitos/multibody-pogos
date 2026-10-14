@@ -536,3 +536,51 @@ and the journal entry of the work refers to them by number
   step, so a wheel stops to within a step.
 - **Record.** Journal: the integrator interface and state elements;
   `docs/kernel.md`, forces and simulation.
+
+## D31. Dormand-Prince within the fixed output step, with events on its interpolant
+
+- **Context.** Task 4.2 asks for an embedded pair (Dormand-Prince) with error
+  control and dense output; done when the measured convergence order matches
+  theory. The simulator is driven by `step(dt)` calls, between which users
+  change inputs (`tau`, the drivetrain's pedals), state elements make
+  discrete changes, and events act: the state at the end of each call must be
+  the integrator's own, not an interpolation.
+- **Decision.** `Integrator::DormandPrince` advances each `step(dt)` in steps
+  of its own, chosen by the standard controller (root-mean-square error
+  measure over q, v and x, weights `atol + rtol |y|`, safety 0.9 on the fifth
+  root, growth at most 5, none after a rejection), the last one cut to end at
+  t + dt exactly; the length reached carries over to the next call. Each step
+  is projected onto the constraints. The seventh stage is reused as the next
+  step's first only when nothing changed the state after it (no quaternions to
+  normalise, no projection, no event) and never across calls. Events are
+  checked at the end of each of its steps and located on the step's
+  continuous extension (fourth order, Hairer's DOPRI5 form), costing
+  kinematics but no evaluation of the forces; the state at the crossing is
+  the interpolated one, projected. `StepControl` holds the settings,
+  `IntegratorStats` counts steps, rejections and evaluations for every
+  method, `interpolate()` gives the extension within the last step. With
+  `adaptive` off it takes one step per call, for measuring orders. The
+  drivetrain's brake keeps the direction it had at the start of each step
+  through the step and decides it again at the end.
+- **Alternatives.** Running ahead of the output times and interpolating back
+  (as ODE codes with dense output usually do): fewer steps cut short, but the
+  inputs set between calls, the state elements' discrete changes and the
+  events' actions would all apply to a state the integrator has passed.
+  Locating events by integrating again, as RK4 does: correct, but each trial
+  costs a full step of seven evaluations, where the extension needs none.
+  Keeping the brake's sign at each evaluation: under error control, a spin
+  crossing zero flips it between the stages, the error estimate does not
+  shrink with the step, and the step falls to about 1e-9 s and below (the
+  sign is discontinuous in the state); a regularised brake was already
+  rejected in D30.
+- **Consequences.** Output steps much shorter than the steps the error
+  control would choose cut every step short: at 1 ms on the vehicles,
+  Dormand-Prince costs seven evaluations per output step against RK4's four,
+  and is chosen for its error control, not its speed. The tolerances mix
+  units (m, rad, m/s, quaternion entries), one value for all. A crossing that
+  only the projection makes is placed at the step's end. With the brake's
+  direction fixed per step, a wheel whose spin passes zero within a step
+  ends it turning slightly backwards unless the lock takes it, as before;
+  the lock decides at the step's end in both cases.
+- **Record.** Journal: the Dormand-Prince pair; data
+  `2026-10-14_dormand-prince.md`; `docs/kernel.md`, integrators.

@@ -115,6 +115,14 @@ to a validated engine.*
     chatter of dry friction inside RK4's stages, and the lock on a wheel
     about to stop; the braking result that became independent of the step.
     *J: the integrator interface and state elements. D30.*
+25. **Error control and dense output.** The Dormand-Prince pair; the
+    stability polynomial as an exact test (an oscillator whose numerical
+    solution is known to the last digit); tolerance proportionality and a
+    global-error constant derived from the coefficients; output steps against
+    integrator steps when inputs change between them; events on the
+    continuous extension; a discontinuity that error control cannot cross,
+    and the brake that keeps its direction through a step. *J: the
+    Dormand-Prince pair. D31.*
 
 ## Part VII onwards: one part per phase still to come
 
