@@ -45,20 +45,43 @@
 //   - with such a spring linking two masses, the slow motion keeps the
 //     method's second-order accuracy;
 //   - bad settings and a step that cannot be solved are refused.
+//
+// SDIRK4 (plan task 4.4), whose step on a linear system multiplies the state
+// by its stability function R(z) = 1 + z b^T (I - z A)^-1 1, computed here
+// from its coefficients (fourth order: e^z - R(z) = 8.45e-4 z^5 + ...; L-stable:
+// R(z) -> 0 as z -> infinity, like 9.3 / z):
+//
+//   - one step is R(ih), fixed steps converge at fourth order;
+//   - a spring far too stiff for the step shrinks by |R(i w h)| in one step;
+//   - with error control on the stiff two-mass system the steps follow the
+//     slow motion, not the stiff one.
+//
+// Radau IIA (task 4.4, D34), checked the same way: R(z) from its
+// coefficients (the (2, 3) Pade approximant: e^z - R(z) = -z^6 / 7200 + ...;
+// R(z) ~ -3 / z), fifth order, |R(i w h)| on the stiff spring, the steps on
+// the two masses. Both methods converge at their orders on the bushed
+// pendulum with soft bushings (bushed_pendulum.hpp), a smooth spatial model;
+// with stiff bushings SDIRK4 loses its order (stage order 1, D33) and Radau
+// IIA, with error control, meets a tight error for fewer evaluations than
+// generalised-alpha: the plan's "done when".
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <cmath>
 #include <complex>
+#include <initializer_list>
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <utility>
 #include <vector>
 
 #include "mbd/core/core.hpp"
 #include "mbd/kernel/joint_forces.hpp"
 #include "mbd/kernel/simulator.hpp"
+
+#include "kernel/bushed_pendulum.hpp"
 
 using namespace mbd;
 using namespace mbd::kernel;
@@ -137,6 +160,41 @@ struct AlphaRecurrence {
         a = a1;
     }
 };
+
+/// SDIRK4's stability function, R(z) = 1 + z b^T (I - z A)^-1 1, by forward
+/// substitution through its lower triangular A.
+Complex sdirk_stability(Complex z)
+{
+    static constexpr Real A[5][5] = {{0.25, 0.0, 0.0, 0.0, 0.0},
+                                     {0.5, 0.25, 0.0, 0.0, 0.0},
+                                     {17.0 / 50.0, -1.0 / 25.0, 0.25, 0.0, 0.0},
+                                     {371.0 / 1360.0, -137.0 / 2720.0, 15.0 / 544.0, 0.25, 0.0},
+                                     {25.0 / 24.0, -49.0 / 48.0, 125.0 / 16.0, -85.0 / 12.0, 0.25}};
+    Complex k[5];
+    Complex r = 1.0;
+    for (int i = 0; i < 5; ++i) {
+        Complex s = 1.0;
+        for (int j = 0; j < i; ++j) s += z * A[i][j] * k[j];
+        k[i] = s / (1.0 - z * A[i][i]);
+        r += z * A[4][i] * k[i];   // the weights are the last row
+    }
+    return r;
+}
+
+/// Radau IIA's stability function from its coefficients: the stages'
+/// increments solve (I - z A) Z = z A 1, and the new value is 1 + Z_3
+/// (stiffly accurate).
+Complex radau_stability(Complex z)
+{
+    const Real s6 = std::sqrt(6.0);
+    Eigen::Matrix3d A;
+    A << (88.0 - 7.0 * s6) / 360.0, (296.0 - 169.0 * s6) / 1800.0, (-2.0 + 3.0 * s6) / 225.0,
+        (296.0 + 169.0 * s6) / 1800.0, (88.0 + 7.0 * s6) / 360.0, (-2.0 - 3.0 * s6) / 225.0,
+        (16.0 - s6) / 36.0, (16.0 + s6) / 36.0, 1.0 / 9.0;
+    const Eigen::Matrix3cd M = Eigen::Matrix3cd::Identity() - z * A.cast<Complex>();
+    const Eigen::Vector3cd Z = M.inverse() * (z * A.cast<Complex>() * Eigen::Vector3cd::Ones());
+    return 1.0 + Z(2);
+}
 
 /// N steps of the recurrence; returns (q, v).
 std::pair<Real, Real> alpha_recurrence(Real w, Real h, int N, Real rho, Real q, Real v)
@@ -500,5 +558,313 @@ TEST_CASE("Generalised-alpha: bad settings and a step that cannot be solved are 
         auto sim = osc.simulator();
         sim->method = Integrator::GeneralizedAlpha;
         CHECK_THROWS_WITH(sim->step(1e-3), ContainsSubstring("MBD-K058"));
+        // SDIRK4 and Radau IIA at a fixed step refuse the same way; with error
+        // control they would shorten the step until K055.
+        for (const auto method : {Integrator::SDIRK4, Integrator::RadauIIA}) {
+            auto other = osc.simulator();
+            other->method = method;
+            other->step_control.adaptive = false;
+            CHECK_THROWS_WITH(other->step(1e-3), ContainsSubstring("MBD-K058"));
+        }
     }
+}
+
+TEST_CASE("SDIRK4: one step is its stability function, and fixed steps converge at fourth order",
+          "[kernel][integrators][implicit]")
+{
+    // One step of 0.3 s from (a, 0) is R(0.3 i) a, to Newton's tolerance (1e-14
+    // here). Over T = 10 s each step loses |e^(ih) - R(ih)| = 8.45e-4 h^5 to
+    // leading order, coherently: N |e^(ih) - R(ih)| a in all, 8.5e-8 m at h =
+    // 0.1 s; halving the step divides it by 16.
+    Oscillator osc;
+    auto make = [&] {
+        auto sim = osc.simulator();
+        sim->method = Integrator::SDIRK4;
+        sim->step_control.adaptive = false;
+        sim->step_control.relative_tolerance = 0.0;
+        sim->step_control.absolute_tolerance = 1e-14;
+        return sim;
+    };
+    {
+        auto sim = make();
+        sim->step(0.3);
+        const Complex expected = sdirk_stability(Complex(0.0, 0.3)) * Oscillator::a;
+        INFO("w = " << w_of(*sim) << ", R(0.3 i) a = " << expected);
+        CHECK(std::abs(w_of(*sim) - expected) < 1e-13);
+    }
+    const Real T = 10.0;
+    auto error_at = [&](Real h, IntegratorStats& stats) {
+        auto sim = make();
+        const int steps = sim->run(T, h);
+        const Complex R = sdirk_stability(Complex(0.0, h));
+        INFO("h = " << h << ": w = " << w_of(*sim) << ", R(ih)^N a = " << std::pow(R, steps) * Oscillator::a);
+        CHECK(std::abs(w_of(*sim) - std::pow(R, steps) * Oscillator::a) < 1e-12);
+        stats = sim->integrator_stats();
+        return std::abs(w_of(*sim) - Oscillator::a * std::exp(Complex(0.0, T)));
+    };
+    auto leading = [&](Real h) {
+        const int steps = static_cast<int>(std::round(T / h));
+        return steps * std::abs(std::exp(Complex(0.0, h)) - sdirk_stability(Complex(0.0, h))) * Oscillator::a;
+    };
+    IntegratorStats s1, s2;
+    const Real e1 = error_at(0.1, s1), e2 = error_at(0.05, s2);
+    INFO("errors " << e1 << " and " << e2 << ", predicted " << leading(0.1) << " and " << leading(0.05)
+                   << "; Newton iterations " << s1.newton_iterations << " in " << s1.steps << " steps, "
+                   << s1.jacobians << " iteration matrices, " << s1.evaluations << " evaluations");
+    CHECK(std::abs(e1 / leading(0.1) - 1.0) < 0.01);
+    CHECK(std::abs(e2 / leading(0.05) - 1.0) < 0.01);
+    CHECK(e1 / e2 > 15.5);
+    CHECK(e1 / e2 < 16.5);
+    // Linear: one iteration matrix for the run, and every evaluation either a
+    // Newton iteration or one of the three for that matrix (f, d/dq, d/dv).
+    CHECK(s1.jacobians == 1);
+    CHECK(s1.evaluations == s1.newton_iterations + 3);
+}
+
+TEST_CASE("SDIRK4: L-stable, a spring far too stiff for the step shrinks by |R(i w h)| in one step",
+          "[kernel][integrators][implicit]")
+{
+    // The spring 1000 times too stiff for RK4 at 1 ms (w h = 89.4): one step
+    // multiplies the state by R(89.4 i), |R| = 0.104 (L-stability: R(iy) ~ 9.3
+    // / y for large y), where generalised-alpha keeps about rho_infinity = 0.8.
+    const Real h = 1e-3, w = std::sqrt(1000.0) * 2.0 * std::sqrt(2.0) / h;
+    Oscillator osc(w * w);
+    auto sim = osc.simulator();
+    sim->method = Integrator::SDIRK4;
+    sim->step_control.adaptive = false;
+    sim->step_control.relative_tolerance = 1e-12;
+    sim->step_control.absolute_tolerance = 1e-12;
+    sim->step(h);
+    const Complex R = sdirk_stability(Complex(0.0, w * h));
+    const Complex w_sim(sim->q(0), -sim->v(0) / w);
+    INFO("state " << w_sim << ", R(i w h) a = " << R * Oscillator::a << ", |R| = " << std::abs(R));
+    CHECK(std::abs(w_sim - R * Oscillator::a) < 1e-9 * Oscillator::a);
+    CHECK(std::abs(R) < 0.11);
+}
+
+TEST_CASE("SDIRK4: with error control on a stiff system the steps follow the slow motion",
+          "[kernel][integrators][implicit]")
+{
+    // The two masses with the stiff link (w2 = 8.9e4 rad/s), released in the
+    // slow mode's shape, q = a (1, r1), so that the stiff mode, undamped, is
+    // not excited: released from (a, 0) it would carry a velocity of 4.5e-6
+    // m/s for ever, part of the exact solution, which an error control at
+    // 1e-8 must resolve (and does, at steps of its period). The error
+    // estimate goes as (b - b_hat)^T A^3 1 z^4 = -0.00911 (w1 h)^4 on the slow
+    // motion, so the steps are set by the slow motion, not by the stiffness
+    // in the iteration matrix: at tolerance 1e-8 (absolute) the measure
+    // 0.00911 (w1 h)^4 c1 sqrt((1 + w1^2) / 2) / (2 tol) held near 0.9^4 gives
+    // w1 h = 0.075, h = 12 ms, some 170 steps over 2 s, against a stiff period
+    // of 7e-5 s. The fourth-order solution's own error per step is smaller
+    // than the estimate by about (8.45e-4 / 0.00911) w1 h = 0.007, so over 170
+    // steps the slow motion's error stays near tol, 1e-8 m.
+    const Real a = 0.01, T = 2.0, k_s = 2.0 * std::pow(2.0 * pi, 2), k_t = 4e9;
+    const Real B = k_s + 2.0 * k_t, W2 = 0.5 * (B + std::sqrt(B * B - 4.0 * k_s * k_t)), W1 = k_s * k_t / W2;
+    const Real w1 = std::sqrt(W1);
+    const Real r1 = W1 / (k_t - W1);
+    const Real c1 = a;
+    TwoMasses tm(k_s, k_t);
+    Simulator sim(tm.sys);
+    sim.method = Integrator::SDIRK4;
+    sim.step_control.relative_tolerance = 0.0;
+    sim.step_control.absolute_tolerance = 1e-8;
+    sim.q(0) = a;
+    sim.q(1) = r1 * a;
+    sim.step(T);
+    const auto& stats = sim.integrator_stats();
+    const Real error = std::abs(Complex(sim.q(0), -sim.v(0) / w1) - c1 * std::exp(Complex(0.0, w1 * T)));
+    INFO("slow motion's error " << error << " m; " << stats.steps << " steps, " << stats.rejected << " rejected, "
+                                << stats.newton_iterations << " Newton iterations, " << stats.jacobians
+                                << " iteration matrices");
+    CHECK(stats.steps > 100);
+    CHECK(stats.steps < 300);
+    CHECK(error < 3e-8);
+}
+
+TEST_CASE("Radau IIA: one step is its stability function, and fixed steps converge at fifth order",
+          "[kernel][integrators][implicit]")
+{
+    // One step of 0.3 s from (a, 0) is R(0.3 i) a, to Newton's tolerance (1e-14
+    // here). Over T = 10 s each step loses |e^(ih) - R(ih)| = h^6 / 7200 to
+    // leading order, coherently: N |e^(ih) - R(ih)| a in all, 1.4e-9 m at h =
+    // 0.1 s; halving the step divides it by 32.
+    Oscillator osc;
+    auto make = [&] {
+        auto sim = osc.simulator();
+        sim->method = Integrator::RadauIIA;
+        sim->step_control.adaptive = false;
+        sim->step_control.relative_tolerance = 0.0;
+        sim->step_control.absolute_tolerance = 1e-14;
+        return sim;
+    };
+    {
+        auto sim = make();
+        sim->step(0.3);
+        const Complex expected = radau_stability(Complex(0.0, 0.3)) * Oscillator::a;
+        INFO("w = " << w_of(*sim) << ", R(0.3 i) a = " << expected);
+        CHECK(std::abs(w_of(*sim) - expected) < 1e-13);
+    }
+    const Real T = 10.0;
+    auto error_at = [&](Real h, IntegratorStats& stats) {
+        auto sim = make();
+        const int steps = sim->run(T, h);
+        const Complex R = radau_stability(Complex(0.0, h));
+        INFO("h = " << h << ": w = " << w_of(*sim) << ", R(ih)^N a = " << std::pow(R, steps) * Oscillator::a);
+        CHECK(std::abs(w_of(*sim) - std::pow(R, steps) * Oscillator::a) < 1e-12);
+        stats = sim->integrator_stats();
+        return std::abs(w_of(*sim) - Oscillator::a * std::exp(Complex(0.0, T)));
+    };
+    auto leading = [&](Real h) {
+        const int steps = static_cast<int>(std::round(T / h));
+        return steps * std::abs(std::exp(Complex(0.0, h)) - radau_stability(Complex(0.0, h))) * Oscillator::a;
+    };
+    IntegratorStats s1, s2;
+    const Real e1 = error_at(0.2, s1), e2 = error_at(0.1, s2);
+    INFO("errors " << e1 << " and " << e2 << ", predicted " << leading(0.2) << " and " << leading(0.1)
+                   << "; Newton iterations " << s1.newton_iterations << " in " << s1.steps << " steps, "
+                   << s1.jacobians << " iteration matrices, " << s1.evaluations << " evaluations");
+    CHECK(std::abs(e1 / leading(0.2) - 1.0) < 0.01);
+    CHECK(std::abs(e2 / leading(0.1) - 1.0) < 0.01);
+    CHECK(e1 / e2 > 31.0);
+    CHECK(e1 / e2 < 33.0);
+    // Linear: one iteration matrix for the run; three evaluations per Newton
+    // iteration and three for that matrix (f, d/dq, d/dv); none for an error
+    // estimate, which fixed steps do not make.
+    CHECK(s1.jacobians == 1);
+    CHECK(s1.evaluations == 3 * s1.newton_iterations + 3);
+}
+
+TEST_CASE("Radau IIA: L-stable, a spring far too stiff for the step shrinks by |R(i w h)| in one step",
+          "[kernel][integrators][implicit]")
+{
+    // The spring 1000 times too stiff for RK4 at 1 ms (w h = 89.4): one step
+    // multiplies the state by R(89.4 i), |R| = 0.0336 (L-stability: R(z) ~ -3
+    // / z for large z), against SDIRK4's 0.104 and generalised-alpha's 0.8.
+    const Real h = 1e-3, w = std::sqrt(1000.0) * 2.0 * std::sqrt(2.0) / h;
+    Oscillator osc(w * w);
+    auto sim = osc.simulator();
+    sim->method = Integrator::RadauIIA;
+    sim->step_control.adaptive = false;
+    sim->step_control.relative_tolerance = 1e-12;
+    sim->step_control.absolute_tolerance = 1e-12;
+    sim->step(h);
+    const Complex R = radau_stability(Complex(0.0, w * h));
+    const Complex w_sim(sim->q(0), -sim->v(0) / w);
+    INFO("state " << w_sim << ", R(i w h) a = " << R * Oscillator::a << ", |R| = " << std::abs(R));
+    CHECK(std::abs(w_sim - R * Oscillator::a) < 1e-9 * Oscillator::a);
+    CHECK(std::abs(R) < 0.035);
+}
+
+TEST_CASE("Radau IIA: with error control on a stiff system the steps follow the slow motion",
+          "[kernel][integrators][implicit]")
+{
+    // As for SDIRK4: the two masses with the stiff link, released in the slow
+    // mode's shape. RADAU5's estimate, (gamma - z)^-1 (z + dd^T Z(z)) for y'
+    // = lambda y, goes as -0.00458 z^4 (computed from the coefficients; half
+    // SDIRK4's), so at tolerance 1e-8 the steps settle where SDIRK4's measure
+    // gives w1 h = 0.075 times 2^(1/4): w1 h = 0.089, h = 14 ms, some 140 steps
+    // over 2 s. The fifth-order solution's own error is then (w1 h)^6 / 7200
+    // = 7e-11 of the amplitude per step, about 1e-10 m over the run.
+    const Real a = 0.01, T = 2.0, k_s = 2.0 * std::pow(2.0 * pi, 2), k_t = 4e9;
+    const Real B = k_s + 2.0 * k_t, W2 = 0.5 * (B + std::sqrt(B * B - 4.0 * k_s * k_t)), W1 = k_s * k_t / W2;
+    const Real w1 = std::sqrt(W1);
+    const Real r1 = W1 / (k_t - W1);
+    TwoMasses tm(k_s, k_t);
+    Simulator sim(tm.sys);
+    sim.method = Integrator::RadauIIA;
+    sim.step_control.relative_tolerance = 0.0;
+    sim.step_control.absolute_tolerance = 1e-8;
+    sim.q(0) = a;
+    sim.q(1) = r1 * a;
+    sim.step(T);
+    const auto& stats = sim.integrator_stats();
+    const Real error = std::abs(Complex(sim.q(0), -sim.v(0) / w1) - a * std::exp(Complex(0.0, w1 * T)));
+    INFO("slow motion's error " << error << " m; " << stats.steps << " steps, " << stats.rejected << " rejected, "
+                                << stats.newton_iterations << " Newton iterations, " << stats.jacobians
+                                << " iteration matrices, " << stats.evaluations << " evaluations");
+    CHECK(stats.steps > 90);
+    CHECK(stats.steps < 250);
+    CHECK(error < 1e-9);
+}
+
+TEST_CASE("SDIRK4 and Radau IIA converge at their orders on a smooth spatial model",
+          "[kernel][integrators][implicit]")
+{
+    // The bushed pendulum with soft bushings (k = 1e4 N/m, k_r = 1e2 N m/rad:
+    // its fastest motion near 140 rad/s, resolved by every step here), so
+    // nothing is stiff: two free bodies turning through large angles, their
+    // quaternions carried as four numbers through the stages. Halving the
+    // step must divide the tip's error after 1 s by 2^4 = 16 for SDIRK4 and
+    // 2^5 = 32 for Radau IIA, to within the next term (a few per cent at
+    // these steps). The reference: Dormand-Prince at tolerance 1e-12.
+    mbd_test::BushedPendulum bp(1e4, 1e2);
+    auto tip_after = [&](Integrator method, Real h, Real tol, bool adaptive) {
+        Simulator sim(bp.sys);
+        sim.method = method;
+        bp.release(sim);
+        sim.step_control.adaptive = adaptive;
+        sim.step_control.relative_tolerance = tol;
+        sim.step_control.absolute_tolerance = tol;
+        sim.run(1.0, h);
+        return bp.tip(sim);
+    };
+    const Vec3 reference = tip_after(Integrator::DormandPrince, 0.01, 1e-12, true);
+    auto error = [&](Integrator method, Real h) { return (tip_after(method, h, 1e-10, false) - reference).norm(); };
+    const Real s1 = error(Integrator::SDIRK4, 5e-3), s2 = error(Integrator::SDIRK4, 2.5e-3);
+    const Real r1 = error(Integrator::RadauIIA, 1e-2), r2 = error(Integrator::RadauIIA, 5e-3);
+    INFO("SDIRK4 at 5 and 2.5 ms: " << s1 << ", " << s2 << " (ratio " << s1 / s2 << "); Radau IIA at 10 and 5 ms: "
+                                    << r1 << ", " << r2 << " (ratio " << r1 / r2 << ")");
+    CHECK(s1 / s2 > 15.0);
+    CHECK(s1 / s2 < 17.0);
+    CHECK(r1 / r2 > 30.0);
+    CHECK(r1 / r2 < 34.0);
+}
+
+TEST_CASE("Radau IIA beats generalised-alpha on the bushed pendulum at tight tolerance",
+          "[kernel][integrators][implicit][benchmark]")
+{
+    // The bushed benchmark (bushed_pendulum.hpp, k = 1e8 N/m, k_r = 1e6 N m/
+    // rad), 1 s from release, and the plan's "done when" for task 4.4: the
+    // tip within 1e-6 m (on a swing of a metre) for fewer evaluations than
+    // generalised-alpha needs. The reference: Dormand-Prince at tolerance
+    // 1e-12, an explicit method independent of both (the bushings hold its
+    // steps near its stability limit, which costs steps, not accuracy).
+    // Generalised-alpha has no error control: its fixed steps are halved
+    // until it meets the target (second order: 1.7e-6 m at 0.5 ms, 4.6e-7 at
+    // 0.25 ms when measured), with Newton at 1e-9, tight enough over 4000
+    // steps. Radau IIA runs as it would be used, with error control at the
+    // target. SDIRK4, whose stage order is 1, cannot compete here (D33): at
+    // 0.5 ms it is still 4e-5 m out.
+    mbd_test::BushedPendulum bp;
+    const Real T = 1.0, target = 1e-6;
+    auto run = [&](Integrator method, Real h, Real tol, bool adaptive, long long& evaluations) {
+        Simulator sim(bp.sys);
+        sim.method = method;
+        bp.release(sim);
+        sim.step_control.adaptive = adaptive;
+        sim.step_control.relative_tolerance = tol;
+        sim.step_control.absolute_tolerance = tol;
+        sim.run(T, h);
+        evaluations = sim.integrator_stats().evaluations;
+        return bp.tip(sim);
+    };
+    long long reference_cost = 0, alpha_cost = -1, radau_cost = 0;
+    const Vec3 reference = run(Integrator::DormandPrince, 0.01, 1e-12, true, reference_cost);
+    std::ostringstream table;
+    table << "reference: " << reference_cost << " evaluations\n";
+    for (const Real h : {5e-4, 2.5e-4, 1.25e-4}) {
+        long long n = 0;
+        const Real e = (run(Integrator::GeneralizedAlpha, h, 1e-9, false, n) - reference).norm();
+        table << "generalised-alpha at " << h << " s: error " << e << " m, " << n << " evaluations\n";
+        if (e <= target) {
+            alpha_cost = n;
+            break;
+        }
+    }
+    const Real radau_error = (run(Integrator::RadauIIA, 0.01, target, true, radau_cost) - reference).norm();
+    table << "Radau IIA at tolerance " << target << ": error " << radau_error << " m, " << radau_cost << " evaluations";
+    INFO(table.str());
+    REQUIRE(alpha_cost > 0);
+    CHECK(radau_error <= target);
+    CHECK(radau_cost < alpha_cost);
 }

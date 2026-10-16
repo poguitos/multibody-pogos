@@ -379,14 +379,18 @@ TEST_CASE("Drivetrain: braking to a stop locks the wheels, and the car stays sto
     // shrink its steps without end if the brake's sign flipped within a step
     // as a spin crossed zero: the brake keeps its direction through each step.
     // And with generalised-alpha (task 4.3), whose history starts afresh when
-    // a lock changes a spin between steps.
+    // a lock changes a spin between steps, and with SDIRK4 and Radau IIA (task
+    // 4.4), whose error control crosses the stops as Dormand-Prince's does.
     using namespace mbd;
 
     for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::DormandPrince,
-                              kernel::Integrator::GeneralizedAlpha}) {
-        INFO((method == kernel::Integrator::RK4             ? "RK4"
-              : method == kernel::Integrator::DormandPrince ? "Dormand-Prince"
-                                                            : "generalised-alpha"));
+                              kernel::Integrator::GeneralizedAlpha, kernel::Integrator::SDIRK4,
+                              kernel::Integrator::RadauIIA}) {
+        INFO((method == kernel::Integrator::RK4                ? "RK4"
+              : method == kernel::Integrator::DormandPrince    ? "Dormand-Prince"
+              : method == kernel::Integrator::GeneralizedAlpha ? "generalised-alpha"
+              : method == kernel::Integrator::SDIRK4           ? "SDIRK4"
+                                                               : "Radau IIA"));
         kernel::System sys;
         VehicleParams vp;
         auto vm = build_simple_vehicle(sys, vp);

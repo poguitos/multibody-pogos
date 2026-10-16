@@ -218,13 +218,42 @@ fast. `Integrator::GeneralizedAlpha` is stable at any step; its
 the step are damped away. Each step costs one evaluation plus one per Newton
 iteration (one or two at the default tolerances on the vehicles: three
 evaluations a step on the sedan at 1 ms, against RK4's four), and an
-occasional iteration matrix (2 nv + nx evaluations). *(Generalised-alpha.)*
+occasional iteration matrix (2 nv + nx evaluations). For a tight tolerance
+use `Integrator::RadauIIA` with error control: fifth order, it reaches 1e-7
+m on the bushed pendulum for less than half the evaluations
+generalised-alpha needs for 1e-6. *(Generalised-alpha; SDIRK4 and Radau
+IIA.)*
 
-**Generalised-alpha stops with MBD-K058.** Newton could not solve a step,
+**An implicit method stops with MBD-K058.** Newton could not solve a step,
 even with a fresh iteration matrix: a force that is NaN or infinite, a force
 that jumps within the step, or a step so long that the forces change their
 character across it. Check the forces at that state, shorten the step there,
-or make the jump continuous (or decide it at a step's end). *(Generalised-alpha.)*
+or make the jump continuous (or decide it at a step's end). With SDIRK4 or
+Radau IIA at a fixed step, error control (`step_control.adaptive`, on by
+default) shortens the step where Newton needs it instead. *(Generalised-alpha;
+SDIRK4 and Radau IIA.)*
+
+**SDIRK4 is inaccurate on a model with stiff springs or bushings, and its
+error control does not notice.** Its stage order is 1: as springs stiffen
+towards joints its order falls from four towards one (on the bushed pendulum
+about 3.6 at 1e6 N/m, 2.5 at 1e8, 1 at 1e10), and its third-order estimate
+misses the loss (asked for 1e-4 there, it ended 7e-4 m out). This is a
+property of the method, not a fault in the model. Use `RadauIIA` (stage order
+3) or `GeneralizedAlpha` for stiff mechanical models; keep SDIRK4 for smooth
+models and for stiffness in first-order states. *(SDIRK4 and Radau IIA.)*
+
+**An implicit method builds many iteration matrices, or fails at long steps,
+on a model with bushings.** The derivative of a bushing's forces can change
+fast with the motion even when the forces do not: a bushing with stiffness
+about two axes and none about the third (a hinge) measures its tilt about an
+axis halfway between its two markers, so a bending deflection makes a
+torsion moment of about k_r phi / 2 at a hinge angle phi, and on a link with
+a small torsional inertia that coupling is stiff and turns with the swing.
+A matrix built at a step's start then stops serving within a long step:
+Newton slows, the matrix is rebuilt (`integrator_stats().jacobians`), and at
+a fixed step it may fail (MBD-K058). Use error control, or shorter fixed
+steps; generalised-alpha, which takes short steps for its accuracy anyway,
+is less affected. *(SDIRK4 and Radau IIA.)*
 
 **A locked or stuck state drifts slightly with the implicit method.**
 Newton solves each step only to the tolerance, so a state that should stay
@@ -322,7 +351,22 @@ Compare with the method's own recurrence rather than a hand-made bound.
 larger than its result (a stiff spring at a long step: h^2 |a| far above the
 displacement), the result carries their rounding, and Newton's corrections
 cannot fall below it. The implicit method's convergence test has a floor at
-that rounding; a test of your own should too. *(Generalised-alpha.)*
+that rounding; a test of your own should too. Stiff forces add a second
+source: a 1e8 N/m bushing turns the positions' rounding (1e-16 m) into
+forces of 1e-8 N, far above the rounding of the force itself; SDIRK4 and
+Radau IIA put the state's rounding carried through their Jacobian, eps h
+sum_j |J_ij| |y_j|, into the floor as well. *(Generalised-alpha; SDIRK4 and
+Radau IIA.)*
+
+**Newton's error is part of the global error.** An implicit method with
+error control estimates the truncation error of each step; Newton's own
+error in solving the step is not in that estimate, and it adds up from step
+to step like any other. Stopped at a tenth of the tolerance, it made Radau
+IIA's global error several times the tolerance on the bushed pendulum,
+whose fifth-order truncation error is far below its third-order estimate.
+SDIRK4 and Radau IIA stop Newton at min(0.03, sqrt(tol)) of the tolerance,
+as RADAU5 does; if a global error is well above the tolerance, suspect the
+solves before the steps. *(SDIRK4 and Radau IIA.)*
 
 **An integrator test that only looks at the order.** A ratio near 2^p shows
 the order but not that the method is the one intended. For a linear test
@@ -371,3 +415,4 @@ Before building on it (working rule 2):
 | Phase 4: the integrator interface | Braking result now step-independent; stiffness at standstill; chattering dry friction (Simulations); a test checking a decision against out-of-date state (fixed in the test) |
 | Phase 4: the Dormand-Prince pair | A sign flip that would shrink the steps without end (Simulations: K055 and K056; chattering friction); cost at short output steps (Simulations); a wrong reference in a scratch check; testing more than the order (Numerical traps) |
 | Phase 4: generalised-alpha | A bound guessed from one step; Newton against rounding (Numerical traps); a locked wheel that crept (Simulations); stiff models and K058 (Simulations) |
+| Phase 4: SDIRK4 and Radau IIA | SDIRK4's order on stiff bushings (Simulations); a Jacobian that turns within a step (Simulations); Newton's error and Newton against amplified rounding (Numerical traps); fixed steps Newton cannot solve (Simulations: K058) |

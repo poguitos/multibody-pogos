@@ -10,8 +10,50 @@
 #include "mbd/kernel/forces.hpp"
 
 #include "checks.hpp"
+#include "step_messages.hpp"
 
 namespace mbd::kernel {
+
+namespace detail {
+
+void check_step_control(const StepControl& sc)
+{
+    MBD_THROW_IF(!(sc.absolute_tolerance > 0.0) || !(sc.relative_tolerance >= 0.0) || !(sc.min_step >= 0.0)
+                     || sc.max_steps < 1,
+                 "MBD-K054: kernel::Simulator: step_control needs absolute_tolerance > 0, relative_tolerance >= 0, "
+                 "min_step >= 0 and max_steps >= 1; it has "
+                     + std::to_string(sc.absolute_tolerance) + ", " + std::to_string(sc.relative_tolerance) + ", "
+                     + std::to_string(sc.min_step) + " and " + std::to_string(sc.max_steps) + ".");
+}
+
+void throw_step_too_short(const char* method, Real h, Real t, Real min_step, Real error)
+{
+    throw MbdError("MBD-K055: kernel::Simulator: " + std::string(method) + " needs a step of " + std::to_string(h)
+                   + " s at t = " + std::to_string(t) + " s, below step_control.min_step (" + std::to_string(min_step)
+                   + " s); the error measure of the last try was " + std::to_string(error)
+                   + ". The model is stiff or discontinuous here.");
+}
+
+void throw_too_many_steps(const char* method, int max_steps, Real dt, Real t)
+{
+    throw MbdError("MBD-K056: kernel::Simulator: " + std::string(method) + " took " + std::to_string(max_steps)
+                   + " steps within one step of " + std::to_string(dt) + " s and reached only t = "
+                   + std::to_string(t) + " s (step_control.max_steps). The model is stiff or discontinuous here, "
+                     "or the tolerances are too tight for it.");
+}
+
+void throw_unsolved(const char* method, Real h, Real t, bool regular, int max_iterations)
+{
+    throw MbdError("MBD-K058: kernel::Simulator: the " + std::string(method) + " step of " + std::to_string(h)
+                   + " s from t = " + std::to_string(t) + " s did not converge"
+                   + (regular ? " within " + std::to_string(max_iterations)
+                                    + " Newton iterations, or its corrections stopped falling, even with an "
+                                      "iteration matrix just built there."
+                              : std::string(": the iteration matrix is singular."))
+                   + " The forces change too fast across the step, or are not finite.");
+}
+
+} // namespace detail
 
 namespace {
 
@@ -300,12 +342,7 @@ void Simulator::step_dormand_prince(Real dt)
 {
     const Model& model = system.model;
     const StepControl& sc = step_control;
-    MBD_THROW_IF(!(sc.absolute_tolerance > 0.0) || !(sc.relative_tolerance >= 0.0) || !(sc.min_step >= 0.0)
-                     || sc.max_steps < 1,
-                 "MBD-K054: kernel::Simulator: step_control needs absolute_tolerance > 0, relative_tolerance >= 0, "
-                 "min_step >= 0 and max_steps >= 1; it has "
-                     + std::to_string(sc.absolute_tolerance) + ", " + std::to_string(sc.relative_tolerance) + ", "
-                     + std::to_string(sc.min_step) + " and " + std::to_string(sc.max_steps) + ".");
+    detail::check_step_control(sc);
     const Real t_end = time + dt;
     const Index n = q.size() + v.size() + x.size();
     // The seventh stage is the derivative at the new state, and so the next
@@ -329,11 +366,7 @@ void Simulator::step_dormand_prince(Real dt)
 
     int tried = 0;
     while (time < t_end) {
-        MBD_THROW_IF(++tried > sc.max_steps,
-                     "MBD-K056: kernel::Simulator: Dormand-Prince took " + std::to_string(sc.max_steps)
-                         + " steps within one step of " + std::to_string(dt) + " s and reached only t = "
-                         + std::to_string(time) + " s (step_control.max_steps). The model is stiff or "
-                           "discontinuous here, or the tolerances are too tight for it.");
+        if (++tried > sc.max_steps) detail::throw_too_many_steps("Dormand-Prince", sc.max_steps, dt, time);
         // A step that would leave less than a hundredth of itself to the end
         // takes the rest.
         const Real remaining = t_end - time;
@@ -365,11 +398,9 @@ void Simulator::step_dormand_prince(Real dt)
             // Rejected: shorter, from the same state, whose derivative stays.
             ++stats_.rejected;
             h = step * (std::isfinite(error) ? std::max(0.2, 0.9 * std::pow(error, -0.2)) : 0.2);
-            MBD_THROW_IF(h < sc.min_step || time + h == time,
-                         "MBD-K055: kernel::Simulator: Dormand-Prince needs a step of " + std::to_string(h)
-                             + " s at t = " + std::to_string(time) + " s, below step_control.min_step ("
-                             + std::to_string(sc.min_step) + " s); the error measure of the last try was "
-                             + std::to_string(error) + ". The model is stiff or discontinuous here.");
+            if (h < sc.min_step || time + h == time) {
+                detail::throw_step_too_short("Dormand-Prince", h, time, sc.min_step, error);
+            }
             first_stage_known = true;
             after_rejection = true;
             continue;
@@ -670,7 +701,12 @@ void Simulator::advance(Real dt)
         case Integrator::SemiImplicitEuler: step_semi_implicit_euler(dt); break;
         case Integrator::GeneralizedAlpha:  step_generalized_alpha(dt); break;
         case Integrator::DormandPrince:
-            step_dormand_prince(dt);   // takes steps of its own, each projected
+        case Integrator::SDIRK4:
+        case Integrator::RadauIIA:
+            // Steps of their own, each projected.
+            if (method == Integrator::DormandPrince) step_dormand_prince(dt);
+            else if (method == Integrator::SDIRK4) step_sdirk(dt);
+            else step_radau(dt);
             refresh();
             return;
     }

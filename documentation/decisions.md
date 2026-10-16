@@ -33,8 +33,18 @@ and the journal entry of the work refers to them by number
 | D20 | One kinematics pass per evaluation; `Z = L^-1 J^T`; projection weighted by the last stage's mass matrix | 5 Oct 2026 | In force |
 | D21 | Timings pinned to a performance core, versions compared alternately | 5 Oct 2026 | In force |
 | D22 | A development record kept in the repository, for the book | 5 Oct 2026 | In force |
-| D23 | Help documentation grown with each phase, with message codes | 5 Oct 2026 | In force (H.1, H.2 done) |
+| D23 | Help documentation grown with each phase, with message codes | 5 Oct 2026 | In force (H.1 to H.5 done) |
 | D24 | Force laws in each element's own coordinates, with their derivatives; joint-coordinate forces act on generalized forces directly | 5 Oct 2026 | In force, task 3.1 |
+| D25 | Initial conditions: held coordinates, the diagonal of the mass matrix as the metric | 13 Oct 2026 | In force, task 3.4 |
+| D26 | Statics: Newton on the accelerations at rest, least-norm steps, relaxation as fallback | 13 Oct 2026 | In force, task 3.5 |
+| D27 | Linearisation in reduced coordinates from projected differences | 13 Oct 2026 | In force, task 3.7 |
+| D28 | Contact: ADAMS's IMPACT law and a regularised friction coefficient | 13 Oct 2026 | In force, task 3.8 |
+| D29 | Events: sign changes at step ends, located by re-integration | 13 Oct 2026 | In force, task 3.9 |
+| D30 | State elements: first-order states integrated with the bodies | 14 Oct 2026 | In force, task 4.1 |
+| D31 | Dormand-Prince within the fixed output step, with events on its interpolant | 14 Oct 2026 | In force, task 4.2 |
+| D32 | Generalised-alpha on the state-space accelerations, with Newton on difference Jacobians | 14 Oct 2026 | In force, task 4.3 |
+| D33 | SDIRK4 on the stacked first-order system, kept for smooth models | 14-16 Oct 2026 | In force, task 4.4 |
+| D34 | Radau IIA for stiff mechanical models, with Newton held to a tolerance-dependent fraction | 16 Oct 2026, the method by the author | In force, task 4.4 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -647,3 +657,114 @@ and the journal entry of the work refers to them by number
   control yet (fixed steps; task 4.4 brings an error estimate).
 - **Record.** Journal: generalised-alpha; data
   `2026-10-14_generalized-alpha.md`; `docs/kernel.md`, integrators.
+
+## D33. SDIRK4 on the stacked first-order system, kept for smooth models
+
+- **Context.** Task 4.4 asks for the five-stage, fourth-order, L-stable
+  SDIRK scheme used by Haug and co-workers; done when it beats
+  generalised-alpha on the bushed benchmark at tight tolerance. No benchmark
+  of that name existed.
+- **Decision.** `Integrator::SDIRK4`: Hairer and Wanner's SDIRK4 (gamma =
+  1/4, stiffly accurate, embedded third-order solution), applied to the
+  stacked system y = (q, v, x), y' = (q_dot, accelerations, rates), with q
+  in its embedding and normalized once per step, as RK4 and Dormand-Prince
+  do. Each stage is solved by Newton with the matrix I - gamma h J, one LU
+  per step length and J; J by forward differences (n + 1 evaluations), kept
+  across steps while the Newton evaluations of a step, beyond those of the
+  first step with it, stay below n + 1, and rebuilt at a stage whose Newton
+  fails. Newton stops at a fraction of the tolerance (D34) and fails when a
+  correction is not smaller than the one two iterations before. The error
+  estimate is filtered through (I - gamma h J)^-1 and drives the same step
+  control as Dormand-Prince (own steps ending at t + dt, the fourth root for
+  a third-order estimate). If Newton fails even with a fresh matrix, the
+  step is quartered (with error control) or the run stops with K058
+  (without). The benchmark: a double pendulum whose hinges are stiff damped
+  bushings between two free bodies (`tests/kernel/bushed_pendulum.hpp`), with
+  Dormand-Prince at 1e-12 as the reference.
+- **Alternatives.** Positions through the exponential map, as
+  generalised-alpha: beyond second order a Lie-group Runge-Kutta method
+  needs the inverse of the exponential's differential in its stages
+  (Munthe-Kaas). Unknowns of the size of the accelerations only: smaller
+  matrices, but with quaternions the stage positions depend on themselves
+  through q_dot = G(q) v. Unfiltered error estimates: the embedded solution
+  is not A-stable (|R_hat(iy)| reaches 3.3). Hairer and Wanner's Newton
+  tests on the rate of contraction (stop when theta / (1 - theta) times the
+  correction is small; fail early when the iterations left will not do):
+  tried and dropped, because on the bushed pendulum the first correction
+  from the predictor contracts by 0.25 to 0.8 and the next ones by 1e-2 to
+  1e-4, so the tests gave up on solves about to converge, even with J built
+  at the stage, and J was rebuilt almost every stage.
+- **Consequences.** Measured, not foreseen: SDIRK4 does not beat
+  generalised-alpha on the bushed benchmark, and cannot. It is fourth order
+  on smooth models (the oscillator; the pendulum with soft bushings: error
+  ratios 14.0 and 16.1 when the step halves), but its stage order is 1 (the
+  stage conditions A c = c^2 / 2 fail by 0.031 to 0.046 in its first four
+  stages), and as the bushings stiffen towards joints the model tends to a
+  constrained (index-3) system, for which the order of such a method falls
+  towards its stage order (Hairer and Wanner, section VII.4). Order measured
+  on the pendulum at h = 2, 1 and 0.5 ms: about 3.6 with k = 1e6 N/m, 2.5
+  with 1e8 (the benchmark), 1 with 1e10. On the benchmark at 0.5 ms it is 4.2e-5
+  m out after 1 s, against generalised-alpha's 1.7e-6 at the same step, and
+  its error estimate understates the error (tolerance 1e-4: 7e-4 m).
+  Asked how to go on, the user chose (16 October 2026) to keep SDIRK4 for
+  smooth models and stiff first-order states, and to add Radau IIA within
+  task 4.4 (D34). `Integrator::SDIRK4`'s documentation says where not to use
+  it.
+- **Record.** Journal: SDIRK4 and Radau IIA; data
+  `2026-10-16_sdirk4-radau.md`; `docs/kernel.md`, integrators.
+
+## D34. Radau IIA for stiff mechanical models, with Newton held to a tolerance-dependent fraction
+
+- **Context.** SDIRK4 loses its order on stiff bushings (D33), the case the
+  benchmark stands for and the vehicles are full of. A Runge-Kutta method
+  of higher stage order keeps more of its order as the model tends to a
+  constrained one: three-stage Radau IIA, stage order 3, fifth order, is the
+  standard (Hairer and Wanner's RADAU5).
+- **Decision.** `Integrator::RadauIIA` on the same stacked system and the
+  same J as SDIRK4 (one shared `stacked_f`, one Jacobian, one cost rule).
+  The 3n Newton equations of a step split, through A^-1 = T diag(gamma,
+  [alpha -beta; beta alpha]) T^-1, into one real and one complex system of
+  n (`gamma I - h J`, `(alpha + i beta) I - h J`), factorized once per step
+  length and J by the same LU, templated for complex matrices. T and the
+  eigenvalues are computed once from closed forms (the roots of z^3 - 9 z^2
+  + 36 z - 60) and the eigenvectors as cross products of rows, not copied
+  from RADAU5's constants. Starting values from the last step's collocation
+  polynomial when nothing has changed the state since; RADAU5's error
+  estimate (gamma I - h J)^-1 (h f(y_n) + sum dd_i Z_i), O(h^4), evaluated
+  once more at y_n + estimate after a first step or a rejection; one extra
+  evaluation per step for f(y_n), none without error control (which then
+  makes no estimate). Newton failure: rebuild J at the step's start and
+  retry; then halve the step (with error control) or K058. For both SDIRK4
+  and Radau IIA, Newton stops when its corrections fall below min(0.03,
+  sqrt(tol)) of the tolerances (RADAU5's rule, tol the larger of the two),
+  and never below a floor at the rounding of the stage's terms plus the
+  rounding of the state amplified by J (64 eps h sum_j |J_ij| |y_j|).
+- **Alternatives.** A fixed tenth of the tolerance for Newton: measured on
+  the benchmark, Newton's errors then dominated the global error (0.4 to 7
+  times the tolerance, because the fifth-order truncation error is far
+  below its third-order estimate and Newton's errors add up undamped);
+  a hundredth or a thousandth brought it to 0.01 to 0.3 times the tolerance
+  for 15 to 35 per cent more evaluations. RADAU5's rule without the J term
+  in the floor: at tolerance 1e-10 it asked for corrections of 1e-15, below
+  the noise a 1e8 N/m bushing makes of the positions' rounding, and every
+  fixed step failed (K058) at once. A J rebuilt at the step's middle when
+  Newton fails: rescued steps of 4 ms but not 8 ms, at more cost than 2 ms
+  steps. Solving the 3n system directly: n^3 work nine times over.
+  BDF (ADAMS's GSTIFF): a multistep history to restart at every event and
+  lock; a later option if Radau IIA proves too costly on large models.
+- **Consequences.** On the benchmark, with error control at 1e-6, Radau IIA
+  ends 1.0e-7 m from the reference after 1 s for 11548 evaluations, where
+  generalised-alpha needs fixed steps of 0.25 ms (4.6e-7 m) and 26057;
+  at 1e-8, 4.1e-9 m for 13986, where generalised-alpha needs about 48600
+  for 7.8e-8 m: the "done when". At fixed steps of 2 ms it is within 5e-11 m
+  but fails at 4 ms once the links swing fast (Newton, K058): its stages
+  span the step, and the bushings' coupling of torsion and bending turns
+  with the swing. Per step: three evaluations per Newton iteration, a real
+  and a complex LU of n when h or J changes (n = 26 here; not timed for
+  large models). SDIRK4's Newton changed with this decision (the fraction
+  and the floor), not its order. Generalised-alpha's Newton now judges
+  progress over two iterations, as the two Runge-Kutta methods do, and
+  rebuilds its matrix when the average contraction is worse than a half.
+- **Record.** Journal: SDIRK4 and Radau IIA; data
+  `2026-10-16_sdirk4-radau.md`; `docs/kernel.md`, integrators;
+  troubleshooting.

@@ -71,4 +71,5 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 13 Oct 2026 | [Phase 3 retrospective](2026-10-13_phase-3-retrospective.md) | Phase 3 gate, tag `v0.4.0` | `49b96bc` to `4a3a757` | At the time |
 | 14 Oct 2026 | [Phase 4: the integrator interface and state elements](2026-10-14_phase-4-state-elements.md) | 4.1, D30 | `aa8876c` | At the time |
 | 14 Oct 2026 | [Phase 4: the Dormand-Prince pair](2026-10-14_phase-4-dormand-prince.md) | 4.2, D31 | `b70e614` | At the time |
-| 14 Oct 2026 | [Phase 4: generalised-alpha](2026-10-14_phase-4-generalized-alpha.md) | 4.3, D32 | see git log | At the time |
+| 14 Oct 2026 | [Phase 4: generalised-alpha](2026-10-14_phase-4-generalized-alpha.md) | 4.3, D32 | `d8a2c0c` | At the time |
+| 14-16 Oct 2026 | [Phase 4: SDIRK4, its order on stiff bushings, and Radau IIA](2026-10-16_phase-4-sdirk4-radau.md) | 4.4, D33, D34 | see git log | At the time; 14 Oct reconstructed |

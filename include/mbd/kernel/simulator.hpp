@@ -60,11 +60,29 @@ enum class Integrator {
     /// ImplicitControl::rho_infinity; each step solved by Newton's method
     /// (task 4.3).
     GeneralizedAlpha,
+    /// Implicit, fourth order and L-stable: the five-stage singly diagonally
+    /// implicit Runge-Kutta method of Hairer and Wanner (SDIRK4), with an
+    /// embedded third-order error estimate and the same step control as
+    /// DormandPrince (task 4.4). Each stage is solved on its own, cheaply,
+    /// but its stage order is 1: beside stiff springs or bushings (anything
+    /// that acts almost as a joint) its accuracy falls towards first order
+    /// and its error estimate understates the error. Use it for smooth
+    /// models and for stiffness in first-order states; for stiff mechanical
+    /// models use RadauIIA or GeneralizedAlpha.
+    SDIRK4,
+    /// Implicit, fifth order and L-stable, for stiff models at tight
+    /// tolerances: the three-stage Radau IIA method (stage order 3), as in
+    /// Hairer and Wanner's RADAU5, with an embedded third-order error
+    /// estimate and the same step control as DormandPrince (task 4.4).
+    RadauIIA,
 };
 
-/// How Integrator::DormandPrince chooses its steps (task 4.2), and how
-/// closely Integrator::GeneralizedAlpha solves each of its own (the
-/// tolerances; see ImplicitControl).
+/// How Integrator::DormandPrince, SDIRK4 and RadauIIA choose their steps
+/// (tasks 4.2, 4.4), and how closely the implicit methods solve each of
+/// theirs (the tolerances; see ImplicitControl). The implicit methods'
+/// estimates are of third order, so their next step follows the fourth root
+/// of the measure, and are filtered through an iteration matrix so that stiff
+/// components do not inflate them.
 ///
 /// Each step's error estimate is weighed entry by entry, over q, v and x, by
 /// absolute_tolerance + relative_tolerance * |entry|, and the root mean
@@ -90,40 +108,54 @@ struct StepControl {
     int max_steps{100000};
 };
 
-/// How Integrator::GeneralizedAlpha takes its steps (task 4.3).
+/// How the implicit methods take their steps: Integrator::GeneralizedAlpha
+/// (task 4.3) and, for max_iterations, Integrator::SDIRK4 and RadauIIA (task
+/// 4.4).
 ///
-/// Each step solves for the new accelerations, and the state elements' new
-/// rates, by Newton's method. Its iteration matrix comes from derivatives of
-/// the accelerations and rates by forward differences (one evaluation per
-/// velocity, twice over, and one per state), kept from step to step while
-/// Newton converges quickly and rebuilt when it slows. Newton stops when its
-/// last correction to the velocities and the states, weighed as in
-/// StepControl by absolute_tolerance + relative_tolerance |entry| (but never
-/// finer than the rounding of the terms the step adds up), has a root mean
-/// square of at most 1.
+/// GeneralizedAlpha solves each step for the new accelerations, and the
+/// state elements' new rates, by Newton's method. Its iteration matrix comes
+/// from derivatives of the accelerations and rates by forward differences
+/// (one evaluation per velocity, twice over, and one per state), kept from
+/// step to step while Newton converges quickly and rebuilt when it slows.
+/// Newton stops when its last correction to the velocities and the states,
+/// weighed as in StepControl by absolute_tolerance + relative_tolerance
+/// |entry| (but never finer than the rounding of the terms the step adds
+/// up), has a root mean square of at most 1.
+///
+/// SDIRK4 (stage by stage) and RadauIIA (all three stages together) do the
+/// same on the whole state (q, v, x), with the derivative of its full
+/// right-hand side (nq + nv + nx + 1 evaluations), and stop at a fraction
+/// min(0.03, sqrt(tol)) of the tolerances (tol the larger of the two, as in
+/// Hairer and Wanner's RADAU5): Newton's errors add up over the steps, unseen
+/// by the error estimate. They keep that derivative while
+/// the Newton iterations a step costs, beyond those of the first step with
+/// it, stay below the evaluations of building it again; SDIRK4 rebuilds it
+/// at a stage whose Newton fails, RadauIIA at the step's start.
 struct ImplicitControl {
     /// The factor by which motions much too fast for the step shrink in each
     /// step, from 0 to 1: 1 keeps them (the trapezoidal rule, no damping at
     /// all), 0 removes them within a step. The lower it is, the more the slow
     /// motions are damped as well, though far less.
     Real rho_infinity{0.8};
-    /// Newton iterations per step. Past them, or if the corrections grow, the
-    /// iteration matrix is rebuilt and the step taken again; a second failure
-    /// throws MBD-K058.
+    /// Newton iterations per step (per stage for SDIRK4). Past them, or if
+    /// the corrections stop falling, the iteration matrix is rebuilt and the
+    /// step (stage) solved again; a second failure throws MBD-K058, or, with
+    /// error control, shortens the step.
     int max_iterations{10};
 };
 
 /// What the integrator has done since the simulator was built.
 struct IntegratorStats {
-    long long steps{0};         ///< Steps taken: for DormandPrince its own, accepted
-    long long rejected{0};      ///< Steps rejected by the error control
+    long long steps{0};         ///< Steps taken: for the methods with error control their own, accepted
+    long long rejected{0};      ///< Steps rejected by the error control, or because Newton failed
     long long evaluations{0};   ///< Evaluations of the accelerations by the integrator
     Real step_size{0.0};        ///< Length of the last step taken [s]
-    /// DormandPrince: the last accepted step's error measure (1 = at the
-    /// tolerance; see StepControl).
+    /// The methods with error control: the last accepted step's error measure
+    /// (1 = at the tolerance; see StepControl). Zero for RadauIIA without
+    /// error control, which then does not estimate it.
     Real error{0.0};
-    /// GeneralizedAlpha: Newton iterations (one evaluation each), and
-    /// iteration matrices built by finite differences.
+    /// The implicit methods: Newton iterations (one evaluation each, three
+    /// for RadauIIA), and iteration matrices built by finite differences.
     long long newton_iterations{0};
     long long jacobians{0};
 };
@@ -301,6 +333,45 @@ private:
     /// respect to q (along the velocities), v and x at the current state, by
     /// forward differences from implicit_qdd_ and implicit_xd_.
     void implicit_jacobian();
+    /// SDIRK4's own steps from time to time + dt, each projected
+    /// (simulator_implicit.cpp).
+    void step_sdirk(Real dt);
+    /// SDIRK4's five stages of one step of length h from sdirk_yn_, adding
+    /// their Newton iterations to `iterations`. A stage whose Newton fails
+    /// gets an iteration matrix built at its predictor (`rebuilt`) and one
+    /// more try; false if that fails too (`singular` if the matrix was).
+    bool sdirk_stages(Real h, int& iterations, bool& rebuilt, bool& singular);
+    /// Newton's iterations for stage i from the predictor in sdirk_y_; false
+    /// if they stop falling or run out.
+    bool sdirk_newton(int i, Real h, int& iterations);
+    /// The iteration matrix I - gamma h J, factorized in place unless it
+    /// already is for this h and J; false at a zero pivot.
+    bool sdirk_factor(Real h);
+    /// Radau IIA's own steps from time to time + dt, each projected
+    /// (simulator_implicit.cpp).
+    void step_radau(Real dt);
+    /// Newton's iterations on Radau IIA's three stages of a step of length h
+    /// from radau_yn_, starting from the increments in radau_z_; false if
+    /// they stop falling or run out.
+    bool radau_newton(Real h, int& iterations);
+    /// Radau IIA's two iteration matrices gamma I - h J and (alpha + i beta)
+    /// I - h J, factorized in place unless they already are for this h and
+    /// J; false at a zero pivot.
+    bool radau_factor(Real h);
+    /// Size the stacked work of SDIRK4 and Radau IIA (allocates).
+    void size_stacked(Index n);
+    /// f(y) = (q_dot, accelerations, rates) at the stacked state y = (q, v,
+    /// x) and time t, into `out`: one evaluation.
+    void stacked_f(const VecX& y, Real t, VecX& out);
+    /// The derivative J of f with respect to y at y and t, by forward
+    /// differences (n + 1 evaluations), and f there (stacked_f0_).
+    void stacked_jacobian(const VecX& y, Real t);
+    /// After an accepted step whose Newton iterations cost `evaluations`:
+    /// keep J, or mark it to be built again (see ImplicitControl).
+    void stacked_jacobian_policy(int evaluations);
+    /// How much f amplifies the rounding of the state y: entry i is sum_j
+    /// |J_ij| |y_j| (into stacked_noise_), for Newton's convergence test.
+    void stacked_noise(const VecX& y);
     /// Project the state onto the constraints after a step.
     void project_step();
     /// One step of the integrator, the projection, time and kinematics.
@@ -343,6 +414,51 @@ private:
     std::vector<Index> implicit_pivots_;
     bool implicit_jacobian_valid_{false};
     VecX implicit_a_new_, implicit_w_new_, implicit_residual_, implicit_dq_;
+    // SDIRK4 and Radau IIA, on the stacked state y = (q, v, x): the
+    // derivative J of the right-hand side f, numbered so that a
+    // factorization knows which J it holds; f where J was built; the Newton
+    // evaluations of the first whole step with that J (-1 until there is
+    // one); |J| |y| at the step's start; work vectors (a perturbed state and
+    // f there, q_dot).
+    MatX stacked_jacobian_;
+    long long stacked_version_{0};
+    bool stacked_jacobian_valid_{false};
+    int stacked_base_cost_{-1};
+    VecX stacked_noise_;
+    VecX stacked_f0_, stacked_y_, stacked_fp_, stacked_qd_;
+    // SDIRK4: the iteration matrix I - gamma h J factorized in place with its
+    // pivots, and the step length and J it holds; the stage derivatives; f at
+    // the step's start (when known); work vectors (the state at the step's
+    // start, a stage's known part and its value, a residual, an error
+    // estimate).
+    MatX sdirk_matrix_;
+    std::vector<Index> sdirk_pivots_;
+    Real sdirk_factored_h_{0.0};
+    long long sdirk_factored_version_{-1};
+    bool sdirk_factored_regular_{false};
+    VecX sdirk_k_[5];
+    VecX sdirk_fn_;
+    bool sdirk_fn_valid_{false};
+    VecX sdirk_yn_, sdirk_s_, sdirk_y_, sdirk_r_, sdirk_e_;
+    // Radau IIA: the iteration matrices gamma I - h J (real) and (alpha + i
+    // beta) I - h J (complex) factorized in place with their pivots, and the
+    // step length and J they hold; the stages' increments Z, their transforms
+    // W = T^-1 Z and f at the stages; the last step's collocation polynomial
+    // (three coefficient vectors), its length and the state and time it ended
+    // at, for the next step's starting values; work vectors (the state at the
+    // step's start, a stage's state, f at the start, a real and a complex
+    // right-hand side, an error estimate).
+    MatX radau_e1_;
+    Eigen::MatrixXcd radau_e2_;
+    std::vector<Index> radau_p1_, radau_p2_;
+    Real radau_factored_h_{0.0};
+    long long radau_factored_version_{-1};
+    bool radau_factored_regular_{false};
+    VecX radau_z_[3], radau_w_[3], radau_f_[3], radau_cont_[3];
+    Real radau_h_old_{0.0}, radau_end_time_{0.0};
+    bool radau_cont_valid_{false}, radau_first_{true};
+    VecX radau_end_, radau_yn_, radau_y_, radau_f0_, radau_r_, radau_e_;
+    Eigen::VectorXcd radau_rc_;
     ProjectionInfo last_projection_;
     int projection_failures_{0};
     bool projection_failure_reported_{false};

@@ -281,11 +281,13 @@ Warning: `<n> events in one step at t = <t> s; the rest of the step ignores even
 
 ### MBD-K055
 
-`kernel::Simulator: Dormand-Prince needs a step of <h> s at t = <t> s, below step_control.min_step (<min> s); the error measure of the last try was <e>. The model is stiff or discontinuous here.`
+`kernel::Simulator: <Dormand-Prince, SDIRK4 or Radau IIA> needs a step of <h> s at t = <t> s, below step_control.min_step (<min> s); the error measure of the last try was <e>. The model is stiff or discontinuous here.`
 
 - **Means:** to meet its tolerances the integrator would have to take a step
   shorter than `step_control.min_step` (1e-12 s by default), or so short that
   the time no longer changes. The state is the last one reached, before t.
+  For the implicit methods an infinite measure means Newton failed even at
+  the shortened step.
 - **Usual causes:** a stiff force (a very stiff spring or contact, a tyre at
   low speed on a light wheel), whose stability limit is far shorter than the
   motion needs; a force that jumps (a sign that flips with a velocity, a
@@ -293,13 +295,13 @@ Warning: `<n> events in one step at t = <t> s; the rest of the step ignores even
   a state that has become NaN or infinite (the measure is then infinite).
 - **What to do:** look at the forces at that time (`dump_state`, the step
   trace); make a jump continuous (regularise it, or decide it at the end of a
-  step as the drivetrain's brake does); for a stiff model use RK4 at a step
-  inside its limit, or the implicit methods of Phase 4 when they come; loosen
-  the tolerances if they are tighter than the model deserves.
+  step as the drivetrain's brake does); for a stiff model use an implicit
+  method (`RadauIIA` with the same step control, or `GeneralizedAlpha`);
+  loosen the tolerances if they are tighter than the model deserves.
 
 ### MBD-K056
 
-`kernel::Simulator: Dormand-Prince took <n> steps within one step of <dt> s and reached only t = <t> s (step_control.max_steps). The model is stiff or discontinuous here, or the tolerances are too tight for it.`
+`kernel::Simulator: <Dormand-Prince, SDIRK4 or Radau IIA> took <n> steps within one step of <dt> s and reached only t = <t> s (step_control.max_steps). The model is stiff or discontinuous here, or the tolerances are too tight for it.`
 
 - **Means:** within one call to `step(dt)` the integrator tried more steps,
   accepted or rejected, than `step_control.max_steps` (100000 by default).
@@ -322,30 +324,37 @@ Warning: `<n> events in one step at t = <t> s; the rest of the step ignores even
 
 ### MBD-K058
 
-`kernel::Simulator: the generalised-alpha step of <h> s from t = <t> s did not converge within <n> Newton iterations, with an iteration matrix built at its start.` or `...: the iteration matrix is singular.`, then `The forces change too fast across the step, or are not finite.`
+`kernel::Simulator: the <generalised-alpha, SDIRK4 or Radau IIA> step of <h> s from t = <t> s did not converge within <n> Newton iterations, or its corrections stopped falling, even with an iteration matrix just built there.` or `...: the iteration matrix is singular.`, then `The forces change too fast across the step, or are not finite.`
 
-- **Means:** the implicit method (task 4.3) could not solve a step: Newton's
-  corrections did not fall below the tolerance (`step_control`) within
-  `implicit_control.max_iterations`, or grew, even with an iteration matrix
-  just rebuilt from the current state; or that matrix has a zero pivot. The
-  state is the one at the start of the step.
+- **Means:** an implicit method (tasks 4.3, 4.4; SDIRK4 and Radau IIA only
+  with `step_control.adaptive` off, since with error control they shorten
+  the step instead) could not solve a step: Newton's corrections did not
+  fall below the tolerance within `implicit_control.max_iterations`, or
+  stopped falling, even with an iteration matrix just rebuilt there (at the
+  step's start; for SDIRK4 at the stage that failed); or that matrix has a
+  zero pivot. The state is the one at the start of the step.
 - **Usual causes:** a force that is NaN or infinite (the matrix built from
   it has no pivot); a force that jumps within the step (contact that starts,
   a friction sign, a table without interpolation), which Newton on a smooth
   model of it cannot follow; a step so long that the forces change their
   character across it (a tyre leaving the ground, a mechanism passing a
-  singular position).
+  singular position). With SDIRK4 and Radau IIA, whose stages span the
+  whole step, also a step long beside how fast the stiff forces' directions
+  turn: on the bushed pendulum (k = 1e8 N/m) Radau IIA solves fixed steps of
+  2 ms but not of 4 ms once the links swing fast, while generalised-alpha,
+  one evaluation point per step, needs shorter steps for its accuracy anyway.
 - **What to do:** check the forces at that state (`dump_state`); shorten
-  the step there; make a jump continuous or decide it at the end of a step;
-  raise `max_iterations` only if the corrections were still falling.
+  the step there, or use error control, which shortens it where needed;
+  make a jump continuous or decide it at the end of a step; raise
+  `max_iterations` only if the corrections were still falling.
 
 ### MBD-K059
 
-`kernel::Simulator: implicit_control needs rho_infinity from 0 to 1 and max_iterations >= 1; it has <rho> and <n>.`
+`kernel::Simulator: implicit_control needs rho_infinity from 0 to 1 and max_iterations >= 1; it has <rho> and <n>.` or, from SDIRK4 and Radau IIA, `implicit_control needs max_iterations >= 1; it has <n>.`
 
-- **Means:** a setting of the generalised-alpha method is out of range. Its
-  parameters follow from `rho_infinity`, and outside [0, 1] the method loses
-  its stability or its order.
+- **Means:** a setting of an implicit method is out of range. Generalised-
+  alpha's parameters follow from `rho_infinity`, and outside [0, 1] the
+  method loses its stability or its order.
 
 ### MBD-K060
 

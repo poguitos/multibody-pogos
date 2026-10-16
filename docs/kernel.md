@@ -383,6 +383,46 @@ recurrence to rounding (`tests/kernel/test_kernel_integrators.cpp`); the car
 rolling at 0.5 m/s runs at 5 ms, where RK4's wheel spins chatter. Codes
 MBD-K058 and K059.
 
+`RadauIIA` and `SDIRK4` (task 4.4, decisions D33 and D34) are implicit
+Runge-Kutta methods with the same step control as `DormandPrince` (their own
+steps within each `step(dt)`, ending exactly at t + dt; with
+`step_control.adaptive` off, one step per call). Both work on the stacked
+state y = (q, v, x), quaternions carried as four numbers through the stages
+and normalized once per step, with one derivative J = df/dy by forward
+differences (n + 1 evaluations, n = nq + nv + nx), kept from step to step
+while the Newton work a step costs, beyond that of the first step with it,
+stays below rebuilding it. Their error estimates are of third order and
+filtered through an iteration matrix, so that stiff components do not
+inflate them; Newton stops at min(0.03, sqrt(tol)) of the tolerances
+(RADAU5's rule), never below the rounding of the stage's terms and of the
+state amplified by J. `RadauIIA` is the three-stage Radau IIA method of
+RADAU5: fifth order, stage order 3, L-stable. Its 3n Newton equations per
+iteration are transformed into one real and one complex system of n, each
+iteration costing three evaluations; starting values come from the last
+step's collocation polynomial. On the bushed pendulum (two links on stiff
+bushings, `tests/kernel/bushed_pendulum.hpp`), with error control at 1e-6
+it ends 1e-7 m from the reference after 1 s for less than half the
+evaluations generalised-alpha needs for 1e-6 m. `SDIRK4` (Hairer and
+Wanner's, five stages solved one at a time, fourth order) is cheaper per
+step but its stage order is 1: as springs or bushings stiffen towards
+joints its accuracy falls towards first order and its error estimate
+understates the error (D33). It suits smooth models and stiffness in
+first-order states; for stiff mechanical models use `RadauIIA` (tight
+tolerances, error control) or `GeneralizedAlpha` (fixed steps, modest
+accuracy). Both refuse a step Newton cannot solve with MBD-K058 at a fixed
+step, and shorten it with error control. `integrator_stats()` counts their
+Newton iterations and iteration matrices.
+
+Choosing a method:
+
+| Model and need | Method |
+|---|---|
+| Smooth, fixed output steps | `RK4` |
+| Smooth, a tolerance to meet, or long output steps | `DormandPrince` |
+| Stiff (stiff springs, bushings, contact, tyres at low speed), fixed steps, accuracy of the order of 1e-4 to 1e-6 | `GeneralizedAlpha` |
+| Stiff, a tolerance to meet, tight accuracy | `RadauIIA` |
+| Stiffness only in first-order states, or a smooth model at a tight tolerance | `SDIRK4` or `RadauIIA` |
+
 **Outputs** (task 3.3, `kernel/outputs.hpp`). `compute_loads(sim)` evaluates
 the accelerations at the simulator's state and returns them with the
 multipliers, each constraint's wrench on each body, and each joint's reaction.

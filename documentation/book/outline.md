@@ -130,6 +130,15 @@ to a validated engine.*
     does not blow up but chatters, bounded by a tyre's saturation, and the
     estimate on the wrong side of the limit that a test exposed. *J:
     generalised-alpha. D32 (and D30's correction).*
+27. **Higher order for stiff mechanical models.** SDIRK4 and Radau IIA on the
+    stacked state; stage order, and why a fourth-order method falls towards
+    first order as bushings stiffen into joints (the stiffness sweep; the
+    index-3 limit), while its error estimate does not notice; the bushed
+    pendulum as a benchmark; a Jacobian that turns within a step, and the
+    quaternion explanation an experiment refuted; Newton's error inside an
+    integrator and RADAU5's tolerance-dependent stop; rounding amplified by
+    stiff forces; a plan's "done when" overturned by measurement, and the
+    author's decision. *J: SDIRK4 and Radau IIA. D33, D34.*
 
 ## Part VII onwards: one part per phase still to come
 
