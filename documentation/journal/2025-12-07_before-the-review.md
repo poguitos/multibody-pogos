@@ -5,8 +5,9 @@
   `documentation/Development_schedule.txt` and `documentation/Multibody plan.pdf`
 - **Commits:** `11bfdd3` to `3a9673e`, then the snapshot `859243e`
 - **Written:** reconstructed on 5 October 2026 from the git history and the
-  review. Only the author knows most of this period: the sections marked
-  *Author* are questions to answer.
+  review. Only the author knows most of this period; the author's answers
+  to the questions this entry asked were added on 16 October 2026, marked
+  as theirs.
 
 ## Goal
 
@@ -15,8 +16,13 @@ vehicle builder, lap-time optimisation, aerodynamics from CFD, real-time
 simulation and a Python and AI layer on top (`documentation/Master_plan.md`,
 section 2, keeps these as the project's eight capabilities).
 
-*Author:* where did the idea come from, and why build a solver instead of
-using an existing one?
+*The author, 16 October 2026:* the project began as an exploration of
+vehicle kinematics and dynamics from their most basic level, with the aim of
+taking that understanding up to current standards. The goal is not a
+program that excels at one thing (kinematics and compliance, say) but one
+that can simulate a vehicle in a wide variety of scenarios, bringing
+together multibody simulation, vehicle modelling, track optimisation, CFD
+and machine learning.
 
 ## What the history shows
 
@@ -40,14 +46,20 @@ review of 2 October showed why more kept appearing: the same joint
 kinematics was written out by hand in several routines, and the copies
 disagreed (see the review entry, findings F1 to F4).
 
-*Author:* what was the error noticed in May, and how was it noticed? What was
-tried in June and July, and what did each fix change?
+*The author, 16 October 2026:* the error noticed in May was an
+inconsistency in the solver's calculation of a rigid body's basic degrees of
+freedom, serious enough that that part had to be redone. (Still open: what
+was tried in June and July, and what each fix changed, beyond what the
+snapshot shows.)
 
 Five months of work were not committed (finding F19), so this period's
 intermediate states are lost; and two all-core builds restarted the PC in
 mid-2026 (the reason the build now runs one compiler at a time, decision D9).
 
-*Author:* when did the restarts happen, and what was being built?
+*The author, 16 October 2026:* both restarts happened while the whole
+project was being built; why is not remembered. That fits the cause being
+the load of a full parallel build (memory or heat) rather than any one
+file, which D9's limit addresses either way.
 
 ## For the book
 
