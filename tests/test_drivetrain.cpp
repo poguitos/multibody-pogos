@@ -6,8 +6,10 @@
 #include <algorithm>
 #include <iomanip>
 #include <string>
+#include <utility>
 
 #include "mbd/vehicle/drivetrain.hpp"
+#include "mbd/vehicle/vehicle_template.hpp"
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
@@ -381,16 +383,19 @@ TEST_CASE("Drivetrain: braking to a stop locks the wheels, and the car stays sto
     // And with generalised-alpha (task 4.3), whose history starts afresh when
     // a lock changes a spin between steps, and with SDIRK4 and Radau IIA (task
     // 4.4), whose error control crosses the stops as Dormand-Prince's does.
+    // And with linearly implicit Euler (task 4.5), whose drivetrain spins are
+    // coupled to the hubs through the tyres in one linear solve.
     using namespace mbd;
 
     for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::DormandPrince,
                               kernel::Integrator::GeneralizedAlpha, kernel::Integrator::SDIRK4,
-                              kernel::Integrator::RadauIIA}) {
+                              kernel::Integrator::RadauIIA, kernel::Integrator::LinearlyImplicitEuler}) {
         INFO((method == kernel::Integrator::RK4                ? "RK4"
               : method == kernel::Integrator::DormandPrince    ? "Dormand-Prince"
               : method == kernel::Integrator::GeneralizedAlpha ? "generalised-alpha"
               : method == kernel::Integrator::SDIRK4           ? "SDIRK4"
-                                                               : "Radau IIA"));
+              : method == kernel::Integrator::RadauIIA         ? "Radau IIA"
+                                                               : "linearly implicit Euler"));
         kernel::System sys;
         VehicleParams vp;
         auto vm = build_simple_vehicle(sys, vp);
@@ -766,4 +771,122 @@ TEST_CASE("Drivetrain: initialize matches wheel omega to vehicle speed",
     for (int c = 0; c < 4; ++c) {
         REQUIRE_THAT(dt.wheel_omega[c], WithinAbs(expected_omega, 0.1));
     }
+}
+
+TEST_CASE("Drivetrain: linearly implicit Euler rolls the car at low speed in steps of 5 ms, one evaluation a step",
+          "[drivetrain][coast][integrators][implicit][linear]")
+{
+    // As for generalised-alpha above: at 0.5 m/s the front spins relax at
+    // about 3000 per second, 15 times past RK4's limit at 5 ms. The linearly
+    // implicit step (task 4.5) is backward Euler in the spins, coupled to the
+    // hubs' velocities through the tyres' slip, so the spins settle within
+    // the step: every wheel within 1e-3 of free rolling, as generalised-alpha
+    // keeps them. Backward Euler damps; nothing feeds the coasting car, so
+    // its speed may only fall, by the method's damping of the small motions
+    // left from the release (about 2e-5 of the speed measured): within 1e-3.
+    // Its first order shows in the release transient it damps differently
+    // from RK4 at 0.5 ms: the speed after it within 1e-3 of RK4's. Every step
+    // costs one evaluation and one set of derivatives.
+    using namespace mbd;
+    kernel::System sys;
+    VehicleParams vp;
+    auto vm = build_simple_vehicle(sys, vp);
+    kernel::Simulator sim(sys);
+    sim.method = kernel::Integrator::LinearlyImplicitEuler;
+    set_vehicle_equilibrium(sim, vm);
+    sim.v(3) = 0.5;
+    sim.initialize();
+    Drivetrain dt;
+    dt.initialize(sim, vm);
+    dt.connect(sim, vm);
+    const Real h = 0.005;
+    sim.run(0.3, h);
+    const Real V_start = vx(sim);
+    Real worst = 0.0;
+    for (int k = 0; k < 400; ++k) {
+        sim.step(h);
+        for (int c = 0; c < 4; ++c) {
+            const Real rolling = dt.wheel_omega[c] * vm.tires[c]->get_rolling_radius();
+            worst = std::max(worst, std::abs(rolling - vx(sim)) / vx(sim));
+        }
+    }
+    const Real V_end = vx(sim);
+
+    kernel::System ref_sys;
+    auto ref_vm = build_simple_vehicle(ref_sys, vp);
+    kernel::Simulator ref(ref_sys);
+    set_vehicle_equilibrium(ref, ref_vm);
+    ref.v(3) = 0.5;
+    ref.initialize();
+    Drivetrain ref_dt;
+    ref_dt.initialize(ref, ref_vm);
+    ref_dt.connect(ref, ref_vm);
+    ref.run(2.3, 0.0005);
+
+    const auto& s = sim.integrator_stats();
+    INFO("speed " << V_start << " -> " << V_end << " m/s (RK4 at 0.5 ms: " << vx(ref) << "), rolling within " << worst
+                  << "; " << s.steps << " steps, " << s.evaluations << " evaluations, " << s.jacobians
+                  << " sets of derivatives");
+    CHECK(worst < 1e-3);
+    CHECK(V_end <= V_start);
+    CHECK(V_start - V_end < 1e-3 * V_start);
+    CHECK(std::abs(V_end - vx(ref)) < 1e-3 * vx(ref));
+    CHECK(s.evaluations == s.steps);
+    CHECK(s.jacobians == s.steps);
+}
+
+TEST_CASE("Drivetrain: on the sedan every linearly implicit step does the same work, through a whole drive",
+          "[drivetrain][integrators][implicit][linear]")
+{
+    // The plan's "done when" for task 4.5: the cost of a step does not vary.
+    // The double-wishbone sedan (27 velocities, 4 wheel spins, its corners
+    // closed by constraints) is driven at full stretch of its states: half
+    // throttle from rest for 1 s, braking to a stop for 2 s (the wheels lock,
+    // task 4.1), standing for 1 s. Every step must take exactly one
+    // evaluation and one set of derivatives, whatever the state; RK4 takes
+    // four evaluations, generalised-alpha from two to dozens (a new
+    // iteration matrix costs 2 nv + nx evaluations). The drive must match
+    // RK4's at the same step: the top speed within 1 % (a first-order method
+    // at 1 ms on motions of a tenth of a second), and the car at rest at the
+    // end. Time per step is measured by the benchmark (data file), not here.
+    using namespace mbd;
+    auto drive = [](kernel::Integrator method, long long& fewest, long long& most) {
+        auto tmpl = VehicleTemplate::DefaultSedan();
+        tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
+        tmpl.rear_axle.suspension_type = SuspensionType::DoubleWishbone;
+        kernel::System sys;
+        auto vh = build_vehicle(sys, tmpl);
+        kernel::Simulator sim(sys);
+        sim.method = method;
+        set_vehicle_equilibrium(sim, vh);
+        sim.initialize();
+        Drivetrain dt(tmpl.drivetrain);
+        dt.initialize(sim, vh);
+        dt.connect(sim, vh);
+        fewest = 1 << 30;
+        most = 0;
+        Real top = 0.0;
+        for (int k = 0; k < 4000; ++k) {
+            dt.throttle = k < 1000 ? 0.5 : 0.0;
+            dt.brake = k >= 1000 && k < 3000 ? 0.6 : 0.0;
+            const auto before = sim.integrator_stats();
+            sim.step(0.001);
+            const auto& after = sim.integrator_stats();
+            const long long work = (after.evaluations - before.evaluations) * 1000 + (after.jacobians - before.jacobians);
+            fewest = std::min(fewest, work);
+            most = std::max(most, work);
+            top = std::max(top, vx(sim));
+        }
+        return std::make_pair(top, vx(sim));
+    };
+    long long lin_fewest = 0, lin_most = 0, rk4_fewest = 0, rk4_most = 0;
+    const auto [lin_top, lin_end] = drive(kernel::Integrator::LinearlyImplicitEuler, lin_fewest, lin_most);
+    const auto [rk4_top, rk4_end] = drive(kernel::Integrator::RK4, rk4_fewest, rk4_most);
+    INFO("linearly implicit Euler: top speed " << lin_top << " m/s, at the end " << lin_end
+         << "; work per step (evaluations x 1000 + derivative sets) " << lin_fewest << " to " << lin_most
+         << ". RK4: top " << rk4_top << ", end " << rk4_end << "; " << rk4_fewest << " to " << rk4_most);
+    CHECK(lin_fewest == 1001);
+    CHECK(lin_most == 1001);
+    CHECK(std::abs(lin_top - rk4_top) < 0.01 * rk4_top);
+    CHECK(std::abs(lin_end) < 1e-3);
 }

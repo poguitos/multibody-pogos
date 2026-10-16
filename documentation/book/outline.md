@@ -139,6 +139,13 @@ to a validated engine.*
     integrator and RADAU5's tolerance-dependent stop; rounding amplified by
     stiff forces; a plan's "done when" overturned by measurement, and the
     author's decision. *J: SDIRK4 and Radau IIA. D33, D34.*
+28. **A real-time step.** Why the same cost every step matters more than the
+    average; linearly implicit Euler as a W-method; derivatives element by
+    element, and what they leave out (the geometric stiffness of the tree);
+    the stiff couplings a W-method must keep (the car that accelerated a
+    fifth too slowly) and a hidden one it must not (the tyre's rolling
+    radius); timing a step's spread, and telling the method's from the
+    operating system's. *J: the fixed-cost step. D35.*
 
 ## Part VII onwards: one part per phase still to come
 

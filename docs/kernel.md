@@ -413,6 +413,31 @@ accuracy). Both refuse a step Newton cannot solve with MBD-K058 at a fixed
 step, and shorten it with error control. `integrator_stats()` counts their
 Newton iterations and iteration matrices.
 
+`LinearlyImplicitEuler` (task 4.5, decision D35) is the real-time
+integrator: every step does the same work, one evaluation, one set of force
+derivatives and one linear solve, whatever the state. It is backward Euler
+on the velocities (positions moved with the new velocities), linearized
+once per step in the applied forces: (M - h C - h^2 K) times the change from
+an explicit Euler step equals h^2 (K (v + h a) + C a), restricted to the
+motions the constraints allow, with the state elements' states solved with
+it, implicit in themselves and coupled to the velocities through the forces
+they share (a wheel's spin and its hub through the tyre's slip). K and C,
+the derivatives of the applied generalized forces
+(`Simulator::force_jacobian`), are built every step element by element:
+each element's loads are differentiated with respect to its own bodies'
+poses and velocities by differences of that element alone, and mapped
+through the bodies' Jacobians; joint forces with respect to their
+coordinates. The inertial terms, the joints' geometry, `tau` and
+`force_callback` stay explicit, and K, C and the states' coupling enter by
+their symmetric parts, so the solve uses forward dynamics' factorizations
+(D35 says why each is safe). First order, L-stable on stiff springs: a
+spring 1000 times too stiff for RK4 shrinks by 1 / sqrt(1 + (w h)^2) per
+step, and every motion is damped by about (w h)^2 / 2 per step. On the
+sedan at 1 ms it drives, brakes and stops as RK4 does (top speed within 0.1
+%) at one evaluation a step; the car rolling at walking pace keeps its speed
+at steps of 1 to 10 ms. A matrix that is not positive definite (negative
+stiffness beyond the inertia) makes the step drop the stiffness, with MBD-K045.
+
 Choosing a method:
 
 | Model and need | Method |
@@ -422,6 +447,7 @@ Choosing a method:
 | Stiff (stiff springs, bushings, contact, tyres at low speed), fixed steps, accuracy of the order of 1e-4 to 1e-6 | `GeneralizedAlpha` |
 | Stiff, a tolerance to meet, tight accuracy | `RadauIIA` |
 | Stiffness only in first-order states, or a smooth model at a tight tolerance | `SDIRK4` or `RadauIIA` |
+| Real time: the same cost every step, stiff or not | `LinearlyImplicitEuler` |
 
 **Outputs** (task 3.3, `kernel/outputs.hpp`). `compute_loads(sim)` evaluates
 the accelerations at the simulator's state and returns them with the

@@ -286,3 +286,34 @@ The whole benchmark, pinned:
 | double-wishbone sedan          | constraint projection            |      24.21 |
 | double-wishbone sedan          | one RK4 step of 1 ms, everything |     127.79 |
 
+
+## Task 4.5: the integrators on the sedan, 16 October 2026
+
+`build\bench\mbd_bench.exe`, pinned to a performance core at high priority
+(D21), two runs. The double-wishbone sedan with its drivetrain (27
+velocities, 4 wheel spins). First column: the median time of one 1 ms step at
+a moving state, as above. Then single steps over a drive (half throttle for
+1 s, brake to a stop for 2 s, stand for 1 s), the first ten left out.
+
+| Method | median of one step [us] | single steps: min | median | 99th percentile | 99.9th | max |
+|---|---|---|---|---|---|---|
+| RK4 | 122.2, 122.3 | 120.6, 119.9 | 121.7, 121.1 | 155.6, 144.9 | 264.2, 221.4 | 780.5, 262.8 |
+| generalised-alpha | 81.3, 80.7 | 79.5, 79.2 | 80.8, 80.4 | 172.2, 160.0 | 322.5, 488.9 | 2337.4, 2103.9 |
+| linearly implicit Euler | 108.1, 109.4 | 99.6, 99.5 | 106.3, 106.5 | 136.7, 141.5 | 228.2, 991.3 | 258.4, 2300.8 |
+
+What the numbers show:
+
+- **Every linearly implicit step does the same work** (one evaluation, one
+  set of force derivatives, one constrained solve; a test checks it on
+  every step of the drive), and its times spread as RK4's do, which also
+  does fixed work: 99 % of the steps within 1.3 times the median.
+- **Generalised-alpha's longest step is its own**: 2.1 to 2.3 ms in both
+  runs, when it builds a new iteration matrix (2 nv + nx = 58 evaluations).
+  It is cheaper per step than either other method, but a real-time budget
+  must allow for that step.
+- **The longest single steps of RK4 and the linearly implicit method differ
+  between runs** (263 against 781 us, 258 against 2301 us): the operating
+  system's, not the method's. Windows is not a real-time system (tasks 12.5
+  to 12.8).
+- The remaining variation within the method: the projection after the step
+  takes a Gauss-Newton iteration or none, as the drift requires (task 4.7).

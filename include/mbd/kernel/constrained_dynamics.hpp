@@ -128,6 +128,14 @@ public:
     const VecX& forward_dynamics_from_kinematics(Data& data, const VecX& v,
                                                  const VecX& tau, Real t);
 
+    /// The change dv with W dv = r + J^T mu and J dv = 0, J the constraint
+    /// Jacobian of the last forward dynamics or evaluate(): r's motion
+    /// restricted to what the constraints allow, weighed by W instead of M,
+    /// and mu the multipliers that restrict it (for the linearly implicit
+    /// step, task 4.5, W = M - h C - h^2 K). W must be symmetric positive
+    /// definite; false, and dv unchanged, if its Cholesky factorization fails.
+    /// Allocates nothing after the first call with W of this size.
+    bool constrained_solve(const MatX& W, const VecX& r, VecX& dv);
     /// Move q onto phi(q, t) = 0, then v onto J v = nu, each by the change of
     /// least kinetic-energy norm (M-weighted). Gauss-Newton on q with the mass
     /// matrix of the starting point, each step halved until |phi| decreases.
@@ -177,6 +185,7 @@ private:
     MatX J_, Z_, A_;
     VecX q_save_, v_dot_, v_dot_free_, rhs_v_, dv_, zero_v_, work_v_;
     Eigen::LLT<MatX> llt_M_;
+    Eigen::LLT<MatX> llt_W_;   ///< constrained_solve's W
     RankRevealingLDLT ldlt_A_;
     bool mass_matrix_factorized_{false};
     SolveInfo info_;

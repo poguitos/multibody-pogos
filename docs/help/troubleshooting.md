@@ -221,8 +221,30 @@ evaluations a step on the sedan at 1 ms, against RK4's four), and an
 occasional iteration matrix (2 nv + nx evaluations). For a tight tolerance
 use `Integrator::RadauIIA` with error control: fifth order, it reaches 1e-7
 m on the bushed pendulum for less than half the evaluations
-generalised-alpha needs for 1e-6. *(Generalised-alpha; SDIRK4 and Radau
-IIA.)*
+generalised-alpha needs for 1e-6. For real time, where every step must cost
+the same, `Integrator::LinearlyImplicitEuler`: one evaluation a step, stable
+at any step, first order. *(Generalised-alpha; SDIRK4 and Radau IIA; linearly
+implicit Euler.)*
+
+**The real-time integrator damps a fast motion away too soon.**
+`LinearlyImplicitEuler` is first order and, like backward Euler, damps
+every motion by about (w h)^2 / 2 per step on top of its physical damping:
+a wheel hop of 15 Hz at 1 ms loses 0.44 % of its amplitude per step, half
+of it in about 0.16 s. Slow motions (a body's roll and pitch, the car's
+speed) are hardly touched. Keep the step short against the fastest motion
+whose amplitude matters, or, off line, use `RadauIIA` or
+`GeneralizedAlpha` with a high `rho_infinity`. *(Linearly implicit Euler.)*
+
+**A model accelerates too slowly, or gains energy, with the linearly
+implicit step after a change to a state element or a tyre.** The step is
+only as good as the derivatives it is given (D35). A state whose rate
+depends steeply on a body's velocity (a wheel's spin through the tyre's
+slip) must be coupled to it in the step: without that coupling the sedan
+accelerated a fifth too slowly at 1 ms. A dependence on the positions that
+is not symmetric (the tyre's rolling radius changing with its deflection)
+is left out on purpose: in the step's symmetric matrix it made a coasting
+car gain speed. Check a new element against `Simulator::force_jacobian`
+and a run with RK4 at a short step. *(Linearly implicit Euler.)*
 
 **An implicit method stops with MBD-K058.** Newton could not solve a step,
 even with a fresh iteration matrix: a force that is NaN or infinite, a force
@@ -313,6 +335,15 @@ figure separately (`git archive -o x.tar <commit>`, `tar -xf`, configure with
 the main build's dependency sources) and run both alternately, pinned. The
 machine's own state can make everything 2.2 times slower. *(Phase 2:
 performance; static equilibrium.)*
+
+**Single steps far longer than the median.** When single steps are timed
+(for a real-time budget), the first ones size the integrator's work and warm
+the caches: leave them out. After them, a step of a method with fixed work
+can still take ten times the median now and then; if the longest steps
+differ between runs, they are the operating system's (Windows is not a
+real-time system), not the method's. A method whose longest step comes back
+in every run (generalised-alpha rebuilding its iteration matrix) owns it.
+*(The fixed-cost step.)*
 
 ## Numerical traps
 
@@ -416,3 +447,4 @@ Before building on it (working rule 2):
 | Phase 4: the Dormand-Prince pair | A sign flip that would shrink the steps without end (Simulations: K055 and K056; chattering friction); cost at short output steps (Simulations); a wrong reference in a scratch check; testing more than the order (Numerical traps) |
 | Phase 4: generalised-alpha | A bound guessed from one step; Newton against rounding (Numerical traps); a locked wheel that crept (Simulations); stiff models and K058 (Simulations) |
 | Phase 4: SDIRK4 and Radau IIA | SDIRK4's order on stiff bushings (Simulations); a Jacobian that turns within a step (Simulations); Newton's error and Newton against amplified rounding (Numerical traps); fixed steps Newton cannot solve (Simulations: K058) |
+| Phase 4: the fixed-cost step | The car that accelerated too slowly and the one that gained speed (Simulations: the linearly implicit step); damping of fast motions (Simulations); timing outliers from the first steps and the operating system (Slow runs: single steps far longer than the median) |

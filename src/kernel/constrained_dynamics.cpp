@@ -229,6 +229,30 @@ const VecX& ConstraintSolver::forward_dynamics_from_kinematics(Data& data, const
     return v_dot_;
 }
 
+bool ConstraintSolver::constrained_solve(const MatX& W, const VecX& r, VecX& dv)
+{
+    checks::v("kernel::ConstraintSolver::constrained_solve", model_, r, "r");
+    llt_W_.compute(W);
+    if (llt_W_.info() != Eigen::Success) return false;
+    dv = r;
+    llt_W_.solveInPlace(dv);   // W^-1 r
+    if (m_ == 0) return true;
+    // As forward dynamics does with M: (J W^-1 J^T) mu = -J W^-1 r through Z
+    // = L^-1 J^T, then dv += W^-1 J^T mu. The storage is forward dynamics',
+    // which the next forward dynamics or projection computes afresh.
+    Z_ = J_.transpose();
+    llt_W_.matrixL().solveInPlace(Z_);
+    A_.noalias() = Z_.transpose() * Z_;
+    ldlt_A_.compute(A_);
+    rhs_m_.noalias() = J_ * dv;
+    rhs_m_ = -rhs_m_;
+    solve_constraint_matrix(rhs_m_, mu_);
+    work_v_.noalias() = Z_ * mu_;
+    llt_W_.matrixU().solveInPlace(work_v_);
+    dv += work_v_;
+    return true;
+}
+
 ProjectionInfo ConstraintSolver::project(Data& data, VecX& q, VecX& v, Real t,
                                          Real tolerance, int max_iterations)
 {

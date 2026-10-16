@@ -68,16 +68,21 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <initializer_list>
 #include <limits>
 #include <memory>
 #include <sstream>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "mbd/core/core.hpp"
+#include "mbd/forces/spring_damper.hpp"
+#include "mbd/kernel/algorithms.hpp"
+#include "mbd/kernel/forces.hpp"
 #include "mbd/kernel/joint_forces.hpp"
 #include "mbd/kernel/simulator.hpp"
 
@@ -867,4 +872,200 @@ TEST_CASE("Radau IIA beats generalised-alpha on the bushed pendulum at tight tol
     REQUIRE(alpha_cost > 0);
     CHECK(radau_error <= target);
     CHECK(radau_cost < alpha_cost);
+}
+
+namespace {
+
+/// The generalized forces of a system's force elements and joint forces at
+/// (q, v), from the kernel's functions directly: what force_jacobian
+/// differentiates.
+VecX applied_forces(const System& sys, const VecX& q, const VecX& v)
+{
+    Data data(sys.model);
+    forward_kinematics(sys.model, data, q, v);
+    std::vector<RigidBodyState> states;
+    body_states(sys.model, data, states);
+    std::vector<RigidBodyForces> forces(states.size());
+    for (const auto& element : sys.force_elements) element->apply(states, forces);
+    VecX tau;
+    generalized_forces(sys.model, data, forces, tau);
+    for (const auto& jf : sys.joint_forces) jf->apply(q, v, tau);
+    return tau;
+}
+
+/// Warnings caught while a test replaces the diagnostic sink.
+std::vector<std::string>& caught()
+{
+    static std::vector<std::string> messages;
+    return messages;
+}
+
+} // namespace
+
+TEST_CASE("Linearly implicit Euler: on a linear system each step is backward Euler's",
+          "[kernel][integrators][implicit][linear]")
+{
+    // A 1 kg block on a spring (k = 1 N/m) and a damper (c = 0.3 N s/m),
+    // both joint forces. Backward Euler, q+ = q + h v+, v+ = v + h (-k q+ - c
+    // v+), gives (1 + h c + h^2 k) v+ = v - h k q; on a linear system the
+    // linearly implicit step is that exactly, its derivatives being exact up
+    // to the differences' rounding (about 1e-10 of k and c). 100 steps of 0.1
+    // s; one evaluation and one set of derivatives per step.
+    const Real k = 1.0, c = 0.3, h = 0.1;
+    Oscillator osc(k);
+    JointCoordinateForceParams damper;
+    damper.damper = Curve::linear(c);
+    osc.sys.joint_forces.push_back(std::make_shared<JointCoordinateForce>(osc.sys.model, 1, damper));
+    auto sim = osc.simulator();
+    sim->method = Integrator::LinearlyImplicitEuler;
+    Real q = Oscillator::a, v = 0.0, largest = 0.0;
+    for (int n = 0; n < 100; ++n) {
+        sim->step(h);
+        v = (v - h * k * q) / (1.0 + h * c + h * h * k);
+        q += h * v;
+        largest = std::max({largest, std::abs(sim->q(0) - q), std::abs(sim->v(0) - v)});
+    }
+    const auto& stats = sim->integrator_stats();
+    INFO("largest difference from the recurrence " << largest << "; " << stats.steps << " steps, "
+                                                    << stats.evaluations << " evaluations, " << stats.jacobians
+                                                    << " sets of derivatives");
+    CHECK(largest < 1e-10);
+    CHECK(stats.evaluations == 100);
+    CHECK(stats.jacobians == 100);
+}
+
+TEST_CASE("Linearly implicit Euler: a spring far too stiff for the step shrinks as backward Euler says",
+          "[kernel][integrators][implicit][linear]")
+{
+    // The spring 1000 times too stiff for RK4 at 1 ms (w h = 89.4). Backward
+    // Euler's step on q'' = -w^2 q multiplies the state by 1 / (1 -+ i w h), of
+    // modulus 1 / sqrt(1 + (w h)^2) = 0.0112: one step from (a, 0) gives v =
+    // -h w^2 a / (1 + (w h)^2), q = a + h v.
+    const Real h = 1e-3, w = std::sqrt(1000.0) * 2.0 * std::sqrt(2.0) / h, W = w * w;
+    Oscillator osc(W);
+    auto sim = osc.simulator();
+    sim->method = Integrator::LinearlyImplicitEuler;
+    sim->step(h);
+    const Real v = -h * W * Oscillator::a / (1.0 + h * h * W), q = Oscillator::a + h * v;
+    const Real amplitude = std::abs(Complex(sim->q(0), -sim->v(0) / w));
+    INFO("q " << sim->q(0) << " (" << q << "), v " << sim->v(0) << " (" << v << "); amplitude ratio "
+              << amplitude / Oscillator::a);
+    CHECK(std::abs(sim->q(0) - q) < 1e-9 * Oscillator::a);
+    CHECK(std::abs(sim->v(0) - v) < 1e-9 * w * Oscillator::a);
+    CHECK(std::abs(amplitude / Oscillator::a - 1.0 / std::sqrt(1.0 + h * h * W)) < 1e-9);
+}
+
+TEST_CASE("Linearly implicit Euler: first order on a smooth spatial model",
+          "[kernel][integrators][implicit][linear]")
+{
+    // The bushed pendulum with soft bushings (as for SDIRK4 and Radau IIA
+    // above): two free bodies turning through large angles. A first-order
+    // method's error after 1 s halves when the step does: the ratio within
+    // 10 % of 2 at 2 and 1 ms. The reference: Dormand-Prince at 1e-12.
+    mbd_test::BushedPendulum bp(1e4, 1e2);
+    auto tip_after = [&](Integrator method, Real h) {
+        Simulator sim(bp.sys);
+        sim.method = method;
+        bp.release(sim);
+        sim.step_control.relative_tolerance = 1e-12;
+        sim.step_control.absolute_tolerance = 1e-12;
+        sim.run(1.0, h);
+        return bp.tip(sim);
+    };
+    const Vec3 reference = tip_after(Integrator::DormandPrince, 0.01);
+    const Real e1 = (tip_after(Integrator::LinearlyImplicitEuler, 2e-3) - reference).norm();
+    const Real e2 = (tip_after(Integrator::LinearlyImplicitEuler, 1e-3) - reference).norm();
+    INFO("errors " << e1 << " and " << e2 << " m at 2 and 1 ms (ratio " << e1 / e2 << ")");
+    CHECK(e1 / e2 > 1.8);
+    CHECK(e1 / e2 < 2.2);
+}
+
+TEST_CASE("force_jacobian: element by element, the derivatives of the generalized forces",
+          "[kernel][integrators][implicit][linear]")
+{
+    // The bushed pendulum (two free bodies, two bushings) with a spring-damper
+    // between points off the links' axes as well. C = d tau / dv: element by
+    // element it must equal central differences of the generalized forces
+    // computed by the kernel's own functions, at any state; here a deflected,
+    // moving one. K = d tau / dq: element by element it leaves out the
+    // joints' geometry (how a load maps to generalized forces as the bodies
+    // turn), which multiplies the loads, so it must equal the differences
+    // where every load is zero: undeflected, at rest. The elements'
+    // derivatives are forward differences of 1e-7, the reference central ones
+    // of 1e-6: both within about 1e-6 of the largest entry.
+    mbd_test::BushedPendulum bp(1e7, 1e5);
+    Simulator probe(bp.sys);
+    bp.release(probe);
+    const Vec3 a1(0.5, 0.0, 0.03), a2(0.4, 0.02, 0.0);
+    const Real free_length = ((probe.states()[2].p_WB + probe.states()[2].q_WB * a2)
+                              - (probe.states()[1].p_WB + probe.states()[1].q_WB * a1))
+                                 .norm();
+    SpringDamperParams sp;
+    sp.free_length = free_length;
+    sp.spring = Curve::linear(2e4);
+    sp.damper = Curve::linear(300.0);
+    bp.sys.force_elements.push_back(std::make_shared<SpringDamper>(bp.link1, bp.link2, a1, a2, sp));
+
+    auto differences = [&](const VecX& q, const VecX& v, MatX& K, MatX& C) {
+        const Index nv = bp.sys.model.nv;
+        K.resize(nv, nv);
+        C.resize(nv, nv);
+        VecX dq = VecX::Zero(nv), qp(q.size()), qm(q.size());
+        for (Index j = 0; j < nv; ++j) {
+            const Real e = 1e-6;
+            dq.setZero();
+            dq(j) = e;
+            integrate(bp.sys.model, q, dq, 1.0, qp);
+            integrate(bp.sys.model, q, dq, -1.0, qm);
+            K.col(j) = (applied_forces(bp.sys, qp, v) - applied_forces(bp.sys, qm, v)) / (2.0 * e);
+            VecX vp = v, vm = v;
+            vp(j) += e;
+            vm(j) -= e;
+            C.col(j) = (applied_forces(bp.sys, q, vp) - applied_forces(bp.sys, q, vm)) / (2.0 * e);
+        }
+    };
+    MatX K, C, K_ref, C_ref;
+    {
+        // Deflected and moving: the damping.
+        Simulator sim(bp.sys);
+        bp.release(sim);
+        sim.q(0) += 2e-4;
+        sim.q(9) -= 1e-4;
+        sim.v << 0.3, -0.2, 0.5, 0.1, 0.4, -0.3, 0.2, 0.6, -0.1, -0.5, 0.2, 0.3;
+        sim.force_jacobian(K, C);
+        differences(sim.q, sim.v, K_ref, C_ref);
+        const Real scale = C_ref.cwiseAbs().maxCoeff();
+        INFO("damping: largest entry " << scale << ", largest difference " << (C - C_ref).cwiseAbs().maxCoeff());
+        CHECK((C - C_ref).cwiseAbs().maxCoeff() < 1e-6 * scale);
+    }
+    {
+        // Undeflected and at rest: the stiffness.
+        Simulator sim(bp.sys);
+        bp.release(sim);
+        sim.force_jacobian(K, C);
+        differences(sim.q, sim.v, K_ref, C_ref);
+        const Real scale = K_ref.cwiseAbs().maxCoeff();
+        INFO("stiffness: largest entry " << scale << ", largest difference " << (K - K_ref).cwiseAbs().maxCoeff());
+        CHECK((K - K_ref).cwiseAbs().maxCoeff() < 1e-6 * scale);
+    }
+}
+
+TEST_CASE("Linearly implicit Euler: a matrix that is not positive definite is reported, and the step goes on",
+          "[kernel][integrators][implicit][linear]")
+{
+    // A spring of negative stiffness (-4e6 N/m on 1 kg): at h = 1 ms, M - h^2 K
+    // = 1 - 4 < 0, so the step drops the stiffness (MBD-K045, once) and is
+    // then explicit in it; the steps still complete, finite.
+    Oscillator osc(-4e6);
+    auto sim = osc.simulator();
+    sim->method = Integrator::LinearlyImplicitEuler;
+    caught().clear();
+    const DiagnosticSink saved = diagnostic_sink();
+    diagnostic_sink() = [](const std::string& m) { caught().push_back(m); };
+    sim->step(1e-3);
+    sim->step(1e-3);
+    diagnostic_sink() = saved;
+    REQUIRE(caught().size() == 1);
+    CHECK(caught()[0].find("MBD-K045") != std::string::npos);
+    CHECK(std::isfinite(sim->q(0)));
 }

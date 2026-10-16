@@ -10,6 +10,7 @@
 #include "mbd/kernel/forces.hpp"
 
 #include "checks.hpp"
+#include "linear_work.hpp"
 #include "step_messages.hpp"
 
 namespace mbd::kernel {
@@ -700,6 +701,7 @@ void Simulator::advance(Real dt)
         case Integrator::RK4:               step_rk4(dt); break;
         case Integrator::SemiImplicitEuler: step_semi_implicit_euler(dt); break;
         case Integrator::GeneralizedAlpha:  step_generalized_alpha(dt); break;
+        case Integrator::LinearlyImplicitEuler: step_linearly_implicit(dt); break;
         case Integrator::DormandPrince:
         case Integrator::SDIRK4:
         case Integrator::RadauIIA:

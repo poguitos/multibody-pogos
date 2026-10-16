@@ -1,4 +1,5 @@
-// Timing of the dynamics algorithms (plan task 2.10).
+// Timing of the dynamics algorithms (plan task 2.10), and of the
+// integrators on the sedan (task 4.5).
 //
 // Built on request only:  scripts\build.ps1 -Target mbd_bench
 // Run:                    build\bench\mbd_bench.exe
@@ -169,6 +170,61 @@ int main()
             VecX qp = q, vp = v;
             solver.project(data, qp, vp, 0.0); }));
         row(name, "one RK4 step of 1 ms, everything", time_per_call_us([&] { sim.step(0.001); }));
+    }
+
+    // The integrators on the sedan (task 4.5): the median time of one 1 ms
+    // step at the state above, and the spread of single steps over a drive
+    // (throttle for 1 s, brake to a stop for 2 s, stand for 1 s), after the
+    // first ten (which size the work and warm the caches): what a real time
+    // budget must allow for.
+    std::printf("\n| Method | median of one 1 ms step [us] | single steps: min | median | 99th percentile | 99.9th "
+                "| max |\n");
+    std::printf("|---|---|---|---|---|---|---|\n");
+    for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::GeneralizedAlpha,
+                              kernel::Integrator::LinearlyImplicitEuler}) {
+        auto tmpl = VehicleTemplate::DefaultSedan();
+        tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
+        tmpl.rear_axle.suspension_type  = SuspensionType::DoubleWishbone;
+        kernel::System sys;
+        auto vh = build_vehicle(sys, tmpl);
+        kernel::Simulator sim(sys);
+        sim.method = method;
+        set_vehicle_equilibrium(sim, vh);
+        sim.initialize();
+        Drivetrain dt(tmpl.drivetrain);
+        dt.initialize(sim, vh);
+        dt.connect(sim, vh);
+        dt.throttle = 0.3;
+        sim.run(0.2, 0.001);
+        const double median = time_per_call_us([&] { sim.step(0.001); });
+
+        // A fresh run for the single steps.
+        kernel::System sys2;
+        auto vh2 = build_vehicle(sys2, tmpl);
+        kernel::Simulator sim2(sys2);
+        sim2.method = method;
+        set_vehicle_equilibrium(sim2, vh2);
+        sim2.initialize();
+        Drivetrain dt2(tmpl.drivetrain);
+        dt2.initialize(sim2, vh2);
+        dt2.connect(sim2, vh2);
+        std::vector<double> steps;
+        steps.reserve(4000);
+        for (int k = 0; k < 4000; ++k) {
+            dt2.throttle = k < 1000 ? 0.5 : 0.0;
+            dt2.brake = k >= 1000 && k < 3000 ? 0.6 : 0.0;
+            const auto t0 = std::chrono::steady_clock::now();
+            sim2.step(0.001);
+            const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
+            if (k >= 10) steps.push_back(us);
+        }
+        std::sort(steps.begin(), steps.end());
+        const char* label = method == kernel::Integrator::RK4                ? "RK4"
+                            : method == kernel::Integrator::GeneralizedAlpha ? "generalised-alpha"
+                                                                             : "linearly implicit Euler";
+        std::printf("| %s | %.1f | %.1f | %.1f | %.1f | %.1f | %.1f |\n", label, median, steps.front(),
+                    steps[steps.size() / 2], steps[steps.size() * 99 / 100], steps[steps.size() * 999 / 1000],
+                    steps.back());
     }
     return 0;
 }

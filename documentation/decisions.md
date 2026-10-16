@@ -45,6 +45,7 @@ and the journal entry of the work refers to them by number
 | D32 | Generalised-alpha on the state-space accelerations, with Newton on difference Jacobians | 14 Oct 2026 | In force, task 4.3 |
 | D33 | SDIRK4 on the stacked first-order system, kept for smooth models | 14-16 Oct 2026 | In force, task 4.4 |
 | D34 | Radau IIA for stiff mechanical models, with Newton held to a tolerance-dependent fraction | 16 Oct 2026, the method by the author | In force, task 4.4 |
+| D35 | Linearly implicit Euler, with force derivatives element by element | 16 Oct 2026 | In force, task 4.5 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -768,3 +769,71 @@ and the journal entry of the work refers to them by number
 - **Record.** Journal: SDIRK4 and Radau IIA; data
   `2026-10-16_sdirk4-radau.md`; `docs/kernel.md`, integrators;
   troubleshooting.
+
+## D35. Linearly implicit Euler, with force derivatives element by element
+
+- **Context.** Task 4.5: a fixed-cost implicit step, the real-time
+  integrator; done when its cost per step does not vary. Task 4.3 deferred
+  analytic Jacobians to this task. A difference Jacobian of the whole
+  dynamics costs 2 nv + nx + 1 evaluations (59 on the sedan, about 1.5 ms),
+  too much for every step at 1 ms; kept across steps, as generalised-alpha
+  and Radau IIA keep theirs, it makes the cost vary (generalised-alpha on the
+  sedan: 2 to 76 evaluations a step).
+- **Decision.** `Integrator::LinearlyImplicitEuler`: backward Euler on the
+  velocities (positions moved with the new velocities), linearized once per
+  step about its start, as a correction to the explicit Euler step:
+  (M - h C - h^2 K) delta = h^2 (K (v + h a) + C a), with J delta = 0 and
+  the projection after the step; the state elements' states implicit in
+  themselves (X) and coupled to the velocities (Xv, Tx), eliminated by a
+  small Schur complement. One evaluation, one set of derivatives and one
+  solve per step, always. The derivatives every step: K and C of the force
+  elements by forward differences of each element's apply() alone on its
+  bodies' states (poses and velocities, world axes), mapped through the
+  bodies' Jacobians at the columns they can reach; joint forces by
+  differences in their coordinates; X and Tx by differences in each state
+  with the forces applied again; Xv by taking the states' rates again after
+  each velocity perturbation of an element. Left explicit: the inertial and
+  gyroscopic terms, the joints' geometry, `tau`, `force_callback`, and the
+  states' dependence on positions (Xq). K, C and Tx G enter by their
+  symmetric parts, so that `ConstraintSolver::constrained_solve` uses the
+  Cholesky and rank-revealing factorizations of forward dynamics. If the
+  matrix is not positive definite the step drops K, then everything
+  (MBD-K045, once). `Simulator::force_jacobian` makes K and C available.
+- **Alternatives.** The whole dynamics differentiated every step: fixed
+  cost, but 59 evaluations. Analytic derivatives of the whole dynamics
+  (Carpentier and Mansard's derivatives of RNEA and ABA, with those of the
+  constraints): exact and fast, a large piece of work; not needed for
+  stability, which rests on the stiff forces. Analytic derivatives of each
+  element's loads (its law() derivatives and its geometry): faster than
+  differences, but one derivation per element type, the tyres' among them;
+  differences of one element give the same derivatives from apply() alone,
+  cover every element, and leave room for analytic versions where timing
+  asks. A non-symmetric constrained solve, keeping the antisymmetric parts
+  implicit: needs a rank-revealing factorization of a non-symmetric matrix
+  for redundant constraints. The states implicit in themselves only:
+  measured, the sedan accelerated a fifth too slowly at 1 ms (the tyre's
+  slip pulls the hub towards the spin of the step's start, a strong damper
+  that brakes the car). The states coupled through Xq as well: measured, a
+  car coasting at 0.5 m/s gained 0.5 % of its speed in 2 s at 5 ms and 5 %
+  at 10 ms (the tyre's rolling radius depends on its deflection, so the
+  wheel's height changes the slip: a non-symmetric loop the symmetric matrix
+  cannot carry); without Xq it keeps its speed to 2e-5 at every step to 10
+  ms. A second-order linearly implicit method (a trapezoid, or
+  generalised-alpha with one Newton iteration on these derivatives): more
+  accurate, less damping, not L-stable or not tested; an open end.
+- **Consequences.** On linear systems each step is backward Euler's to 2e-13;
+  a spring 1000 times too stiff for RK4 shrinks by 1 / sqrt(1 + (w h)^2) per
+  step; first order (ratio 2.07 on a spatial pendulum, 2 mm after 1 s at 1
+  ms on a swing of a metre: a real-time method, not an accurate one). On the
+  sedan at 1 ms every step of a drive takes one evaluation and one set of
+  derivatives, the drive matches RK4's (top speed 1.4684 against 1.4685
+  m/s), and a step takes 106 us (median, pinned) against RK4's 121 and
+  generalised-alpha's 80, with 99 % of steps within 1.3 times the median;
+  generalised-alpha's longest steps take 2.1 to 2.3 ms (a new iteration
+  matrix). Every motion is damped by about (w h)^2 / 2 per step. The
+  projection after the step still varies (a Gauss-Newton iteration or
+  none): task 4.7. The element-by-element derivatives can serve the other
+  implicit methods' iteration matrices too.
+- **Record.** Journal: the fixed-cost step; data
+  `2026-10-16_linearly-implicit-euler.md`; `docs/kernel.md`, integrators;
+  `docs/performance.md`; troubleshooting.

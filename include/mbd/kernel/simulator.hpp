@@ -75,6 +75,15 @@ enum class Integrator {
     /// Hairer and Wanner's RADAU5, with an embedded third-order error
     /// estimate and the same step control as DormandPrince (task 4.4).
     RadauIIA,
+    /// Linearly implicit, first order, for real time: the cost of every step
+    /// is the same (task 4.5). One evaluation, then one linear solve that
+    /// makes the applied forces implicit through their derivatives (see
+    /// Simulator::force_jacobian): (M - h C - h^2 K) dv = ..., restricted to
+    /// the motions the constraints allow; the inertial terms stay explicit.
+    /// The state elements' states are implicit in themselves. Stable at any
+    /// step for stiff springs, bushings, contact and tyres; damps every
+    /// motion by about (w h)^2 / 2 per step, as backward Euler does.
+    LinearlyImplicitEuler,
 };
 
 /// How Integrator::DormandPrince, SDIRK4 and RadauIIA choose their steps
@@ -218,6 +227,7 @@ public:
     /// constraints afterwards. The state starts at the neutral configuration,
     /// at rest.
     explicit Simulator(System& sys);
+    ~Simulator();
 
     System& system;
 
@@ -294,6 +304,18 @@ public:
     /// The state elements' rates at the last evaluation.
     const VecX& state_rates() const { return x_dot_; }
 
+    /// The derivatives of the applied generalized forces, those of the force
+    /// elements and joint forces (not tau or force_callback), at the current
+    /// state: K = d tau / dq, q changed along each velocity (q (+) e_j), and C
+    /// = d tau / dv, both nv x nv (task 4.5). Element by element: each
+    /// element's loads on its bodies are differentiated with respect to those
+    /// bodies' poses and velocities, by differences of that element alone,
+    /// and mapped through the bodies' Jacobians. Left out: the terms from the
+    /// joints' geometry, how a load maps to generalized forces as the joints
+    /// move (the "geometric stiffness" of the tree). Evaluates at the current
+    /// state first.
+    void force_jacobian(MatX& K, MatX& C);
+
     /// What the integrator has done so far.
     const IntegratorStats& integrator_stats() const { return stats_; }
 
@@ -358,6 +380,17 @@ private:
     /// I - h J, factorized in place unless they already are for this h and
     /// J; false at a zero pivot.
     bool radau_factor(Real h);
+    /// One linearly implicit Euler step of dt (simulator_linear.cpp).
+    void step_linearly_implicit(Real dt);
+    /// K and C (see force_jacobian) into linear_, at the kinematics and body
+    /// states of the last evaluation (allocates only the first time); with
+    /// `states`, also the state elements' rates' derivatives with respect to
+    /// v through the force elements' outputs.
+    void linear_force_jacobian(bool states);
+    /// The state elements' rates' and the generalized forces' derivatives
+    /// with respect to the states, at the last evaluation's kinematics and
+    /// the states x, into linear_.
+    void linear_state_jacobian(Real t);
     /// Size the stacked work of SDIRK4 and Radau IIA (allocates).
     void size_stacked(Index n);
     /// f(y) = (q_dot, accelerations, rates) at the stacked state y = (q, v,
@@ -459,6 +492,10 @@ private:
     bool radau_cont_valid_{false}, radau_first_{true};
     VecX radau_end_, radau_yn_, radau_y_, radau_f0_, radau_r_, radau_e_;
     Eigen::VectorXcd radau_rc_;
+    // Linearly implicit Euler: its work, sized at its first step
+    // (simulator_linear.cpp).
+    struct LinearWork;
+    std::unique_ptr<LinearWork> linear_;
     ProjectionInfo last_projection_;
     int projection_failures_{0};
     bool projection_failure_reported_{false};

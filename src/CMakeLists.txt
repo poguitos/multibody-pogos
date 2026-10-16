@@ -12,6 +12,7 @@ add_library(multibody_core
     kernel/forces.cpp
     kernel/simulator.cpp
     kernel/simulator_implicit.cpp
+    kernel/simulator_linear.cpp
     kernel/checks.cpp
     kernel/validate.cpp
     kernel/joint_forces.cpp

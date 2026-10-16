@@ -213,6 +213,26 @@ or `... has <n> states`
 - **What to do:** attach each element once, after building the simulator and
   before stepping.
 
+### MBD-K045
+
+Warning: `kernel::Simulator: at t = <t> s the linearly implicit step's matrix M - h C - h^2 K is not positive definite; steps like it drop the forces' stiffness, then their damping, and are less stable. Further cases are not reported.`
+
+- **Means:** in a linearly implicit Euler step (task 4.5) the matrix built
+  from the mass matrix and the applied forces' derivatives (see
+  `Simulator::force_jacobian`) had a direction in which it was not positive:
+  some force pushes away from where it is, or speeds up what moves, more
+  strongly than the inertia holds it at this step. That step, and any like
+  it, is taken with the stiffness left out (explicit in it), or, if that is
+  not enough, with the damping left out too. Reported once.
+- **Usual causes:** a spring or table of negative slope (a curve that
+  softens past a peak, a tyre beyond its peak slip); a compressed, preloaded
+  element turned sideways (its geometric stiffness is negative); a damper
+  table with a negative slope.
+- **What to do:** if the model is meant to be unstable there, a shorter step
+  keeps h^2 K within the inertia; otherwise check the element's curves. A
+  step with the stiffness left out is explicit in it and may need a step as
+  short as an explicit method's.
+
 ### MBD-K050
 
 Warning: `Redundant constraints: <m> equations of rank <r>. The motion is unaffected; the multipliers of the redundant equations are set to zero.`
