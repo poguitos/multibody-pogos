@@ -7,7 +7,11 @@
 //   - the hooks run in their order: begin_evaluation before the forces, rates
 //     after, once per evaluation; end_step once per step, and its changes
 //     stay;
-//   - an element attached twice is refused.
+//   - an element attached twice is refused;
+//   - multirate RK4 (task 4.6): with six fast steps of the lag per step of
+//     the mass the step keeps RK4's fourth order, the lag not depending on
+//     the mass; a multirate setting below 1, or with another method, is
+//     refused.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -57,14 +61,17 @@ struct PushedBlock {
                            RigidBodyInertia::from_solid_box(m, Vec3(0.1, 0.1, 0.1)), "block");
     }
 
-    /// The block's position at T, stepped by dt with the given method.
-    Real position(Integrator method, Real dt, Real T)
+    /// The block's position at T, stepped by dt with the given method (and
+    /// multirate setting); its statistics in `stats` if given.
+    Real position(Integrator method, Real dt, Real T, int multirate = 1, IntegratorStats* stats = nullptr)
     {
         Simulator sim(sys);
         sim.method = method;
+        sim.multirate = multirate;
         sim.attach(lag);
         sim.force_callback = [this](Simulator&, Real, VecX& tau_) { tau_(0) += lag.force; };
         sim.run(T, dt);
+        if (stats) *stats = sim.integrator_stats();
         return sim.q(0);
     }
 
@@ -139,4 +146,47 @@ TEST_CASE("State elements: an element attached twice is refused", "[kernel][stat
     sim.attach(pb.lag);
     CHECK_THROWS_WITH(sim.attach(pb.lag), ContainsSubstring("MBD-K044"));
     CHECK(sim.x.size() == 1);
+}
+
+TEST_CASE("Multirate RK4: a lag driving a mass keeps RK4's fourth order", "[kernel][states][multirate]")
+{
+    // Six fast steps of the lag per step of the block (task 4.6). The lag does
+    // not depend on the block, so the block's stages see it at exactly their
+    // times, from steps six times finer, and the step stays fourth order:
+    // halving H divides the error by 16 (14 to 18 for the next term). RK4 on
+    // the block's x'' = f(t) / m with f exact at its stages is Simpson's rule
+    // for the velocity: an error of H^4 / 2880 times the integral of f'''' / m
+    // = (f0 / m) e^(-t / tau) / tau^4, 6.5e-2 H^4 m/s after 1 s, 4.0e-7 m/s at
+    // H = 0.05 s, and the position's of the same order: under 2e-6 m. (H
+    // divides T: the run must end at T.) Each
+    // step evaluates the dynamics four times and the lag's rate alone 23
+    // times (four per fast step, the first given by the step's first
+    // evaluation).
+    PushedBlock pb;
+    const Real T = 1.0, x_T = PushedBlock::exact(T);
+    IntegratorStats s1, s2;
+    const Real e1 = std::abs(pb.position(Integrator::RK4, 0.05, T, 6, &s1) - x_T);
+    const Real e2 = std::abs(pb.position(Integrator::RK4, 0.025, T, 6, &s2) - x_T);
+    INFO("errors " << e1 << " and " << e2 << " (ratio " << e1 / e2 << "); " << s1.steps << " steps, "
+                   << s1.evaluations << " evaluations, " << s1.state_evaluations << " state evaluations");
+    CHECK(e1 < 2e-6);
+    CHECK(e1 / e2 > 14.0);
+    CHECK(e1 / e2 < 18.0);
+    CHECK(s1.evaluations == 4 * s1.steps);
+    CHECK(s1.state_evaluations == 23 * s1.steps);
+}
+
+TEST_CASE("Multirate: a value below 1, or above 1 with a method other than RK4, is refused",
+          "[kernel][states][multirate]")
+{
+    PushedBlock pb;
+    Simulator sim(pb.sys);
+    sim.attach(pb.lag);
+    sim.multirate = 0;
+    CHECK_THROWS_WITH(sim.step(0.01), ContainsSubstring("MBD-K046"));
+    sim.multirate = 6;
+    sim.method = Integrator::GeneralizedAlpha;
+    CHECK_THROWS_WITH(sim.step(0.01), ContainsSubstring("MBD-K046"));
+    sim.method = Integrator::RK4;
+    CHECK_NOTHROW(sim.step(0.01));
 }

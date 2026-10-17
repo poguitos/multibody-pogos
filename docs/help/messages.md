@@ -233,6 +233,17 @@ Warning: `kernel::Simulator: at t = <t> s the linearly implicit step's matrix M 
   step with the stiffness left out is explicit in it and may need a step as
   short as an explicit method's.
 
+### MBD-K046
+
+`kernel::Simulator: multirate needs a value of 1 or more, and above 1 Integrator::RK4; it is <m>.`
+
+- **Means:** `Simulator::multirate` (task 4.6) is below 1, or above 1 with a
+  method other than RK4. Multirate integration advances the state elements'
+  states in several RK4 steps within each RK4 step of the bodies; the other
+  methods have their own ways with stiff states (generalised-alpha, Radau
+  IIA and the linearly implicit step take them implicitly).
+- **What to do:** set `multirate` to 1 with the other methods, or use RK4.
+
 ### MBD-K050
 
 Warning: `Redundant constraints: <m> equations of rank <r>. The motion is unaffected; the multipliers of the redundant equations are set to zero.`

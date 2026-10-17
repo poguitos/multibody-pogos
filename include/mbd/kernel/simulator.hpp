@@ -167,6 +167,10 @@ struct IntegratorStats {
     /// for RadauIIA), and iteration matrices built by finite differences.
     long long newton_iterations{0};
     long long jacobians{0};
+    /// Multirate (Simulator::multirate): evaluations of the state elements'
+    /// rates alone (kinematics, forces and rates, without the dynamics) by
+    /// the fast steps.
+    long long state_evaluations{0};
 };
 
 class Simulator;
@@ -253,6 +257,19 @@ public:
     ImplicitControl implicit_control;
     bool project_constraints{true};     ///< Project q and v after each step
     Real projection_tolerance{1e-10};
+    /// Multirate integration (task 4.6, D36) with Integrator::RK4: the state
+    /// elements' states (the fast ones: wheel spins, lags) take this many RK4
+    /// steps for each step of the bodies, their rates evaluated without the
+    /// dynamics, the bodies extrapolated over the step from its start; 1 is
+    /// single rate. It pays where the states are stiff and the bodies are
+    /// not: a car at walking pace, whose wheel spins hold RK4 to under a
+    /// millisecond, steps its bodies at 3 ms with 6 fast steps of 0.5 ms, at
+    /// a sixth of the dynamics' evaluations. Each step must stay inside its
+    /// own part's stability: the fast steps inside the states' (a spin that
+    /// chatters within the step makes the bodies drift, as it does not at a
+    /// single rate), the step itself inside the bodies'. Any other method
+    /// with a value other than 1 throws MBD-K046.
+    int multirate{1};
     VecX tau;                           ///< Generalized forces for the next step; cleared after it
 
     /// Adds generalized forces at every evaluation. It may read states() and
@@ -341,6 +358,13 @@ private:
     /// acceleration(), counted in the integrator's statistics.
     const VecX& evaluate(const VecX& q_at, const VecX& v_at, const VecX& x_at, Real t);
     void step_rk4(Real dt);
+    /// One multirate RK4 step of dt, multirate fast steps of the states
+    /// within it (simulator_multirate.cpp).
+    void step_rk4_multirate(Real dt);
+    /// The state elements' rates at (q_at, v_at, x_at, t) without the
+    /// dynamics: kinematics, the force elements (whose outputs the rates may
+    /// read), the rates, into x_dot_.
+    const VecX& state_rates_only(const VecX& q_at, const VecX& v_at, const VecX& x_at, Real t);
     void step_semi_implicit_euler(Real dt);
     /// Dormand-Prince's own steps from time to time + dt, each projected,
     /// with events watched after each.
@@ -426,6 +450,9 @@ private:
     std::vector<StateElement*> state_elements_;
     std::vector<int> state_offsets_;
     VecX x_dot_, x0_, x_stage_, kx_[7];
+    // Multirate: the bodies at a fast stage, the fast states with their stage
+    // value and rates, and the states at the step's middle.
+    VecX mr_q_, mr_v_, mr_x_, mr_xs_, mr_kx_[4], mr_x_half_;
     IntegratorStats stats_;
     // Dormand-Prince: error estimates, the last step's continuous extension
     // (five coefficient vectors each) and the step length carried over.

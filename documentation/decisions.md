@@ -46,6 +46,7 @@ and the journal entry of the work refers to them by number
 | D33 | SDIRK4 on the stacked first-order system, kept for smooth models | 14-16 Oct 2026 | In force, task 4.4 |
 | D34 | Radau IIA for stiff mechanical models, with Newton held to a tolerance-dependent fraction | 16 Oct 2026, the method by the author | In force, task 4.4 |
 | D35 | Linearly implicit Euler, with force derivatives element by element | 16 Oct 2026 | In force, task 4.5 |
+| D36 | Multirate RK4, fastest first, for the state elements' states | 17 Oct 2026 | In force, task 4.6 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -837,3 +838,51 @@ and the journal entry of the work refers to them by number
 - **Record.** Journal: the fixed-cost step; data
   `2026-10-16_linearly-implicit-euler.md`; `docs/kernel.md`, integrators;
   `docs/performance.md`; troubleshooting.
+
+## D36. Multirate RK4, fastest first, for the state elements' states
+
+- **Context.** Task 4.6: advance the fast states (wheel spin, tyre lag)
+  several times per main step, slowest first, as in Haug, Negrut, Serban and
+  Solis (1999), section 6; done when a ratio of 6 reproduces the single-rate
+  result. The paper's partition is the one the simulator already has (the
+  bodies, and the states x' = Gamma(q, q', x, t)), and its slow integrator a
+  constant-step third-order Adams-Bashforth method: one evaluation per step,
+  needing the fast states only at the step's start, which is what makes
+  slowest first natural there. The paper itself warns that extrapolating
+  the fast states into the slow step "is subject to numerical errors".
+- **Decision.** `Simulator::multirate` (RK4 only; MBD-K046 otherwise): per
+  step of H, the bodies' first RK4 stage (a full evaluation), then m RK4
+  steps of H / m for the states, whose rates are evaluated without the
+  dynamics (kinematics, force elements, rates; counted in
+  `IntegratorStats::state_evaluations`), the bodies extrapolated from that
+  first stage (v + s a, q (+) s (v + s a / 2)); then the bodies' other three
+  stages, which see the states the fast steps reached at H / 2 and H.
+  Fastest first: the slow part, being smooth, is the one extrapolated.
+- **Alternatives.** Slowest first with the states held through the bodies'
+  step: measured, braking from 20 m/s came out 2.2 % short at 6 ms (each
+  tyre's slip drifts over the step as the hub slows and the spin is held).
+  Slowest first with the states extrapolated along the last step's change:
+  equal on braking and slightly better on a car rolling at 0.5 m/s (wheels
+  within 5.7e-5 against 6.4e-5), but three times worse on the sedan's drive
+  (top speed 0.41 % off against 0.14 %), and in principle unsafe for a stiff
+  state in a transient, whose last change overshoots. The paper's own
+  scheme, an explicit multistep method for the bodies: one evaluation per
+  step, but a new integrator whose history must restart at every lock,
+  event and gear change, and Adams-Bashforth's small stability region; it
+  may come with task 12.4. A chosen subset of the states as the fast part:
+  every state element is fast so far.
+- **Consequences.** Where the states drive the bodies without depending on
+  them (a lag pushing a mass) the step keeps RK4's fourth order. At walking
+  pace with a ratio of 6 (3 ms, fast steps of 0.5 ms) it reproduces
+  single-rate RK4 at 0.5 ms: the rolling car's wheels within 6.4e-5 of free
+  rolling (single rate at 0.5 ms 3.7e-5; at 3 ms its spins chatter by 48
+  %); the sedan's drive within 0.14 % on the top speed, at rest at the end,
+  for a sixth of the dynamics' evaluations and 2.8 times less time. Each
+  part must keep within its own stability: fast steps of 1 ms, where the
+  sedan's front spins chatter, made the car drift (0.5 m/s two seconds after
+  it had stopped), because the bodies' stages sample the chatter that single
+  rate averages; a step of 6 ms on the simple vehicle at 0.5 m/s was
+  unstable through the hubs' side of the tyres' slip. The coupling error is
+  of second order in H (0.04 % at 1.5 ms, 0.14 % at 3 ms on the sedan).
+- **Record.** Journal: multirate; data `2026-10-17_multirate.md`;
+  `docs/kernel.md`, integrators; troubleshooting.

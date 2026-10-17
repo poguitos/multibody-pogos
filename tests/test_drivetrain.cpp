@@ -890,3 +890,95 @@ TEST_CASE("Drivetrain: on the sedan every linearly implicit step does the same w
     CHECK(std::abs(lin_top - rk4_top) < 0.01 * rk4_top);
     CHECK(std::abs(lin_end) < 1e-3);
 }
+
+
+TEST_CASE("Drivetrain: multirate RK4 with a ratio of 6 reproduces single-rate RK4 at its fast step",
+          "[drivetrain][integrators][multirate]")
+{
+    // The plan's "done when" for task 4.6. At walking pace the wheel spins are
+    // the stiff part (about 3000 per second on the simple vehicle): RK4 needs
+    // steps under a millisecond. Multirate RK4 steps the bodies at 3 ms and
+    // the spins in six steps of 0.5 ms, and must give what single-rate RK4 at
+    // 0.5 ms gives, at a sixth of the dynamics' evaluations.
+    //
+    // The simple vehicle rolling at 0.5 m/s: every wheel within 1e-3 of free
+    // rolling (single rate at 0.5 ms: 4e-5; at 3 ms its spins chatter by more
+    // than 5 %), the speed after 2 s within 1e-3 of single rate's (the release
+    // transient is stepped at 3 ms). The sedan through a drive (half throttle
+    // for 1 s, brake to a stop for 2 s, stand for 1 s): the top speed within
+    // 0.5 % of single rate's and the car at rest at the end. Extrapolating the
+    // bodies over a step shapes the spins' slip to second order in it: 0.04 %
+    // at 1.5 ms and 0.14 % at 3 ms when measured.
+    using namespace mbd;
+    struct Rolling {
+        Real V, worst;
+        kernel::IntegratorStats stats;
+    };
+    auto rolling = [](Real H, int m) {
+        kernel::System sys;
+        VehicleParams vp;
+        auto vm = build_simple_vehicle(sys, vp);
+        kernel::Simulator sim(sys);
+        sim.multirate = m;
+        set_vehicle_equilibrium(sim, vm);
+        sim.v(3) = 0.5;
+        sim.initialize();
+        Drivetrain dt;
+        dt.initialize(sim, vm);
+        dt.connect(sim, vm);
+        sim.run(0.3, H);
+        Real worst = 0.0;
+        const int steps = static_cast<int>(std::round(2.0 / H));
+        for (int k = 0; k < steps; ++k) {
+            sim.step(H);
+            for (int c = 0; c < 4; ++c) {
+                const Real r = dt.wheel_omega[c] * vm.tires[c]->get_rolling_radius();
+                worst = std::max(worst, std::abs(r - vx(sim)) / vx(sim));
+            }
+        }
+        return Rolling{vx(sim), worst, sim.integrator_stats()};
+    };
+    const Rolling single = rolling(0.0005, 1), multi = rolling(0.003, 6), coarse = rolling(0.003, 1);
+    INFO("rolling: single rate at 0.5 ms " << single.V << " m/s, within " << single.worst << " ("
+         << single.stats.evaluations << " evaluations); multirate 3 ms x 6 " << multi.V << ", within " << multi.worst
+         << " (" << multi.stats.evaluations << " evaluations, " << multi.stats.state_evaluations
+         << " state evaluations); single rate at 3 ms within " << coarse.worst);
+    CHECK(multi.worst < 1e-3);
+    CHECK(std::abs(multi.V - single.V) < 1e-3 * single.V);
+    CHECK(coarse.worst > 0.05);
+
+    auto drive = [](Real H, int m, long long& evaluations) {
+        auto tmpl = VehicleTemplate::DefaultSedan();
+        tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
+        tmpl.rear_axle.suspension_type = SuspensionType::DoubleWishbone;
+        kernel::System sys;
+        auto vh = build_vehicle(sys, tmpl);
+        kernel::Simulator sim(sys);
+        sim.multirate = m;
+        set_vehicle_equilibrium(sim, vh);
+        sim.initialize();
+        Drivetrain dt(tmpl.drivetrain);
+        dt.initialize(sim, vh);
+        dt.connect(sim, vh);
+        Real top = 0.0;
+        const int steps = static_cast<int>(std::round(4.0 / H));
+        for (int k = 0; k < steps; ++k) {
+            const Real t = k * H;
+            dt.throttle = t < 1.0 - 1e-9 ? 0.5 : 0.0;
+            dt.brake = t >= 1.0 - 1e-9 && t < 3.0 - 1e-9 ? 0.6 : 0.0;
+            sim.step(H);
+            top = std::max(top, vx(sim));
+        }
+        evaluations = sim.integrator_stats().evaluations;
+        return std::make_pair(top, vx(sim));
+    };
+    long long single_evaluations = 0, multi_evaluations = 0;
+    const auto [single_top, single_end] = drive(0.0005, 1, single_evaluations);
+    const auto [multi_top, multi_end] = drive(0.003, 6, multi_evaluations);
+    INFO("sedan: single rate at 0.5 ms top " << single_top << " m/s, end " << single_end << " ("
+         << single_evaluations << " evaluations); multirate 3 ms x 6 top " << multi_top << ", end " << multi_end
+         << " (" << multi_evaluations << " evaluations)");
+    CHECK(std::abs(multi_top - single_top) < 0.005 * single_top);
+    CHECK(std::abs(multi_end) < 1e-4);
+    CHECK(6 * multi_evaluations <= single_evaluations + 24);
+}

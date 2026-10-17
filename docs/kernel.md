@@ -438,11 +438,27 @@ sedan at 1 ms it drives, brakes and stops as RK4 does (top speed within 0.1
 at steps of 1 to 10 ms. A matrix that is not positive definite (negative
 stiffness beyond the inertia) makes the step drop the stiffness, with MBD-K045.
 
+**Multirate** (task 4.6, decision D36). With RK4, `Simulator::multirate`
+= m > 1 integrates the state elements' states (the fast part: wheel spins,
+lags) in m RK4 steps within each RK4 step of the bodies, as in Haug et
+al.'s dual-rate method. A step evaluates the dynamics four times, as single
+rate does, and the states' rates alone (kinematics, forces, rates) 4 m - 1
+times (`integrator_stats().state_evaluations`): the dynamics, the dear
+part, a sixth as often at a ratio of 6. The bodies' first stage comes first
+and they are extrapolated from it over the fast steps; their other stages
+then see the states the fast steps reached (fastest first). At walking pace,
+where the spins hold RK4 under a millisecond, the sedan drives at 3 ms with
+6 fast steps as RK4 does at 0.5 ms (top speed within 0.14 %), 2.8 times
+faster. Each part must keep inside its own stability: the fast steps inside
+the states', the step inside the bodies'.
+
+
 Choosing a method:
 
 | Model and need | Method |
 |---|---|
 | Smooth, fixed output steps | `RK4` |
+| Stiff state elements only (wheel spins at walking pace), explicit steps | `RK4` with `multirate` 6 |
 | Smooth, a tolerance to meet, or long output steps | `DormandPrince` |
 | Stiff (stiff springs, bushings, contact, tyres at low speed), fixed steps, accuracy of the order of 1e-4 to 1e-6 | `GeneralizedAlpha` |
 | Stiff, a tolerance to meet, tight accuracy | `RadauIIA` |

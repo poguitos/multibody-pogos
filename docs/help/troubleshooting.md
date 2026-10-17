@@ -207,7 +207,9 @@ the limit RK4 does not blow up: the spins chatter about free rolling, bounded
 by the tyre's saturation, by 2.8 % of the speed at 1 ms and 14 % at 5 ms,
 while the car's speed looks right. Use RK4 at 0.9 ms or less there, or
 `Integrator::GeneralizedAlpha`, which is stable at any step (the car rolls at
-walking pace in steps of 5 ms with its wheels within 1e-3 of free rolling).
+walking pace in steps of 5 ms with its wheels within 1e-3 of free rolling). RK4
+with `multirate` 6 at 3 ms steps the spins at 0.5 ms and the bodies at 3 ms.
+`Integrator::LinearlyImplicitEuler` is stable at any step at a fixed cost.
 *(The integrator interface; generalised-alpha.)*
 
 **A stiff model needs tiny steps.** A very stiff spring, bushing or contact
@@ -245,6 +247,17 @@ is not symmetric (the tyre's rolling radius changing with its deflection)
 is left out on purpose: in the step's symmetric matrix it made a coasting
 car gain speed. Check a new element against `Simulator::force_jacobian`
 and a run with RK4 at a short step. *(Linearly implicit Euler.)*
+
+**With multirate, a car drifts or creeps although single-rate RK4 at the
+same fast step is fine.** The fast steps are too long for the states:
+`multirate` leaves each part to its own stability, and a wheel spin that
+chatters within the fast steps (at 1 ms, the sedan's front spins at walking
+pace) is seen by the bodies' stages only at the middle and end of the step,
+where the chatter does not average out as it does at a single rate; the
+sedan then moved at 0.5 m/s two seconds after it had stopped. Raise
+`multirate` (3 ms with 6 fast steps of 0.5 ms works there). If raising it
+does not help, the step itself is too long for the bodies: at low speed
+the tyres' slip also stiffens the hubs. *(Multirate.)*
 
 **An implicit method stops with MBD-K058.** Newton could not solve a step,
 even with a fresh iteration matrix: a force that is NaN or infinite, a force
@@ -448,3 +461,4 @@ Before building on it (working rule 2):
 | Phase 4: generalised-alpha | A bound guessed from one step; Newton against rounding (Numerical traps); a locked wheel that crept (Simulations); stiff models and K058 (Simulations) |
 | Phase 4: SDIRK4 and Radau IIA | SDIRK4's order on stiff bushings (Simulations); a Jacobian that turns within a step (Simulations); Newton's error and Newton against amplified rounding (Numerical traps); fixed steps Newton cannot solve (Simulations: K058) |
 | Phase 4: the fixed-cost step | The car that accelerated too slowly and the one that gained speed (Simulations: the linearly implicit step); damping of fast motions (Simulations); timing outliers from the first steps and the operating system (Slow runs: single steps far longer than the median) |
+| Phase 4: multirate | Held states that biased braking, and the drift from fast steps beyond the spins' limit (Simulations: multirate) |

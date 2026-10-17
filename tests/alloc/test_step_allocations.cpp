@@ -6,6 +6,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <initializer_list>
 #include <memory>
 
 #include <Eigen/Core>
@@ -43,18 +44,25 @@ TEST_CASE("Stepping the double-wishbone sedan allocates no memory", "[alloc][veh
     // Chassis, steering rack, four corners closed by constraints, springs,
     // dampers, tyres and the drivetrain: everything a step does, with RK4,
     // with Dormand-Prince's error control, and with the Newton iterations of
-    // generalised-alpha, SDIRK4 and Radau IIA, and with the linearly implicit
-    // step's derivatives (their work is sized in the first step).
-    for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::DormandPrince,
-                              kernel::Integrator::GeneralizedAlpha, kernel::Integrator::SDIRK4,
-                              kernel::Integrator::RadauIIA, kernel::Integrator::LinearlyImplicitEuler}) {
+    // generalised-alpha, SDIRK4 and Radau IIA, with the linearly implicit
+    // step's derivatives, and with multirate RK4's fast steps (their work is
+    // sized in the first step).
+    struct Run {
+        kernel::Integrator method;
+        int multirate;
+    };
+    for (const Run run : {Run{kernel::Integrator::RK4, 1}, Run{kernel::Integrator::DormandPrince, 1},
+                          Run{kernel::Integrator::GeneralizedAlpha, 1}, Run{kernel::Integrator::SDIRK4, 1},
+                          Run{kernel::Integrator::RadauIIA, 1}, Run{kernel::Integrator::LinearlyImplicitEuler, 1},
+                          Run{kernel::Integrator::RK4, 6}}) {
         auto tmpl = VehicleTemplate::DefaultSedan();
         tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
         tmpl.rear_axle.suspension_type = SuspensionType::DoubleWishbone;
         kernel::System sys;
         auto vh = build_vehicle(sys, tmpl);
         kernel::Simulator sim(sys);
-        sim.method = method;
+        sim.method = run.method;
+        sim.multirate = run.multirate;
         set_vehicle_equilibrium(sim, vh);
         sim.initialize();
         Drivetrain dt(tmpl.drivetrain);

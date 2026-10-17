@@ -697,8 +697,15 @@ void Simulator::project_step()
 
 void Simulator::advance(Real dt)
 {
+    MBD_THROW_IF(multirate < 1 || (multirate > 1 && method != Integrator::RK4),
+                 "MBD-K046: kernel::Simulator: multirate needs a value of 1 or more, and above 1 Integrator::RK4; "
+                 "it is "
+                     + std::to_string(multirate) + ".");
     switch (method) {
-        case Integrator::RK4:               step_rk4(dt); break;
+        case Integrator::RK4:
+            if (multirate > 1) step_rk4_multirate(dt);
+            else step_rk4(dt);
+            break;
         case Integrator::SemiImplicitEuler: step_semi_implicit_euler(dt); break;
         case Integrator::GeneralizedAlpha:  step_generalized_alpha(dt); break;
         case Integrator::LinearlyImplicitEuler: step_linearly_implicit(dt); break;

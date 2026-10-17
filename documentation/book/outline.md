@@ -146,6 +146,12 @@ to a validated engine.*
     fifth too slowly) and a hidden one it must not (the tyre's rolling
     radius); timing a step's spread, and telling the method's from the
     operating system's. *J: the fixed-cost step. D35.*
+29. **Two rates in one step.** Fast and slow parts of a vehicle (spins and
+    bodies); slowest first and fastest first, and what each needs from the
+    slow integrator; three couplings measured on one car; extrapolate the
+    smooth part, never the stiff one; a chatter that single rate averages
+    and a sampled slow step turns into drift; each part inside its own
+    stability. *J: multirate. D36.*
 
 ## Part VII onwards: one part per phase still to come
 
