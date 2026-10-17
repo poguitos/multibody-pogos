@@ -244,6 +244,18 @@ Warning: `kernel::Simulator: at t = <t> s the linearly implicit step's matrix M 
   IIA and the linearly implicit step take them implicitly).
 - **What to do:** set `multirate` to 1 with the other methods, or use RK4.
 
+### MBD-K047
+
+`kernel::Simulator: constraint_tolerance needs a positive value; it is <tol>.`
+
+- **Means:** `Simulator::constraint_tolerance` (task 4.7), how closely the
+  state is held on the loop constraints, is zero, negative or not a number.
+  No projection can reach a residual of zero, and generalised-alpha solving
+  its steps on the constraints would never stop iterating.
+- **What to do:** set a positive value; 1e-10 (the default) holds a
+  mechanism of metre size to a tenth of a nanometre. To let the constraints
+  drift instead, set `enforce_constraints` to false.
+
 ### MBD-K050
 
 Warning: `Redundant constraints: <m> equations of rank <r>. The motion is unaffected; the multipliers of the redundant equations are set to zero.`
@@ -264,8 +276,10 @@ Warning: `Redundant constraints: <m> equations of rank <r>. The motion is unaffe
 Warning: `Constraint projection did not converge at t = <t> s: residual <r> after <n> iterations. Further failures are counted, not reported.`
 
 - **Means:** after a step, the state could not be brought back onto the
-  constraints to the projection tolerance (`Simulator::projection_tolerance`,
-  1e-10 by default).
+  constraints to the tolerance (`Simulator::constraint_tolerance`, 1e-10 by
+  default). Every method projects after its steps, unless generalised-alpha
+  solves them on the constraints (`implicit_control.stabilized_index2`): a
+  step it cannot solve there stops with MBD-K058 instead.
 - **Usual causes:** contradictory constraints (two drivers asking for
   different values of one quantity); a mechanism driven through a singular
   position; a driver target that jumps; a step too long for the motion.
@@ -374,6 +388,12 @@ Warning: `<n> events in one step at t = <t> s; the rest of the step ignores even
   turn: on the bushed pendulum (k = 1e8 N/m) Radau IIA solves fixed steps of
   2 ms but not of 4 ms once the links swing fast, while generalised-alpha,
   one evaluation point per step, needs shorter steps for its accuracy anyway.
+  With generalised-alpha solving its steps on the loop constraints
+  (`implicit_control.stabilized_index2`, task 4.7), also constraints that
+  cannot be met there: two drivers asking for different values of one
+  quantity, a mechanism driven past a position it cannot reach, a
+  `constraint_tolerance` below what rounding allows for the mechanism's size
+  (a projection warns with MBD-K051 for the same causes and goes on).
 - **What to do:** check the forces at that state (`dump_state`); shorten
   the step there, or use error control, which shortens it where needed;
   make a jump continuous or decide it at the end of a step; raise

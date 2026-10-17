@@ -153,10 +153,46 @@ target jumps, or a step too long for the motion. Switch on the step trace:
 the step where `projection_converged` first drops to 0, and the drift before
 it, locate the cause; `dump_state(sim)` there shows the configuration.
 
-**The constraints drift.** The trace's `drift` column is what the projection
-corrects each step; if it grows, shorten the step. Without projection
-(`project_constraints = false`), Baumgarte stabilisation
-(`baumgarte_alpha`, `baumgarte_beta`) keeps the drift bounded.
+**The constraints drift.** `Simulator::constraint_drift()` (the drift
+channel; `add_drift_channels` puts it in a `Recorder`, and the trace has it
+as the `drift` and `velocity_drift` columns) gives what each step left off
+the constraints before the projection, and the residuals after it. The
+residuals stay below `constraint_tolerance` (1e-10) as long as the
+projection converges; the drift is the integrator's own error across the
+constraints, and if it grows, shorten the step. Generalised-alpha with
+`implicit_control.stabilized_index2` projects nothing: it solves each step
+on the constraints, so its drift is its residual, held below the tolerance
+by its Newton iterations. With `enforce_constraints = false` the state
+drifts as the errors add up (linearly in time, faster with a first-order
+method); Baumgarte stabilisation (`baumgarte_alpha`, `baumgarte_beta`) then
+keeps the drift bounded. *(Constraints per integrator.)*
+
+**Generalised-alpha drifts far more than the other methods, or its
+accelerations and reactions on a closed mechanism look poor at long steps.**
+Its acceleration-like variable lags the accelerations, so each of its steps
+leaves the constraints by much more than its error along them (in velocity,
+300 times RK4's drift at the same step on a four-bar); the projection
+removes that from the state but not from the method's history. Held on the
+constraints either way, its error on the four-bar came out about three
+times that of the same method left free, which drifts off them (1.3e-3 in
+20 s), still of second order. `implicit_control.stabilized_index2` solves
+each step on the constraints instead: 1.5 to 1.1 times more accurate
+positions and 1.7 to 1.2 times more accurate accelerations at steps of 4 to
+1 ms there, but on the sedan each step costs about 1.5 times as much, and a
+steering input that moves at every step costs it more Newton iterations
+(each step must absorb the driver's jump). For a tolerance to meet, use
+`RadauIIA`. Do not switch the constraints off. *(Constraints per
+integrator.)*
+
+**A fast-spinning body gains energy and blows up with semi-implicit Euler or
+the linearly implicit step.** Both take the gyroscopic terms (the coupling
+of a body's spin with its tilt) explicitly, and those terms feed energy in
+at every step: a top spinning at 30 rad/s, stepped at 5 ms, ran ten seconds
+normally and blew up within a hundred (then the projection fails at almost
+every step, MBD-K051). A shorter step only delays it. Use RK4, Dormand-Prince
+or an implicit Runge-Kutta method for free-spinning bodies; a vehicle's
+wheels spin about their axles, where the coupling is far weaker.
+*(Constraints per integrator.)*
 
 **The energy grows.** With no damping the total energy (the trace's kinetic
 and gravitational columns, plus each spring's `potential_energy()`) must stay
@@ -462,3 +498,4 @@ Before building on it (working rule 2):
 | Phase 4: SDIRK4 and Radau IIA | SDIRK4's order on stiff bushings (Simulations); a Jacobian that turns within a step (Simulations); Newton's error and Newton against amplified rounding (Numerical traps); fixed steps Newton cannot solve (Simulations: K058) |
 | Phase 4: the fixed-cost step | The car that accelerated too slowly and the one that gained speed (Simulations: the linearly implicit step); damping of fast motions (Simulations); timing outliers from the first steps and the operating system (Slow runs: single steps far longer than the median) |
 | Phase 4: multirate | Held states that biased braking, and the drift from fast steps beyond the spins' limit (Simulations: multirate) |
+| Phase 4: constraints per integrator | The drift and its channel; generalised-alpha on a closed mechanism; a spinning body that blows up under explicit gyroscopic terms; a tolerance that is not positive (Simulations; MBD-K047) |

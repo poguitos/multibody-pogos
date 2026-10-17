@@ -317,3 +317,44 @@ What the numbers show:
   to 12.8).
 - The remaining variation within the method: the projection after the step
   takes a Gauss-Newton iteration or none, as the drift requires (task 4.7).
+
+## Task 4.7: generalised-alpha on the constraints, 17 October 2026
+
+`build\bench\mbd_bench.exe`, pinned to a performance core at high priority
+(D21), against the previous commit's (`08099dd`, built from an archive with
+the same two columns added), run alternately new, old, new, old. Columns as
+in task 4.5, then the evaluations and Newton iterations per step over the
+drive. The sedan has 27 velocities, 4 wheel spins and 17 constraint
+equations.
+
+| Method | median of one step [us] | single steps: min | median | 99th percentile | 99.9th | max | evaluations per step | Newton iterations per step |
+|---|---|---|---|---|---|---|---|---|
+| RK4, new | 155.1, 150.1 | 119.3, 119.3 | 148.2, 148.0 | 304.6, 293.0 | 1178.6, 686.5 | 2952.6, 894.3 | 4.00 | 0 |
+| RK4, old | 151.5, 149.3 | 120.0, 119.7 | 149.0, 148.6 | 310.5, 319.3 | 1088.5, 1069.1 | 1226.8, 1507.4 | 4.00 | 0 |
+| generalised-alpha, new | 100.3, 100.1 | 79.7, 79.8 | 99.9, 100.1 | 287.2, 282.2 | 1119.6, 469.1 | 2486.1, 2255.3 | 2.41 | 1.37 |
+| generalised-alpha, old | 99.9, 100.7 | 79.2, 79.5 | 99.0, 99.1 | 273.0, 276.8 | 1020.0, 1297.5 | 2491.8, 2621.9 | 2.41 | 1.37 |
+| generalised-alpha, stabilized (new only) | 148.9, 142.9 | 114.3, 112.3 | 146.6, 145.8 | 342.4, 357.2 | 612.0, 1019.5 | 2362.3, 2417.4 | 2.41 | 1.37 |
+| linearly implicit Euler, new | 132.5, 138.8 | 99.3, 99.7 | 130.3, 130.5 | 282.7, 275.3 | 676.0, 501.1 | 1270.9, 1028.6 | 1.00 | 0 |
+| linearly implicit Euler, old | 135.4, 133.7 | 100.1, 100.1 | 130.9, 130.8 | 277.4, 279.1 | 494.8, 710.8 | 1079.6, 1945.3 | 1.00 | 0 |
+
+What the numbers show:
+
+- **The default is unchanged**: every method still projects after its
+  steps, and new and old agree within the run-to-run spread.
+- **Generalised-alpha solved on the constraints costs 1.45 times as much a
+  step** (146 against 100 us) for the same evaluations and Newton
+  iterations: its Newton matrix has 31 + 17 rows instead of 31 (48, with
+  the position correction eliminated; 169 us with it kept, 65 rows), and
+  forming that matrix's blocks costs more than its LU. With the
+  constraints not enforced at all the step takes 86 us, so the projection
+  costs some 13 us and the stabilized form some 59. Its LU at 48 rows
+  takes 27 us with our routine and 20 with Eigen's blocked one. Hence it is
+  an option (D37).
+- **The tails are wider than in task 4.5** (99th percentiles of 270 to 360
+  us against 136 to 172) for old and new alike: the machine's state that
+  day (about 1.4 GB of memory free), not the code.
+- **The linearly implicit step still projects** (task 4.5's remaining
+  variation: a Gauss-Newton iteration or none): the projection costs some
+  13 us of a 130 us step. Holding the constraints inside the step instead
+  was not tried for it; for generalised-alpha it cost four and a half times the
+  projection.

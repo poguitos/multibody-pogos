@@ -15,17 +15,20 @@
 //   4. tau, then force_callback;
 //   5. the constrained forward dynamics (ConstraintSolver);
 //   6. each state element's rates.
-// After each step the state is projected onto the constraints, and each state
-// element's end_step makes its discrete changes. Dormand-Prince takes as many
-// steps of its own within step(dt) as its error control asks for, the last
-// one ending at t + dt exactly, and projects after each; end_step runs once,
-// after the last.
+// After each step the state is projected onto the constraints (or, as an
+// option, generalised-alpha solves its steps on them: task 4.7), and each
+// state element's end_step makes its discrete changes. Dormand-Prince takes
+// as many steps of its own within step(dt) as its error control asks for, the
+// last one ending at t + dt exactly, and projects after each; end_step runs
+// once, after the last.
 
 #include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <Eigen/Cholesky>
 
 #include "mbd/forces/force_element.hpp"
 #include "mbd/kernel/constrained_dynamics.hpp"
@@ -58,7 +61,8 @@ enum class Integrator {
     /// method of Chung and Hulbert (1993), stable at any step, with the
     /// damping of motions too fast for the step set by
     /// ImplicitControl::rho_infinity; each step solved by Newton's method
-    /// (task 4.3).
+    /// (task 4.3); optionally on the loop constraints, in the stabilized
+    /// index-2 form (ImplicitControl::stabilized_index2, task 4.7).
     GeneralizedAlpha,
     /// Implicit, fourth order and L-stable: the five-stage singly diagonally
     /// implicit Runge-Kutta method of Hairer and Wanner (SDIRK4), with an
@@ -151,6 +155,26 @@ struct ImplicitControl {
     /// step (stage) solved again; a second failure throws MBD-K058, or, with
     /// error control, shortens the step.
     int max_iterations{10};
+    /// GeneralizedAlpha on a closed mechanism (task 4.7, D37): solve each
+    /// step on the loop constraints, in the stabilized index-2 form of Gear,
+    /// Leimkuhler and Gupta as Arnold, Bruls and Cardona apply it to this
+    /// method, instead of projecting after it. Newton's unknowns gain, per
+    /// independent constraint equation, a constraint force J^T kappa added to
+    /// the accelerations, which holds J v = nu at the step's end, and a
+    /// position correction M^-1 J^T eta, which holds phi = 0; it stops with
+    /// |phi| within Simulator::constraint_tolerance and |J v - nu| within
+    /// step_control.absolute_tolerance. A projection leaves the method's
+    /// history (its acceleration-like variable) where the unprojected step
+    /// put it; this form does not. Measured on a four-bar: second order,
+    /// positions 1.5 to 1.1 times and accelerations 1.7 to 1.2 times more
+    /// accurate than projected at steps of 4 to 1 ms; on the sedan, positions
+    /// 1.15 times more accurate, but each step costs 1.45 times as much (its
+    /// Newton matrix has n + m rows instead of n, m the constraint equations)
+    /// and a moving steering input costs 12 to 23 % more Newton iterations.
+    /// Off by default: a shorter projected step buys more accuracy for the
+    /// same work. (ADAMS makes the same choice between its I3 and SI2
+    /// formulations.)
+    bool stabilized_index2{false};
 };
 
 /// What the integrator has done since the simulator was built.
@@ -208,12 +232,32 @@ struct FiredEvent {
     Real time{0.0};
 };
 
+/// How far the state is from its constraints (task 4.7): the drift channel.
+/// The drift is what the integrator's step left, before the projection moved
+/// it back; the residuals are the state's own, after it. GeneralizedAlpha
+/// with ImplicitControl::stabilized_index2, which solves its steps on the
+/// constraints, projects nothing: its drift is its residual. Positions in m
+/// and rad, velocities in m/s and rad/s, mixed as the constraints' equations
+/// mix them.
+struct ConstraintDrift {
+    Real position{0.0};            ///< |phi| of the last step's result
+    Real velocity{0.0};            ///< |J v - nu| of the last step's result
+    Real position_residual{0.0};   ///< |phi| of the state
+    Real velocity_residual{0.0};   ///< |J v - nu| of the state
+    /// The largest of each over every step since the simulator was built.
+    Real max_position{0.0};
+    Real max_velocity{0.0};
+    Real max_position_residual{0.0};
+    Real max_velocity_residual{0.0};
+};
+
 /// One step of the step trace (task H.4): how the step went, for finding out
 /// afterwards what went wrong.
 struct StepRecord {
     Real time{0.0};                 ///< At the end of the step
     Real dt{0.0};
     Real drift{0.0};                ///< |phi| after the integrator, before the projection
+    Real velocity_drift{0.0};       ///< |J v - nu| after the integrator, before the projection
     Real position_residual{0.0};    ///< |phi| after the projection
     Real velocity_residual{0.0};    ///< |J v - nu| after the projection
     int projection_iterations{0};
@@ -255,8 +299,20 @@ public:
     StepControl step_control;
     /// For Integrator::GeneralizedAlpha.
     ImplicitControl implicit_control;
-    bool project_constraints{true};     ///< Project q and v after each step
-    Real projection_tolerance{1e-10};
+    /// Keep the state on the loop constraints, not only their accelerations
+    /// (task 4.7, D37): each method projects q and v onto them after each of
+    /// its steps, or, with implicit_control.stabilized_index2,
+    /// GeneralizedAlpha solves its steps on them. initialize() projects in
+    /// either case. Off, the state drifts from the constraints as the
+    /// integrator's errors add up.
+    bool enforce_constraints{true};
+    /// How closely the positions are held: |phi| [m, rad] after a
+    /// projection or a stabilized GeneralizedAlpha step. A projection moves
+    /// the velocities onto J v = nu exactly (to rounding); the stabilized
+    /// step holds |J v - nu| to step_control.absolute_tolerance, as its
+    /// Newton iterations hold the velocities themselves (a residual there
+    /// does not add up: each step's positions are held to phi = 0 again).
+    Real constraint_tolerance{1e-10};
     /// Multirate integration (task 4.6, D36) with Integrator::RK4: the state
     /// elements' states (the fast ones: wheel spins, lags) take this many RK4
     /// steps for each step of the bodies, their rates evaluated without the
@@ -353,6 +409,10 @@ public:
     const ConstraintSolver& solver() const { return solver_; }
     const ProjectionInfo& last_projection() const { return last_projection_; }
     int projection_failures() const { return projection_failures_; }
+    /// The drift channel: how far the last step's result and the state are
+    /// from the constraints, and the largest values so far (task 4.7). For a
+    /// Recorder, add_drift_channels() in outputs.hpp.
+    const ConstraintDrift& constraint_drift() const { return drift_; }
 
 private:
     /// acceleration(), counted in the integrator's statistics.
@@ -429,8 +489,16 @@ private:
     /// How much f amplifies the rounding of the state y: entry i is sum_j
     /// |J_ij| |y_j| (into stacked_noise_), for Newton's convergence test.
     void stacked_noise(const VecX& y);
-    /// Project the state onto the constraints after a step.
+    /// Project the state onto the constraints after a step, and record the
+    /// drift.
     void project_step();
+    /// After a GeneralizedAlpha step solved on the constraints: the
+    /// kinematics at the new state, its residuals measured as the drift.
+    void measure_step_drift();
+    /// Fold a step's drift and residuals into the drift channel.
+    void record_drift(Real position, Real velocity, Real position_residual, Real velocity_residual);
+    /// Whether GeneralizedAlpha solves its steps on the constraints.
+    bool stabilized_alpha() const;
     /// One step of the integrator, the projection, time and kinematics.
     void advance(Real dt);
     /// A step of dt that stops at each event on the way.
@@ -474,6 +542,26 @@ private:
     std::vector<Index> implicit_pivots_;
     bool implicit_jacobian_valid_{false};
     VecX implicit_a_new_, implicit_w_new_, implicit_residual_, implicit_dq_;
+    // Generalised-alpha in the stabilized index-2 form (task 4.7, D37): the
+    // derivative G of J v - nu with respect to q, built with the iteration
+    // matrix's differences, and J v - nu where they start; the independent
+    // equations chosen at the step's predictor, their rows of J there and
+    // M^-1 J^T (the direction of the position correction); the extra
+    // constraint forces of the last step, one entry per equation (kappa,
+    // which holds J v = nu); kappa and eta (the position correction, scaled
+    // by 1 / (beta h^2)) within a step, one entry per chosen equation; the
+    // accelerations at the start with the last step's kappa, and at a Newton
+    // iterate with the current one; for eliminating eta from the Newton
+    // system, A = J_c M^-1 J_c^T with its factor, F = A^-1 [J_c 0], J_q P,
+    // G_c P and G's chosen rows; work vectors.
+    MatX implicit_G_;
+    VecX implicit_g0_;
+    std::vector<Index> implicit_rows_;
+    MatX implicit_Jc_, implicit_P_, implicit_Gc_, implicit_A_, implicit_F_, implicit_JqP_, implicit_GP_;
+    Eigen::LLT<MatX> implicit_llt_;
+    VecX implicit_kappa_, implicit_kappa_new_, implicit_eta_new_, implicit_unit_;
+    VecX implicit_rp_, implicit_f_, implicit_deta_;
+    VecX implicit_qddk_, implicit_qdd_plus_;
     // SDIRK4 and Radau IIA, on the stacked state y = (q, v, x): the
     // derivative J of the right-hand side f, numbered so that a
     // factorization knows which J it holds; f where J was built; the Newton
@@ -524,6 +612,8 @@ private:
     struct LinearWork;
     std::unique_ptr<LinearWork> linear_;
     ProjectionInfo last_projection_;
+    ConstraintDrift drift_;
+    VecX drift_work_;   // J v - nu, one entry per equation
     int projection_failures_{0};
     bool projection_failure_reported_{false};
     bool redundancy_reported_{false};

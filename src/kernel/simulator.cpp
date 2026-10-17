@@ -115,6 +115,7 @@ Simulator::Simulator(System& sys)
     tau = VecX::Zero(model.nv);
     tau_total_ = VecX::Zero(model.nv);
     tau_forces_ = VecX::Zero(model.nv);
+    drift_work_ = VecX::Zero(solver_.size());
     q0_ = q;
     q_stage_ = q;
     v0_ = v;
@@ -177,8 +178,8 @@ void Simulator::initialize()
 {
     checks::q("kernel::Simulator::initialize", system.model, q);
     checks::v("kernel::Simulator::initialize", system.model, v);
-    if (project_constraints && solver_.size() > 0) {
-        last_projection_ = solver_.project(data_, q, v, time, projection_tolerance);
+    if (enforce_constraints && solver_.size() > 0) {
+        last_projection_ = solver_.project(data_, q, v, time, constraint_tolerance);
     }
     refresh();
 }
@@ -351,7 +352,7 @@ void Simulator::step_dormand_prince(Real dt)
     // normalization of quaternions, the projection, or an event. Across calls
     // it is never reused: tau, the inputs read by the state elements and
     // their end_step may all change between them.
-    const bool reuse_last_stage = model.nq == model.nv && !(project_constraints && solver_.size() > 0);
+    const bool reuse_last_stage = model.nq == model.nv && !(enforce_constraints && solver_.size() > 0);
     bool first_stage_known = false;
     bool after_rejection = false;
     Real h = sc.adaptive && next_step_ > 0.0 ? std::min(next_step_, dt) : dt;
@@ -563,11 +564,13 @@ void Simulator::step(Real dt)
         StepRecord r;
         r.time = time;
         r.dt = dt;
-        r.drift = last_projection_.initial_position_residual;
-        r.position_residual = last_projection_.position_residual;
-        r.velocity_residual = last_projection_.velocity_residual;
+        r.drift = drift_.position;
+        r.velocity_drift = drift_.velocity;
+        r.position_residual = drift_.position_residual;
+        r.velocity_residual = drift_.velocity_residual;
         r.projection_iterations = last_projection_.iterations;
-        r.projection_converged = last_projection_.converged || !project_constraints || solver_.size() == 0;
+        r.projection_converged = last_projection_.converged || !enforce_constraints || solver_.size() == 0
+                                 || stabilized_alpha();
         r.equations = solver_.info().equations;
         r.rank = solver_.info().rank;
         r.kinetic_energy = kinetic_energy(system.model, data_);
@@ -583,10 +586,10 @@ void Simulator::write_trace(const std::string& path) const
     std::ofstream out(path);
     MBD_THROW_IF(!out, "MBD-K053: Simulator::write_trace: cannot open \"" + path + "\" for writing");
     out.precision(17);
-    out << "time,dt,drift,position_residual,velocity_residual,projection_iterations,projection_converged,"
-           "equations,rank,kinetic_energy,potential_energy,events\n";
+    out << "time,dt,drift,velocity_drift,position_residual,velocity_residual,projection_iterations,"
+           "projection_converged,equations,rank,kinetic_energy,potential_energy,events\n";
     for (const StepRecord& r : trace_) {
-        out << r.time << ',' << r.dt << ',' << r.drift << ',' << r.position_residual << ','
+        out << r.time << ',' << r.dt << ',' << r.drift << ',' << r.velocity_drift << ',' << r.position_residual << ','
             << r.velocity_residual << ',' << r.projection_iterations << ',' << (r.projection_converged ? 1 : 0)
             << ',' << r.equations << ',' << r.rank << ',' << r.kinetic_energy << ',' << r.potential_energy
             << ',' << r.events << '\n';
@@ -678,11 +681,47 @@ Real Simulator::locate_event(std::size_t i, Real t0, Real g0, Real length, Real 
     return right;
 }
 
+void Simulator::record_drift(Real position, Real velocity, Real position_residual, Real velocity_residual)
+{
+    drift_.position = position;
+    drift_.velocity = velocity;
+    drift_.position_residual = position_residual;
+    drift_.velocity_residual = velocity_residual;
+    drift_.max_position = std::max(drift_.max_position, position);
+    drift_.max_velocity = std::max(drift_.max_velocity, velocity);
+    drift_.max_position_residual = std::max(drift_.max_position_residual, position_residual);
+    drift_.max_velocity_residual = std::max(drift_.max_velocity_residual, velocity_residual);
+}
+
+bool Simulator::stabilized_alpha() const
+{
+    return method == Integrator::GeneralizedAlpha && implicit_control.stabilized_index2 && enforce_constraints
+           && solver_.size() > 0;
+}
+
+void Simulator::measure_step_drift()
+{
+    last_projection_ = ProjectionInfo{};
+    if (solver_.size() == 0) {
+        refresh();
+        return;
+    }
+    // The kinematics refresh() would compute, with the constraints there.
+    solver_.evaluate(data_, q, v, time);
+    body_states(system.model, data_, states_);
+    drift_work_.noalias() = solver_.J() * v;
+    drift_work_ -= solver_.nu();
+    const Real position = solver_.phi().norm(), velocity = drift_work_.norm();
+    record_drift(position, velocity, position, velocity);
+}
+
 void Simulator::project_step()
 {
     last_projection_ = ProjectionInfo{};
-    if (!project_constraints || solver_.size() == 0) return;
-    last_projection_ = solver_.project(data_, q, v, time, projection_tolerance);
+    if (!enforce_constraints || solver_.size() == 0) return;
+    last_projection_ = solver_.project(data_, q, v, time, constraint_tolerance);
+    record_drift(last_projection_.initial_position_residual, last_projection_.initial_velocity_residual,
+                 last_projection_.position_residual, last_projection_.velocity_residual);
     if (!last_projection_.converged) {
         ++projection_failures_;
         if (!projection_failure_reported_) {
@@ -701,6 +740,9 @@ void Simulator::advance(Real dt)
                  "MBD-K046: kernel::Simulator: multirate needs a value of 1 or more, and above 1 Integrator::RK4; "
                  "it is "
                      + std::to_string(multirate) + ".");
+    MBD_THROW_IF(!(constraint_tolerance > 0.0),
+                 "MBD-K047: kernel::Simulator: constraint_tolerance needs a positive value; it is "
+                     + std::to_string(constraint_tolerance) + ".");
     switch (method) {
         case Integrator::RK4:
             if (multirate > 1) step_rk4_multirate(dt);
@@ -716,13 +758,16 @@ void Simulator::advance(Real dt)
             if (method == Integrator::DormandPrince) step_dormand_prince(dt);
             else if (method == Integrator::SDIRK4) step_sdirk(dt);
             else step_radau(dt);
-            refresh();
+            if (enforce_constraints) refresh();
+            else measure_step_drift();
             return;
     }
     time += dt;
     ++stats_.steps;
     stats_.step_size = dt;
-    project_step();
+    // A stabilized generalised-alpha step ends on the constraints already (D37).
+    const bool projects = enforce_constraints && !stabilized_alpha();
+    if (projects) project_step();
     if (method == Integrator::GeneralizedAlpha) {
         // What the method's history belongs to.
         implicit_q_ = q;
@@ -730,7 +775,8 @@ void Simulator::advance(Real dt)
         implicit_x_ = x;
         implicit_time_ = time;
     }
-    refresh();
+    if (projects) refresh();
+    else measure_step_drift();
 }
 
 int Simulator::run(Real duration, Real dt)

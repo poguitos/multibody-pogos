@@ -87,6 +87,8 @@ struct ProjectionInfo {
     int iterations{0};             ///< Gauss-Newton steps taken
     Real initial_position_residual{0.0};   ///< |phi| before: the drift it corrected
     Real position_residual{0.0};   ///< |phi| at the end
+    /// |J v - nu| before the velocities were moved, at the final q
+    Real initial_velocity_residual{0.0};
     Real velocity_residual{0.0};   ///< |J v - nu| at the end
     bool converged{false};
 };
@@ -158,6 +160,16 @@ public:
     const VecX& lambda() const { return lambda_; }
     const SolveInfo& info() const { return info_; }
 
+    /// The k-th of the info().rank independent equations of the last forward
+    /// dynamics, k < info().rank: the order in which its rank-revealing
+    /// factorization took them as pivots (task 4.7).
+    Index independent_equation(int k) const { return ldlt_A_.pivot(k); }
+
+    /// out += M^-1 J^T x, with M and J those of the last forward dynamics: the
+    /// accelerations that extra constraint forces J^T x would add, for x with
+    /// one entry per equation (task 4.7). Allocates nothing.
+    void add_constraint_motion(const VecX& x, VecX& out);
+
     const std::vector<std::shared_ptr<const ConstraintModel>>& constraints() const
     {
         return constraints_;
@@ -173,9 +185,6 @@ private:
 
     /// x with A x = r, dropping the pivots of redundant equations.
     void solve_constraint_matrix(const VecX& r, VecX& x);
-
-    /// out += M^-1 J^T x = L^-T (Z_ x), without forming M^-1 J^T.
-    void add_constraint_motion(const VecX& x, VecX& out);
 
     const Model& model_;
     std::vector<std::shared_ptr<const ConstraintModel>> constraints_;

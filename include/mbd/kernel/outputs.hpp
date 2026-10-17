@@ -12,6 +12,10 @@
 #include "mbd/kernel/model.hpp"
 #include "mbd/kernel/simulator.hpp"
 
+namespace mbd {
+class Recorder;   // analysis/recorder.hpp
+}
+
 namespace mbd::kernel {
 
 /// The spatial force [moment; force] each joint transmits from the parent to
@@ -39,5 +43,13 @@ struct Loads {
 /// constraint forces on each body and the joint reactions. For output, not
 /// for the step: it allocates.
 Loads compute_loads(Simulator& sim);
+
+/// The drift channels (task 4.7): adds to `recorder` the channels
+/// "constraint_drift" and "constraint_velocity_drift" (what each step left
+/// before the projection) and "constraint_residual" and
+/// "constraint_velocity_residual" (the state's), read from
+/// sim.constraint_drift() at every sample. The simulator must outlive the
+/// recorder's sampling.
+void add_drift_channels(Recorder& recorder, const Simulator& sim);
 
 } // namespace mbd::kernel

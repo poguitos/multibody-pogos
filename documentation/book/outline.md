@@ -152,6 +152,17 @@ to a validated engine.*
     smooth part, never the stiff one; a chatter that single rate averages
     and a sampled slow step turns into drift; each part inside its own
     stability. *J: multirate. D36.*
+30. **Keeping a mechanism closed.** Drift from an index-1 formulation and
+    its two cures: projection after the step, and solving the step on the
+    constraints (the GGL stabilized index-2 form); why a one-step method does
+    not mind the first and generalised-alpha, with its lagging acceleration,
+    does; the price of holding that method on the constraints at all; a
+    choice made on a small model and reversed by its cost on the car
+    (measure on the model a choice is for);
+    Newton's contraction as a diagnosis (two missing terms found by printing
+    it); a drift channel as an output; and a long run that found an
+    unrelated limit (gyroscopic terms taken explicitly blow up a spinning
+    top). *J: constraints per integrator. D37.*
 
 ## Part VII onwards: one part per phase still to come
 

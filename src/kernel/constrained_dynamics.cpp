@@ -302,6 +302,7 @@ ProjectionInfo ConstraintSolver::project(Data& data, VecX& q, VecX& v, Real t,
     factorize_constraint_matrix();
     rhs_m_ = nu_;
     rhs_m_.noalias() -= J_ * v;
+    out.initial_velocity_residual = rhs_m_.norm();
     solve_constraint_matrix(rhs_m_, mu_);
     add_constraint_motion(mu_, v);
     rhs_m_ = nu_;

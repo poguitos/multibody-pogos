@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "mbd/analysis/recorder.hpp"
 #include "mbd/kernel/algorithms.hpp"
 #include "mbd/spatial/spatial.hpp"
 
@@ -70,6 +71,14 @@ Loads compute_loads(Simulator& sim)
     forward_kinematics(model, data, sim.q, sim.v, out.v_dot);
     joint_reactions(model, data, external, out.joint_reaction);
     return out;
+}
+
+void add_drift_channels(Recorder& recorder, const Simulator& sim)
+{
+    recorder.add("constraint_drift", [&sim] { return sim.constraint_drift().position; });
+    recorder.add("constraint_velocity_drift", [&sim] { return sim.constraint_drift().velocity; });
+    recorder.add("constraint_residual", [&sim] { return sim.constraint_drift().position_residual; });
+    recorder.add("constraint_velocity_residual", [&sim] { return sim.constraint_drift().velocity_residual; });
 }
 
 } // namespace mbd::kernel

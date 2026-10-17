@@ -45,16 +45,18 @@ TEST_CASE("Stepping the double-wishbone sedan allocates no memory", "[alloc][veh
     // dampers, tyres and the drivetrain: everything a step does, with RK4,
     // with Dormand-Prince's error control, and with the Newton iterations of
     // generalised-alpha, SDIRK4 and Radau IIA, with the linearly implicit
-    // step's derivatives, and with multirate RK4's fast steps (their work is
-    // sized in the first step).
+    // step's derivatives, with multirate RK4's fast steps (their work is
+    // sized in the first step), and with generalised-alpha solved on the
+    // constraints (task 4.7).
     struct Run {
         kernel::Integrator method;
         int multirate;
+        bool stabilized{false};
     };
     for (const Run run : {Run{kernel::Integrator::RK4, 1}, Run{kernel::Integrator::DormandPrince, 1},
                           Run{kernel::Integrator::GeneralizedAlpha, 1}, Run{kernel::Integrator::SDIRK4, 1},
                           Run{kernel::Integrator::RadauIIA, 1}, Run{kernel::Integrator::LinearlyImplicitEuler, 1},
-                          Run{kernel::Integrator::RK4, 6}}) {
+                          Run{kernel::Integrator::RK4, 6}, Run{kernel::Integrator::GeneralizedAlpha, 1, true}}) {
         auto tmpl = VehicleTemplate::DefaultSedan();
         tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
         tmpl.rear_axle.suspension_type = SuspensionType::DoubleWishbone;
@@ -63,6 +65,7 @@ TEST_CASE("Stepping the double-wishbone sedan allocates no memory", "[alloc][veh
         kernel::Simulator sim(sys);
         sim.method = run.method;
         sim.multirate = run.multirate;
+        sim.implicit_control.stabilized_index2 = run.stabilized;
         set_vehicle_equilibrium(sim, vh);
         sim.initialize();
         Drivetrain dt(tmpl.drivetrain);
@@ -107,12 +110,20 @@ TEST_CASE("Stepping a constrained mechanism allocates no memory", "[alloc][kerne
     sys.force_elements.push_back(std::make_shared<LinearSpringDamper>(
         0, coupler, Vec3(1.0, 2.0, 0.0), Vec3(1.0, 0.0, 0.0), 50.0, 2.0, 0.5));
 
-    for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::SemiImplicitEuler,
-                              kernel::Integrator::DormandPrince, kernel::Integrator::GeneralizedAlpha,
-                              kernel::Integrator::SDIRK4, kernel::Integrator::RadauIIA,
-                              kernel::Integrator::LinearlyImplicitEuler}) {
+    // The last run: generalised-alpha solved on the constraints, whose
+    // redundant equations are dummies in its Newton matrix.
+    struct Run {
+        kernel::Integrator method;
+        bool stabilized;
+    };
+    for (const Run run : {Run{kernel::Integrator::RK4, false}, Run{kernel::Integrator::SemiImplicitEuler, false},
+                          Run{kernel::Integrator::DormandPrince, false}, Run{kernel::Integrator::GeneralizedAlpha, false},
+                          Run{kernel::Integrator::SDIRK4, false}, Run{kernel::Integrator::RadauIIA, false},
+                          Run{kernel::Integrator::LinearlyImplicitEuler, false},
+                          Run{kernel::Integrator::GeneralizedAlpha, true}}) {
         kernel::Simulator sim(sys);
-        sim.method = method;
+        sim.method = run.method;
+        sim.implicit_control.stabilized_index2 = run.stabilized;
         sim.v(0) = 1.0;
         sim.initialize();
         sim.run(0.01, 1e-3);   // the redundancy is reported in the first step

@@ -176,12 +176,21 @@ int main()
     // step at the state above, and the spread of single steps over a drive
     // (throttle for 1 s, brake to a stop for 2 s, stand for 1 s), after the
     // first ten (which size the work and warm the caches): what a real time
-    // budget must allow for.
+    // budget must allow for. Generalised-alpha also solved on the constraints
+    // (task 4.7's option).
     std::printf("\n| Method | median of one 1 ms step [us] | single steps: min | median | 99th percentile | 99.9th "
-                "| max |\n");
-    std::printf("|---|---|---|---|---|---|---|\n");
-    for (const auto method : {kernel::Integrator::RK4, kernel::Integrator::GeneralizedAlpha,
-                              kernel::Integrator::LinearlyImplicitEuler}) {
+                "| max | evaluations per step | Newton iterations per step |\n");
+    std::printf("|---|---|---|---|---|---|---|---|---|\n");
+    struct Run {
+        kernel::Integrator method;
+        bool stabilized;
+        const char* label;
+    };
+    for (const Run run : {Run{kernel::Integrator::RK4, false, "RK4"},
+                          Run{kernel::Integrator::GeneralizedAlpha, false, "generalised-alpha"},
+                          Run{kernel::Integrator::GeneralizedAlpha, true, "generalised-alpha, stabilized"},
+                          Run{kernel::Integrator::LinearlyImplicitEuler, false, "linearly implicit Euler"}}) {
+        const kernel::Integrator method = run.method;
         auto tmpl = VehicleTemplate::DefaultSedan();
         tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
         tmpl.rear_axle.suspension_type  = SuspensionType::DoubleWishbone;
@@ -189,6 +198,7 @@ int main()
         auto vh = build_vehicle(sys, tmpl);
         kernel::Simulator sim(sys);
         sim.method = method;
+        sim.implicit_control.stabilized_index2 = run.stabilized;
         set_vehicle_equilibrium(sim, vh);
         sim.initialize();
         Drivetrain dt(tmpl.drivetrain);
@@ -203,6 +213,7 @@ int main()
         auto vh2 = build_vehicle(sys2, tmpl);
         kernel::Simulator sim2(sys2);
         sim2.method = method;
+        sim2.implicit_control.stabilized_index2 = run.stabilized;
         set_vehicle_equilibrium(sim2, vh2);
         sim2.initialize();
         Drivetrain dt2(tmpl.drivetrain);
@@ -219,12 +230,12 @@ int main()
             if (k >= 10) steps.push_back(us);
         }
         std::sort(steps.begin(), steps.end());
-        const char* label = method == kernel::Integrator::RK4                ? "RK4"
-                            : method == kernel::Integrator::GeneralizedAlpha ? "generalised-alpha"
-                                                                             : "linearly implicit Euler";
-        std::printf("| %s | %.1f | %.1f | %.1f | %.1f | %.1f | %.1f |\n", label, median, steps.front(),
+        const char* label = run.label;
+        const kernel::IntegratorStats& st = sim2.integrator_stats();
+        std::printf("| %s | %.1f | %.1f | %.1f | %.1f | %.1f | %.1f | %.2f | %.2f |\n", label, median, steps.front(),
                     steps[steps.size() / 2], steps[steps.size() * 99 / 100], steps[steps.size() * 999 / 1000],
-                    steps.back());
+                    steps.back(), static_cast<double>(st.evaluations) / static_cast<double>(st.steps),
+                    static_cast<double>(st.newton_iterations) / static_cast<double>(st.steps));
     }
     return 0;
 }

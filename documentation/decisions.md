@@ -42,11 +42,12 @@ and the journal entry of the work refers to them by number
 | D29 | Events: sign changes at step ends, located by re-integration | 13 Oct 2026 | In force, task 3.9 |
 | D30 | State elements: first-order states integrated with the bodies | 14 Oct 2026 | In force, task 4.1 |
 | D31 | Dormand-Prince within the fixed output step, with events on its interpolant | 14 Oct 2026 | In force, task 4.2 |
-| D32 | Generalised-alpha on the state-space accelerations, with Newton on difference Jacobians | 14 Oct 2026 | In force, task 4.3 |
+| D32 | Generalised-alpha on the state-space accelerations, with Newton on difference Jacobians | 14 Oct 2026 | In force, task 4.3; its constraints: D37 |
 | D33 | SDIRK4 on the stacked first-order system, kept for smooth models | 14-16 Oct 2026 | In force, task 4.4 |
 | D34 | Radau IIA for stiff mechanical models, with Newton held to a tolerance-dependent fraction | 16 Oct 2026, the method by the author | In force, task 4.4 |
 | D35 | Linearly implicit Euler, with force derivatives element by element | 16 Oct 2026 | In force, task 4.5 |
 | D36 | Multirate RK4, fastest first, for the state elements' states | 17 Oct 2026 | In force, task 4.6 |
+| D37 | Constraints per integrator: projection after every method's steps, generalised-alpha's stabilized index-2 form as an option | 17 Oct 2026 | In force, task 4.7 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -886,3 +887,92 @@ and the journal entry of the work refers to them by number
   of second order in H (0.04 % at 1.5 ms, 0.14 % at 3 ms on the sedan).
 - **Record.** Journal: multirate; data `2026-10-17_multirate.md`;
   `docs/kernel.md`, integrators; troubleshooting.
+
+## D37. Constraints per integrator: projection after every method's steps, generalised-alpha's stabilized index-2 form as an option
+
+- **Context.** Task 4.7: projection for explicit methods, a stabilised
+  index-2 form for implicit methods, and a drift channel in the output; done
+  when the drift stays under tolerance for 1000 simulated seconds. Every
+  evaluation solves the loop constraints at the acceleration level (index
+  1), and since task 2.7 every method projected q and v after each step.
+  Measured on a four-bar with a pendulum before any change: the projection
+  keeps or improves the accuracy of RK4, Dormand-Prince and SDIRK4 (and of
+  Radau IIA down to the projection's own floor of 1e-10), as the theory
+  says (coordinate projection keeps a one-step method's convergence;
+  Eich-Soellner and Fuhrer, section 5.3). Generalised-alpha is different:
+  its acceleration-like variable lags the accelerations, so each step
+  leaves the constraints by far more than its error along them (velocity
+  drift per step 3.3e-3 m/s at 5 ms, 300 times RK4's), and a projection
+  removes that from the state but not from the method's history. Left free
+  it drifts by 1.3e-3 in 20 s.
+- **Decision.** `Simulator::enforce_constraints` and `constraint_tolerance`
+  (renamed from `project_constraints` and `projection_tolerance`). Every
+  method, explicit and implicit, projects after each of its steps, as
+  before. Generalised-alpha can instead solve each step on the constraints,
+  `implicit_control.stabilized_index2`, off by default: the stabilized
+  index-2 form (Gear, Leimkuhler and Gupta 1985; for generalised-alpha
+  Arnold, Bruls and Cardona 2015, 2016), in which Newton's unknowns gain,
+  per independent equation, kappa, a constraint force J^T kappa added to
+  the index-1 accelerations, which holds J v+ = nu at the step's end, and
+  eta, a position correction M^-1 J^T eta in the position update, which
+  holds phi(q+) = 0. kappa is the difference between the multipliers and
+  those of the index-1 solve, so the discrete solution is the one with the
+  multipliers themselves as unknowns. The iteration matrix takes J, M^-1
+  J^T and the independent equations from Newton's first evaluation, at the
+  predictor, and the derivative G of J v - nu with respect to q from the
+  differences that build the rest of it; eta is eliminated through the
+  Cholesky factor of A = J_c M^-1 J_c^T, leaving n + m unknowns; redundant
+  equations are dummies, so the matrix keeps one size. Newton stops when,
+  besides its usual test, |phi| <= constraint_tolerance and |J v - nu| <=
+  step_control.absolute_tolerance. The drift channel:
+  `Simulator::constraint_drift()` (what each step left before the
+  projection, the residuals after, the largest of each),
+  `add_drift_channels(recorder, sim)`, and a velocity drift column in the
+  trace. MBD-K047 for a tolerance that is not positive.
+- **Alternatives.** The stabilized form for every implicit method, as the
+  plan put it: SDIRK4 and Radau IIA are one-step methods that the
+  projection does not hurt, and Hairer and Wanner's comparison on a seven-
+  body mechanism (section VI.9) found RADAU5 alike on the index-1, index-2,
+  index-3 and GGL forms, the GGL form needing the most linear algebra; the
+  linearly implicit step is one-step and first order. The stabilized form as
+  generalised-alpha's default: chosen at first, then measured on the sedan
+  (n = 31, m = 17), pinned, against the previous commit in one session: a
+  step cost 169 us against 98 with the Newton matrix of n + 2 m, 145 us with
+  eta eliminated, of which about 17 us the larger LU and most of the rest
+  forming its blocks (Eigen's blocked LU was only a quarter faster than
+  ours at these sizes); on a manoeuvre with a steering ramp it took 12 to 23
+  % more evaluations (each step absorbs the driver's change) for positions
+  1.15 times more accurate and the same velocities. A projected step 1.45
+  times shorter costs the same and gains more. ADAMS makes the same choice
+  between its I3 (default) and SI2 formulations. Within the stabilized form:
+  the matrix's constraint rows from the step's start, without G (Newton
+  contracted by 100 per iteration at best and failed at 4 and 5 ms on the
+  four-bar: J turns by about h |v| / length across a step, and G is of the
+  same size); |J v - nu| held to constraint_tolerance (5.3 Newton iterations
+  a step instead of 3.3, and the last correction, through the simplified
+  matrix, left 4e-9 all the same; a velocity residual does not add up, since
+  the next step's positions are held to phi = 0 again). Baumgarte
+  stabilization: kept for runs with `enforce_constraints` off; its rates
+  depend on the model and the step.
+- **Consequences.** The one-step methods and generalised-alpha by default
+  behave as before task 4.7; the drift channel shows, for each, the drift
+  each step leaves (on the four-bar at 5 ms: RK4 1.8e-7, Dormand-Prince
+  3e-9, Radau IIA 4e-10 in positions; generalised-alpha 2.6e-5) and the
+  residuals after (within 1e-10, and 5e-15 in velocities). Over 1000
+  simulated seconds of the four-bar and of a heavy top held at its tip, no
+  residual left the tolerance and no drift grew. Stabilized,
+  generalised-alpha converges at second order on the four-bar (ratios 4.09
+  and 4.04 at 2, 1 and 0.5 ms), its steps ending within 1.2e-15 of the
+  constraints with nothing projected, more accurately than projected at
+  every step (1.34, 1.18, 1.09 times there), for the same Newton iterations
+  on the four-bar (3.3 a step at the default tolerances); its velocity
+  residual is of the order of its Newton tolerance (1.8e-7 at most over
+  1000 s at 1e-6), not of rounding as after a projection. A user's settings
+  `project_constraints` and `projection_tolerance` must be renamed. Found
+  with the long runs: semi-implicit Euler and the linearly implicit step
+  take the gyroscopic terms explicitly and blow up on a top spinning at 30
+  rad/s within 100 s (a limit of D35's step, not of the constraints).
+- **Record.** Journal: constraints per integrator; data
+  `2026-10-17_constraints-per-integrator.md`; `docs/kernel.md`, constraints
+  per integrator; `docs/performance.md`, task 4.7; troubleshooting; messages
+  K047, K051, K058.

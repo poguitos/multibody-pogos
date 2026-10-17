@@ -24,6 +24,13 @@
 // tends, as lambda h -> -infinity, to a lower triangular one with
 // eigenvalues 0, -(1 - gamma) / gamma and -rho: x itself is damped to
 // O(1 / |lambda h|) each step.
+//
+// On a closed mechanism the step is projected onto the constraints afterwards,
+// as every method's is, or, with ImplicitControl::stabilized_index2 (task 4.7,
+// D37), solved on them in the stabilized index-2 form (Gear, Leimkuhler and
+// Gupta 1985; Arnold, Bruls and Cardona 2015): qdd+ gains M^-1 J^T kappa and
+// q+'s increment beta h^2 M^-1 J^T eta, and Newton adds phi(q+) = 0 and J v+
+// = nu to its equations.
 
 #include "mbd/kernel/simulator.hpp"
 
@@ -213,12 +220,26 @@ void Simulator::implicit_jacobian()
         implicit_jacobian_.col(j).head(nv) = (qdd - implicit_qdd_) / eps;
         implicit_jacobian_.col(j).tail(nx) = (x_dot_ - implicit_xd_) / eps;
     };
+    // On the constraints (D37), also the derivative G of J v - nu with
+    // respect to q, from the same evaluations: the solver has J and nu at
+    // each.
+    const bool constrained = implicit_G_.rows() > 0;
+    if (constrained) {
+        solver_.evaluate(data_, q, v, time);
+        implicit_g0_.noalias() = solver_.J() * v;
+        implicit_g0_ -= solver_.nu();
+    }
     for (Index j = 0; j < nv; ++j) {
         const Real eps = 1e-7;
         implicit_dq_.setZero();
         implicit_dq_(j) = eps;
         integrate(model, q, implicit_dq_, 1.0, q_stage_);
         column(j, evaluate(q_stage_, v, x, time), eps);
+        if (constrained) {
+            drift_work_.noalias() = solver_.J() * v;
+            drift_work_ -= solver_.nu();
+            implicit_G_.col(j) = (drift_work_ - implicit_g0_) / eps;
+        }
     }
     for (Index j = 0; j < nv; ++j) {
         const Real eps = 1e-7 * std::max(Real(1.0), std::abs(v(j)));
@@ -244,22 +265,48 @@ void Simulator::step_generalized_alpha(Real h)
                  "max_iterations >= 1; it has "
                      + std::to_string(ic.rho_infinity) + " and " + std::to_string(ic.max_iterations) + ".");
     const Index nv = model.nv, nx = x.size(), n = nv + nx;
-    if (implicit_a_.size() != nv || implicit_w_.size() != nx) {
-        // First step, or states attached since: size the work (allocates).
+    // On the constraints (D37): a pair of extra unknowns per equation, kappa
+    // and eta, those of redundant equations left out; eta is eliminated from
+    // the Newton system, which keeps n + m unknowns.
+    const Index m = stabilized_alpha() ? solver_.size() : 0;
+    const Index N = n + m;
+    if (implicit_a_.size() != nv || implicit_w_.size() != nx || implicit_matrix_.rows() != N) {
+        // First step, states attached since, or the constraints switched on
+        // or off: size the work (allocates).
         implicit_a_ = VecX::Zero(nv);
         implicit_qdd_ = VecX::Zero(nv);
+        implicit_qddk_ = VecX::Zero(nv);
+        implicit_qdd_plus_ = VecX::Zero(nv);
         implicit_a_new_ = VecX::Zero(nv);
         implicit_dq_ = VecX::Zero(nv);
         implicit_w_ = VecX::Zero(nx);
         implicit_xd_ = VecX::Zero(nx);
         implicit_w_new_ = VecX::Zero(nx);
-        implicit_residual_ = VecX::Zero(n);
+        implicit_residual_ = VecX::Zero(N);
         implicit_q_ = q;
         implicit_v_ = v;
         implicit_x_ = x;
         implicit_jacobian_ = MatX::Zero(n, 2 * nv + nx);
-        implicit_matrix_ = MatX::Zero(n, n);
-        implicit_pivots_.assign(static_cast<std::size_t>(n), 0);
+        implicit_G_ = MatX::Zero(m, nv);
+        implicit_g0_ = VecX::Zero(m);
+        implicit_matrix_ = MatX::Zero(N, N);
+        implicit_pivots_.assign(static_cast<std::size_t>(N), 0);
+        implicit_rows_.assign(static_cast<std::size_t>(m), 0);
+        implicit_Jc_ = MatX::Zero(m, nv);
+        implicit_P_ = MatX::Zero(nv, m);
+        implicit_Gc_ = MatX::Zero(m, nv);
+        implicit_A_ = MatX::Zero(m, m);
+        implicit_llt_ = Eigen::LLT<MatX>(m);
+        implicit_F_ = MatX::Zero(m, n);
+        implicit_JqP_ = MatX::Zero(n, m);
+        implicit_GP_ = MatX::Zero(m, m);
+        implicit_rp_ = VecX::Zero(m);
+        implicit_f_ = VecX::Zero(m);
+        implicit_deta_ = VecX::Zero(m);
+        implicit_kappa_ = VecX::Zero(m);
+        implicit_kappa_new_ = VecX::Zero(m);
+        implicit_eta_new_ = VecX::Zero(m);
+        implicit_unit_ = VecX::Zero(m);
         implicit_history_ = false;
         implicit_jacobian_valid_ = false;
     }
@@ -279,10 +326,22 @@ void Simulator::step_generalized_alpha(Real h)
     implicit_qdd_ = evaluate(q, v, x, time);
     implicit_xd_ = x_dot_;
     const bool kept = implicit_history_ && time == implicit_time_;
-    if (!(kept && q == implicit_q_ && v == implicit_v_)) implicit_a_ = implicit_qdd_;
+    const bool kept_motion = kept && q == implicit_q_ && v == implicit_v_;
     for (Index i = 0; i < nx; ++i) {
         if (!kept || x(i) != implicit_x_(i)) implicit_w_(i) = implicit_xd_(i);
     }
+    // On the constraints, the accelerations of the method's relation at the
+    // start are those the last step ended with, its extra constraint forces J^T
+    // kappa included.
+    implicit_qddk_ = implicit_qdd_;
+    if (m > 0) {
+        if (kept_motion) {
+            solver_.add_constraint_motion(implicit_kappa_, implicit_qddk_);
+        } else {
+            implicit_kappa_.setZero();
+        }
+    }
+    if (!kept_motion) implicit_a_ = implicit_qddk_;
     bool fresh = false;
     if (!implicit_jacobian_valid_) {
         implicit_jacobian();
@@ -290,40 +349,166 @@ void Simulator::step_generalized_alpha(Real h)
     }
 
     const Real atol = step_control.absolute_tolerance, rtol = step_control.relative_tolerance;
+    const Real c = 1.0 - alpha_f;
     for (;;) {
-        // The iteration matrix for this step length:
-        // (1 - alpha_m) I - (1 - alpha_f) [beta h^2 J_q + gamma h J_v, gamma h J_x].
-        implicit_matrix_.leftCols(nv) = (beta * h * h) * implicit_jacobian_.leftCols(nv)
-                                        + (gamma * h) * implicit_jacobian_.middleCols(nv, nv);
-        implicit_matrix_.rightCols(nx) = (gamma * h) * implicit_jacobian_.rightCols(nx);
-        implicit_matrix_ *= -(1.0 - alpha_f);
-        implicit_matrix_.diagonal().array() += 1.0 - alpha_m;
-        const bool regular = lu_factor(implicit_matrix_, implicit_pivots_);
-
         implicit_a_new_ = implicit_a_;
         implicit_w_new_ = implicit_w_;
-        bool converged = false, slow = false;
+        implicit_eta_new_.setZero();
+        int rank = 0;
+        bool regular = true, converged = false, slow = false;
         Real first = 0.0, previous = std::numeric_limits<Real>::infinity(), before = previous;
-        for (int k = 1; regular && k <= ic.max_iterations; ++k) {
+        for (int k = 1; k <= ic.max_iterations; ++k) {
             implicit_dq_ = h * v + (h * h) * ((0.5 - beta) * implicit_a_ + beta * implicit_a_new_);
+            if (k > 1 && m > 0) implicit_dq_.noalias() += (beta * h * h) * (implicit_P_ * implicit_eta_new_);
             integrate(model, q, implicit_dq_, 1.0, q_stage_);
             v_stage_ = v + h * ((1.0 - gamma) * implicit_a_ + gamma * implicit_a_new_);
             x_stage_ = x + h * ((1.0 - gamma) * implicit_w_ + gamma * implicit_w_new_);
-            const VecX& qdd = evaluate(q_stage_, v_stage_, x_stage_, time + h);
+            implicit_qdd_plus_ = evaluate(q_stage_, v_stage_, x_stage_, time + h);
             ++stats_.newton_iterations;
+            if (m > 0 && k == 1) {
+                // At the predictor, near the step's end: the independent
+                // equations, in the order the rank-revealing factorization
+                // took them, their rows of J and the columns of M^-1 J^T,
+                // kept for the step. The residuals use the current J, so the
+                // solution does not depend on them; the closer they are to
+                // the end, the faster Newton converges. The multipliers start
+                // from the last step's.
+                rank = solver_.info().rank;
+                implicit_Jc_.setZero();
+                implicit_Gc_.setZero();
+                implicit_P_.setZero();
+                implicit_kappa_new_.setZero();
+                for (Index i = 0; i < m; ++i) {
+                    implicit_rows_[static_cast<std::size_t>(i)] =
+                        i < rank ? solver_.independent_equation(static_cast<int>(i)) : -1;
+                }
+                for (Index i = 0; i < rank; ++i) {
+                    const Index row = implicit_rows_[static_cast<std::size_t>(i)];
+                    implicit_kappa_new_(i) = implicit_kappa_(row);
+                    implicit_Jc_.row(i) = solver_.J().row(row);
+                    implicit_Gc_.row(i) = implicit_G_.row(row);
+                    implicit_unit_.setZero();
+                    implicit_unit_(row) = 1.0;
+                    implicit_dq_.setZero();
+                    solver_.add_constraint_motion(implicit_unit_, implicit_dq_);
+                    implicit_P_.col(i) = implicit_dq_;
+                }
+            }
+            if (k == 1) {
+                // The iteration matrix for this step length. On the unknowns
+                // z = (a+, w+) and, on the constraints, kappa and eta, with
+                // S = (1 - alpha_m) I - c [beta h^2 J_q + gamma h J_v, gamma h
+                // J_x]:
+                //
+                //   [ S                  -c P   -c beta h^2 J_q P ]   z       rows of the method's relation
+                //   [ J_c                 0      A                ]   kappa   phi(q+) = 0, scaled by 1 / (beta h^2)
+                //   [ J_c + g G_c         0      g G_c P          ]   eta     J v+ = nu, scaled by 1 / (gamma h)
+                //
+                // P = M^-1 J_c^T, A = J_c P (positive definite: independent
+                // equations), g = beta h / gamma, G = d(J v - nu)/dq from the
+                // iteration matrix's differences; eta is scaled by beta h^2,
+                // so that every block is of the size of an acceleration. The
+                // derivatives of M^-1 J^T kappa with respect to q are left
+                // out (kappa is small): a simplified Newton's method, the
+                // residuals exact. The second row gives eta = f - F z, with
+                // F = A^-1 [J_c 0] and f = A^-1 times its right-hand side,
+                // which leaves, on (z, kappa),
+                //
+                //   [ S + c beta h^2 (J_q P) F               -c P ]
+                //   [ [J_c + g G_c, 0] - g (G_c P) F           0  ]
+                //
+                // n + m square instead of n + 2 m: on the sedan (n = 31, m =
+                // 17) a third of the LU's work.
+                implicit_matrix_.setZero();
+                auto S = implicit_matrix_.topLeftCorner(n, n);
+                S.leftCols(nv) = (beta * h * h) * implicit_jacobian_.leftCols(nv)
+                                 + (gamma * h) * implicit_jacobian_.middleCols(nv, nv);
+                S.rightCols(nx) = (gamma * h) * implicit_jacobian_.rightCols(nx);
+                S *= -c;
+                S.diagonal().array() += 1.0 - alpha_m;
+                if (m > 0) {
+                    const Real g = beta / gamma * h;
+                    // A, its factor and F; a redundant equation's row and
+                    // column of A are the identity's, its rows of J_c, G_c and
+                    // F zero.
+                    implicit_A_.noalias() = implicit_Jc_ * implicit_P_;
+                    for (Index i = rank; i < m; ++i) implicit_A_(i, i) = 1.0;
+                    implicit_llt_.compute(implicit_A_);
+                    if (implicit_llt_.info() != Eigen::Success) {
+                        regular = false;
+                        break;
+                    }
+                    implicit_F_.setZero();
+                    implicit_F_.leftCols(nv) = implicit_Jc_;
+                    implicit_llt_.solveInPlace(implicit_F_);
+                    implicit_JqP_.noalias() = implicit_jacobian_.leftCols(nv) * implicit_P_;
+                    implicit_GP_.noalias() = implicit_Gc_ * implicit_P_;
+                    S.noalias() += (c * beta * h * h) * (implicit_JqP_ * implicit_F_);
+                    implicit_matrix_.topRightCorner(nv, m) = -c * implicit_P_;
+                    auto V = implicit_matrix_.bottomLeftCorner(m, n);
+                    V.leftCols(nv) = implicit_Jc_ + g * implicit_Gc_;
+                    V.noalias() -= g * (implicit_GP_ * implicit_F_);
+                    // A redundant equation: a dummy kappa, held at zero.
+                    for (Index i = rank; i < m; ++i) implicit_matrix_(n + i, n + i) = 1.0;
+                }
+                regular = lu_factor(implicit_matrix_, implicit_pivots_);
+                if (!regular) break;
+            }
+            Real constraint_norm = 0.0;
+            if (m > 0) {
+                // The extra constraint forces at the new state, and the
+                // constraints there (every equation; the dummies' rows zero).
+                implicit_unit_.setZero();
+                for (Index i = 0; i < rank; ++i) {
+                    implicit_unit_(implicit_rows_[static_cast<std::size_t>(i)]) = implicit_kappa_new_(i);
+                }
+                solver_.add_constraint_motion(implicit_unit_, implicit_qdd_plus_);
+                drift_work_.noalias() = solver_.J() * v_stage_;
+                drift_work_ -= solver_.nu();
+                implicit_rp_.setZero();
+                implicit_residual_.tail(m).setZero();
+                for (Index i = 0; i < rank; ++i) {
+                    const Index row = implicit_rows_[static_cast<std::size_t>(i)];
+                    implicit_rp_(i) = -solver_.phi()(row) / (beta * h * h);
+                    implicit_residual_(n + i) = -drift_work_(row) / (gamma * h);
+                }
+                // Positions to constraint_tolerance; J v - nu to the
+                // tolerance the velocities themselves are held to (a
+                // residual there does not add up: the next step's positions
+                // are held to phi = 0 again). Asked for 1e-10, it cost two
+                // more iterations a step, and the last correction, through
+                // the simplified matrix, left 4e-9 all the same.
+                constraint_norm =
+                    std::max(solver_.phi().norm() / constraint_tolerance, drift_work_.norm() / atol);
+            }
             implicit_residual_.head(nv) = -((1.0 - alpha_m) * implicit_a_new_ + alpha_m * implicit_a_
-                                            - (1.0 - alpha_f) * qdd - alpha_f * implicit_qdd_);
-            implicit_residual_.tail(nx) = -((1.0 - alpha_m) * implicit_w_new_ + alpha_m * implicit_w_
-                                            - (1.0 - alpha_f) * x_dot_ - alpha_f * implicit_xd_);
+                                            - c * implicit_qdd_plus_ - alpha_f * implicit_qddk_);
+            implicit_residual_.segment(nv, nx) = -((1.0 - alpha_m) * implicit_w_new_ + alpha_m * implicit_w_
+                                                   - c * x_dot_ - alpha_f * implicit_xd_);
+            if (m > 0) {
+                // eta eliminated (see the matrix): f = A^-1 times the scaled
+                // phi's right-hand side, moved into the other rows.
+                implicit_f_ = implicit_rp_;
+                implicit_llt_.solveInPlace(implicit_f_);
+                implicit_residual_.head(n).noalias() += (c * beta * h * h) * (implicit_JqP_ * implicit_f_);
+                implicit_residual_.tail(m).noalias() -= (beta / gamma * h) * (implicit_GP_ * implicit_f_);
+            }
             lu_solve(implicit_matrix_, implicit_pivots_, implicit_residual_);   // now the correction
             implicit_a_new_ += implicit_residual_.head(nv);
-            implicit_w_new_ += implicit_residual_.tail(nx);
+            implicit_w_new_ += implicit_residual_.segment(nv, nx);
+            if (m > 0) {
+                implicit_kappa_new_ += implicit_residual_.tail(m);
+                implicit_deta_ = implicit_f_;
+                implicit_deta_.noalias() -= implicit_F_ * implicit_residual_.head(n);
+                implicit_eta_new_ += implicit_deta_;
+            }
             // The correction's size in velocities and states, weighed by the
             // tolerances, and never finer than the rounding of the terms the
             // update adds up (64 eps (|v| + h |a|)): on a stiff spring the
             // position update sums terms of h^2 |a| that cancel, and the
             // spring turns their rounding into corrections of about 5 eps h
-            // |a|, whatever the stiffness.
+            // |a|, whatever the stiffness. On the constraints, also their
+            // residuals at the state just evaluated (above).
             constexpr Real rounding = 64.0 * std::numeric_limits<Real>::epsilon();
             const Real sum =
                 ((gamma * h) * implicit_residual_.head(nv).array()
@@ -331,12 +516,12 @@ void Simulator::step_generalized_alpha(Real h)
                     + rounding * (v_stage_.array().abs() + h * implicit_a_new_.array().abs())))
                     .square()
                     .sum()
-                + ((gamma * h) * implicit_residual_.tail(nx).array()
+                + ((gamma * h) * implicit_residual_.segment(nv, nx).array()
                    / (atol + rtol * x_stage_.array().abs()
                       + rounding * (x_stage_.array().abs() + h * implicit_w_new_.array().abs())))
                       .square()
                       .sum();
-            const Real norm = n > 0 ? std::sqrt(sum / static_cast<Real>(n)) : 0.0;
+            const Real norm = std::max(n > 0 ? std::sqrt(sum / static_cast<Real>(n)) : 0.0, constraint_norm);
             if (k == 1) first = norm;
             if (norm <= 1.0) {
                 converged = true;
@@ -350,11 +535,19 @@ void Simulator::step_generalized_alpha(Real h)
 
         if (converged) {
             implicit_dq_ = h * v + (h * h) * ((0.5 - beta) * implicit_a_ + beta * implicit_a_new_);
+            if (m > 0) implicit_dq_.noalias() += (beta * h * h) * (implicit_P_ * implicit_eta_new_);
             integrate(model, q, implicit_dq_, 1.0, q);
             v += h * ((1.0 - gamma) * implicit_a_ + gamma * implicit_a_new_);
             x += h * ((1.0 - gamma) * implicit_w_ + gamma * implicit_w_new_);
             implicit_a_.swap(implicit_a_new_);
             implicit_w_.swap(implicit_w_new_);
+            if (m > 0) {
+                // The constraint forces by equation, for the next step.
+                implicit_kappa_.setZero();
+                for (Index i = 0; i < rank; ++i) {
+                    implicit_kappa_(implicit_rows_[static_cast<std::size_t>(i)]) = implicit_kappa_new_(i);
+                }
+            }
             implicit_history_ = true;
             if (slow) implicit_jacobian_valid_ = false;
             return;

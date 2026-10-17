@@ -326,7 +326,8 @@ constrained dynamics with `ConstraintSolver` from the same kinematics pass, and
 asks each state element for its `rates`. RK4 carries `x` through its stages
 like `q` and `v`, combines the stages' `q_dot` and normalizes once per step;
 semi-implicit Euler moves q through `integrate` and `x` by explicit Euler.
-After each step the state is projected onto the constraints and each state
+After each step the state is projected onto the constraints (generalised-alpha
+instead solves its steps on them: constraints per integrator, below) and each state
 element's `end_step` makes its discrete changes.
 
 **State elements** (task 4.1, decision D30, `kernel/state_element.hpp`)
@@ -377,9 +378,11 @@ tolerances on the velocities and states, with a floor at the rounding of the
 step's terms. A step costs one evaluation at its start and one per Newton
 iteration: three on the sedan at 1 ms, against RK4's four. Its history
 restarts where something other than its own step changed the state (q and v
-together, each state element's state on its own). Constraints are handled as
-for the explicit methods. On a linear system its steps equal the method's
-recurrence to rounding (`tests/kernel/test_kernel_integrators.cpp`); the car
+together, each state element's state on its own). Constraints: projected
+after each step, or, as an option, each step solved on them (constraints
+per integrator, below). On a linear
+system its steps equal the method's recurrence to rounding
+(`tests/kernel/test_kernel_integrators.cpp`); the car
 rolling at 0.5 m/s runs at 5 ms, where RK4's wheel spins chatter. Codes
 MBD-K058 and K059.
 
@@ -452,6 +455,54 @@ where the spins hold RK4 under a millisecond, the sedan drives at 3 ms with
 faster. Each part must keep inside its own stability: the fast steps inside
 the states', the step inside the bodies'.
 
+**Constraints per integrator** (task 4.7, decision D37). Every evaluation
+solves the loop constraints at the acceleration level, so a step's result
+lies off them by the integrator's error across them, and left alone that
+drift adds up (`enforce_constraints = false`: on the four-bar of the tests,
+RK4 at 2 ms reaches 2.6e-5 in 20 s, semi-implicit Euler 0.46).
+`enforce_constraints` (on by default) removes it: every method projects the
+state after each of its steps, positions to `constraint_tolerance` (1e-10)
+and velocities exactly. A projection keeps a one-step method's order
+(Eich-Soellner and Fuhrer, section 5.3), and on the four-bar it kept or
+improved the accuracy of RK4, Dormand-Prince, SDIRK4 and Radau IIA.
+Generalised-alpha carries a history, its acceleration-like variable, which
+lags the accelerations: each of its steps leaves the constraints by much
+more than its error along them (in velocity, 300 times RK4's drift at the
+same step), and a projection removes that from the state but not from the
+history. Projected, it stays second order; with
+`implicit_control.stabilized_index2` it solves each step on the constraints
+instead, in the stabilized index-2 form of Gear, Leimkuhler and Gupta as
+Arnold, Bruls and Cardona apply it to this method: Newton's unknowns gain,
+per independent equation, a constraint force J^T kappa added to the
+accelerations, which holds J v = nu at the step's end, and a position
+correction M^-1 J^T eta, which holds phi = 0. Newton stops when, besides its
+usual test, |phi| is within `constraint_tolerance` and |J v - nu| within
+`step_control`'s absolute tolerance; the iteration matrix takes J at
+Newton's first evaluation and the derivative of J v with respect to q from
+the differences that build the rest of it, and eta is eliminated from it
+through the factor of J M^-1 J^T, which leaves n + m unknowns (m the
+constraint equations). On the four-bar the stabilized step converges at
+second order (ratios 4.09 and 4.04), its positions 1.5 to 1.1 times and its
+accelerations 1.7 to 1.2 times more accurate than projected at steps of 4
+to 1 ms. On the sedan its positions came out 1.15 times more accurate, but a
+step costs 146 us against 100 (its larger Newton matrix), and a steering
+input that moves every step costs it 12 to 23 % more iterations: a shorter
+projected step buys more for the same work, so it is not the default (ADAMS
+makes the same choice between its I3 and SI2 formulations).
+
+The drift channel: `constraint_drift()` gives what the last step left
+before the projection (`position`, `velocity`: |phi|, |J v - nu|), the
+residuals after it, and the largest of each since the simulator was built;
+for the stabilized step the drift is the residual. `add_drift_channels(rec,
+sim)` (`kernel/outputs.hpp`) adds them to a `Recorder`, and the step trace
+has them as columns. Over 1000 simulated seconds of the four-bar and of a
+heavy top held at its tip, every method kept the residuals within the
+tolerance at every step and its drift from growing (the hidden case `[long]`
+in `tests/kernel/test_kernel_drift.cpp`). Semi-implicit Euler and
+the linearly implicit step take the gyroscopic terms explicitly: on the top,
+spinning at 30 rad/s, they blew up within 100 s, whatever the constraints
+did.
+
 
 Choosing a method:
 
@@ -461,6 +512,8 @@ Choosing a method:
 | Stiff state elements only (wheel spins at walking pace), explicit steps | `RK4` with `multirate` 6 |
 | Smooth, a tolerance to meet, or long output steps | `DormandPrince` |
 | Stiff (stiff springs, bushings, contact, tyres at low speed), fixed steps, accuracy of the order of 1e-4 to 1e-6 | `GeneralizedAlpha` |
+| As above, a closed mechanism at long steps, its accelerations and reactions wanted as accurately as one step allows | `GeneralizedAlpha` with `implicit_control.stabilized_index2` |
+| Free-spinning bodies (a top, a flywheel off its axle) | not `SemiImplicitEuler` or `LinearlyImplicitEuler` (gyroscopic terms explicit) |
 | Stiff, a tolerance to meet, tight accuracy | `RadauIIA` |
 | Stiffness only in first-order states, or a smooth model at a tight tolerance | `SDIRK4` or `RadauIIA` |
 | Real time: the same cost every step, stiff or not | `LinearlyImplicitEuler` |
@@ -669,8 +722,8 @@ velocities, mass and centre of mass, every constraint, force element and joint
 force with the bodies it acts on. `dump_state(sim)` writes the state: q, v,
 each body's world placement and velocity, the constraint residuals. With
 `Simulator::trace_steps` set, every step adds a `StepRecord`: the drift the
-projection corrected, the residuals after it, its iterations and whether it
-converged, the constraint equations and their rank, the kinetic and
+projection corrected (positions and, since task 4.7, velocities), the
+residuals after it, its iterations and whether it converged, the constraint equations and their rank, the kinetic and
 gravitational energies, and the events that fired; `write_trace(path)` writes
 them as CSV. A model with two drivers fighting over one coordinate shows it
 in every row: rank 1 of 2, a projection that never converges, and a residual
