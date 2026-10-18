@@ -138,6 +138,15 @@ public:
     /// definite; false, and dv unchanged, if its Cholesky factorization fails.
     /// Allocates nothing after the first call with W of this size.
     bool constrained_solve(const MatX& W, const VecX& r, VecX& dv);
+
+    /// W dv = r + J^T mu with J dv = target (one entry per equation), for a W
+    /// that need not be symmetric (the semi-implicit and linearly implicit
+    /// steps with the inertia's velocity products implicit): W by LU with
+    /// partial pivoting, the multipliers on the independent equations of the
+    /// last forward dynamics, J of the last forward dynamics or evaluate().
+    /// false, and dv unchanged, if W or J W^-1 J^T on those equations is
+    /// singular. Allocates nothing.
+    bool constrained_solve_lu(const MatX& W, const VecX& r, const VecX& target, VecX& dv);
     /// Move q onto phi(q, t) = 0, then v onto J v = nu, each by the change of
     /// least kinetic-energy norm (M-weighted). Gauss-Newton on q with the mass
     /// matrix of the starting point, each step halved until |phi| decreases.
@@ -195,6 +204,11 @@ private:
     VecX q_save_, v_dot_, v_dot_free_, rhs_v_, dv_, zero_v_, work_v_;
     Eigen::LLT<MatX> llt_M_;
     Eigen::LLT<MatX> llt_W_;   ///< constrained_solve's W
+    /// constrained_solve_lu: W factorized with its pivots, W^-1 J^T on the
+    /// independent equations, J W^-1 J^T on them factorized with its pivots.
+    MatX lu_W_, lu_Y_, lu_S_;
+    std::vector<Index> lu_W_pivots_, lu_S_pivots_;
+    MatX lu_Jr_;   ///< J's rows of the independent equations
     RankRevealingLDLT ldlt_A_;
     bool mass_matrix_factorized_{false};
     SolveInfo info_;

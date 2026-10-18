@@ -1069,3 +1069,57 @@ TEST_CASE("Linearly implicit Euler: a matrix that is not positive definite is re
     CHECK(caught()[0].find("MBD-K045") != std::string::npos);
     CHECK(std::isfinite(sim->q(0)));
 }
+
+TEST_CASE("Semi-implicit and linearly implicit Euler: a spinning body's nutation shrinks as backward Euler's",
+          "[kernel][integrators][implicit][linear]")
+{
+    // A free symmetric body without gravity, spinning at w3 = 30 rad/s about
+    // its axis with a small w1: a flat 1 kg box (0.2 by 0.2 by 0.04 m: A =
+    // 0.0034667, C = 0.0066667 kg m^2 about its centre) and a long one (0.04
+    // by 0.04 by 0.2 m: A = 0.0034667, C = 0.00026667). Euler's equations
+    // keep w3 constant and turn (w1, w2) at W = (C - A) / A w3 (27.7 and -27.7
+    // rad/s): that part is linear. Both steps take the velocity products
+    // linearly implicitly through their exact derivative (D38), which on it
+    // is backward Euler exactly: |(w1, w2)| shrinks by 1 / sqrt(1 + (W h)^2)
+    // per step whatever the body's shape, and w3 stays. Taken explicitly, as
+    // before, it grew by sqrt(1 + (W h)^2) per step (6.7 times in this
+    // second); with a Coriolis matrix frozen instead, the flat body's
+    // nutation fell to 0.003 and the long body tumbled. The two steps are the
+    // same here: there are no force elements, so the linearly implicit
+    // step's K and C are zero.
+    for (const bool flat : {true, false}) {
+        System sys;
+        sys.model.gravity = Vec3::Zero();
+        const RigidBodyInertia I =
+            RigidBodyInertia::from_solid_box(1.0, flat ? Vec3(0.1, 0.1, 0.02) : Vec3(0.02, 0.02, 0.1));
+        sys.model.add_body(0, std::make_shared<FreeJointModel>(), Transform3(), Transform3(), I, "spinner");
+        const Real A = I.I_com_B(0, 0), C = I.I_com_B(2, 2), w3 = 30.0, h = 0.005;
+        const Real W = (C - A) / A * w3;
+        const int steps = 200;
+        for (const auto method : {Integrator::SemiImplicitEuler, Integrator::LinearlyImplicitEuler}) {
+            Simulator sim(sys);
+            sim.method = method;
+            sim.v(0) = 1.0;
+            sim.v(2) = w3;
+            sim.initialize();
+            Real energy_before = 0.5 * (A * 1.0 + C * w3 * w3);
+            bool energy_fell = true;
+            for (int k = 0; k < steps; ++k) {
+                sim.step(h);
+                const Real energy =
+                    0.5 * (A * (sim.v(0) * sim.v(0) + sim.v(1) * sim.v(1)) + C * sim.v(2) * sim.v(2));
+                energy_fell = energy_fell && energy <= energy_before;
+                energy_before = energy;
+            }
+            const Real nutation = std::hypot(sim.v(0), sim.v(1));
+            const Real predicted = std::pow(1.0 + W * h * W * h, -0.5 * steps);
+            INFO((flat ? "flat, " : "long, ")
+                 << (method == Integrator::SemiImplicitEuler ? "semi-implicit" : "linearly implicit")
+                 << ": |(w1, w2)| " << nutation << ", predicted " << predicted << "; w3 " << sim.v(2));
+            CHECK(std::abs(nutation / predicted - 1.0) < 1e-10);
+            CHECK(std::abs(sim.v(2) - w3) < 1e-12);
+            CHECK(sim.v.tail<3>().norm() < 1e-14);   // the centre stays at rest
+            CHECK(energy_fell);
+        }
+    }
+}

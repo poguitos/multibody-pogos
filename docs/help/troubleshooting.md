@@ -184,15 +184,18 @@ steering input that moves at every step costs it more Newton iterations
 `RadauIIA`. Do not switch the constraints off. *(Constraints per
 integrator.)*
 
-**A fast-spinning body gains energy and blows up with semi-implicit Euler or
-the linearly implicit step.** Both take the gyroscopic terms (the coupling
-of a body's spin with its tilt) explicitly, and those terms feed energy in
-at every step: a top spinning at 30 rad/s, stepped at 5 ms, ran ten seconds
-normally and blew up within a hundred (then the projection fails at almost
-every step, MBD-K051). A shorter step only delays it. Use RK4, Dormand-Prince
-or an implicit Runge-Kutta method for free-spinning bodies; a vehicle's
-wheels spin about their axles, where the coupling is far weaker.
-*(Constraints per integrator.)*
+**A spinning body's wobble dies away with semi-implicit Euler or the
+linearly implicit step.** Both take the inertia's velocity products (the
+Coriolis and gyroscopic terms: the coupling of a body's spin with its tilt)
+linearly implicitly, as backward Euler does (D38), which damps a nutation
+of rate W by 1 / sqrt(1 + (W h)^2) per step: on a flat body spinning at 30
+rad/s, nutating at 28 rad/s, steps of 5 ms take 85 % of the wobble off in a
+second. Shorten the step, or use RK4, Dormand-Prince or Radau IIA where a
+spinning body's motion must be kept. Before D38 both methods took these
+terms explicitly, which feeds energy in at every step: a top spinning at 30
+rad/s, stepped at 5 ms, blew up within 100 s (then the projection failed at
+almost every step, MBD-K051). *(Constraints per integrator; implicit
+inertial terms.)*
 
 **The energy grows.** With no damping the total energy (the trace's kinetic
 and gravitational columns, plus each spring's `potential_energy()`) must stay
@@ -499,3 +502,4 @@ Before building on it (working rule 2):
 | Phase 4: the fixed-cost step | The car that accelerated too slowly and the one that gained speed (Simulations: the linearly implicit step); damping of fast motions (Simulations); timing outliers from the first steps and the operating system (Slow runs: single steps far longer than the median) |
 | Phase 4: multirate | Held states that biased braking, and the drift from fast steps beyond the spins' limit (Simulations: multirate) |
 | Phase 4: constraints per integrator | The drift and its channel; generalised-alpha on a closed mechanism; a spinning body that blows up under explicit gyroscopic terms; a tolerance that is not positive (Simulations; MBD-K047) |
+| Phase 4: the inertia's velocity products implicit | A spinning body's wobble damped by the two Euler steps (Simulations); a matrix not positive definite (MBD-K045) |

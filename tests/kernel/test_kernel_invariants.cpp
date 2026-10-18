@@ -5,6 +5,7 @@
 //   - the Jacobian maps joint velocities to body velocities;
 //   - RNEA equals the virtual power of each body's Newton-Euler residual;
 //   - RNEA, CRBA and ABA describe the same dynamics;
+//   - the velocity products' derivative is that of RNEA;
 //   - gravity forces are the gradient of the potential energy;
 //   - energy and momentum are conserved when they should be;
 //   - a case with a closed-form solution (bead on a spinning rod).
@@ -179,6 +180,36 @@ TEST_CASE("Kernel: RNEA, CRBA and ABA describe the same dynamics", "[kernel][inv
 
         forward_kinematics(model, data, q, v);
         CHECK(std::abs(kinetic_energy(model, data) - 0.5 * v.dot(M * v)) < 1e-12 * (1.0 + v.dot(M * v)));
+    }
+}
+
+TEST_CASE("Kernel: the velocity products' derivative is the derivative of RNEA's", "[kernel][invariants]")
+{
+    // bias_force_velocity_derivative against central differences of rnea(q,
+    // v, 0) with respect to each velocity. rnea at zero acceleration is
+    // quadratic in v (gravity aside, which cancels), so the difference with
+    // a unit step is exact but for rounding: the universal and planar joints'
+    // own velocity products are among the models.
+    Rng rng(18);
+    for (const Model& model : test_models(rng)) {
+        INFO(describe(model));
+        Data data(model);
+        const VecX q = random_configuration(model, rng);
+        const VecX v = random_vector(model.nv, rng, 1.5);
+        forward_kinematics(model, data, q, v);
+        const MatX D = bias_force_velocity_derivative(model, data, q, v);
+        const VecX zero = VecX::Zero(model.nv);
+        MatX fd(model.nv, model.nv);
+        for (Index k = 0; k < model.nv; ++k) {
+            VecX v_plus = v, v_minus = v;
+            v_plus(k) += 1.0;
+            v_minus(k) -= 1.0;
+            const VecX tau_plus = rnea(model, data, q, v_plus, zero);
+            const VecX tau_minus = rnea(model, data, q, v_minus, zero);
+            fd.col(k) = 0.5 * (tau_plus - tau_minus);
+        }
+        INFO("|D - differences| " << (D - fd).norm() << " of " << fd.norm());
+        CHECK((D - fd).norm() < 1e-12 * (1.0 + fd.norm()));
     }
 }
 

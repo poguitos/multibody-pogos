@@ -12,28 +12,39 @@
 // gives for delta = v+ - v - h a (the change from explicit Euler) and dx = x+
 // - x the linear equations
 //
-//     (M - h C - h^2 K) delta - h Tx dx = h^2 (K (v + h a) + C a) + J^T mu
+//     (M - h (C - D) - h^2 K) delta - h Tx dx = h^2 (K (v + h a) + (C - D) a) + J^T mu
 //     -h Xv delta + (I - h X) dx = h x_dot + h^2 Xv a
-//     J delta = 0,
+//     J delta = nu - J (v + h a),
 //
-// the last restricting delta to the motions the constraints allow (the
-// projection after the step takes up the rest). The second is solved for dx
-// first, dx = dx0 + G delta with G = (I - h X)^-1 h Xv, which leaves (W - h
-// Tx G) delta = r + h Tx dx0 + J^T mu: one constrained solve in the
-// velocities, through the same Cholesky and rank-revealing factorizations as
-// forward dynamics. For those the matrix must be symmetric: K, C and Tx G are
-// replaced by their symmetric parts, in the matrix and on the right. Any
-// approximation of the derivatives keeps the method consistent (it is then a
-// W-method); what it must capture is the stiffness. That includes the stiff
+// D = d b / dv the exact derivative of the inertia's velocity products (the
+// Coriolis, centrifugal and gyroscopic terms b; bias_force_velocity_derivative),
+// and the last equation putting the new velocities on the constraints, J v+ =
+// nu (the projection after the step takes up the positions' drift). The
+// second is solved for dx first, dx = dx0 + G delta with G = (I - h X)^-1 h
+// Xv, which leaves (W - h Tx G) delta = r + h Tx dx0 + J^T mu: one
+// constrained solve in the velocities. K, C and Tx G enter by their
+// symmetric parts, in the matrix and on the right (D35); D enters whole, so
+// the matrix is not symmetric: an LU, its symmetric part checked for positive
+// definiteness (D38). Both halves of D38 were measured. Taken explicitly, the
+// velocity products made a top spinning at 30 rad/s blow up within 100 s at
+// 5 ms; through D, backward Euler's damping of its nutation, exactly, for flat
+// and long bodies alike. With the old restriction J delta = 0 the new
+// velocities kept the explicit part of the constraints' own velocity terms,
+// and a closed four-bar gained energy until it blew up; on the constraints,
+// their impulse does no work on v+ and it only loses energy. (A Coriolis
+// matrix frozen at the step's start, B with B v = b and B + B^T = dM/dt,
+// which provably cannot gain kinetic energy, made a long free body tumble.)
+// Any approximation of the derivatives keeps the method consistent (it is
+// then a W-method); what it must capture is the stiffness. That includes the stiff
 // coupling of a wheel's spin and its hub's velocity through the tyre's slip:
 // without Tx and Xv a car on tyres at walking pace accelerated a fifth too
 // slowly at 1 ms. It excludes the states' dependence on the positions, Xq =
 // d x_dot / dq: on the tyres it comes from the rolling radius's dependence
 // on the deflection, is not stiff, and in the symmetric matrix made a car
 // coasting at 0.5 m/s gain 0.5 % of its speed in 2 s at 5 ms (5 % at 10 ms);
-// without it the car keeps its speed within 2e-5. The inertial and
-// gyroscopic terms, and the derivatives of the joints' geometry, stay
-// explicit.
+// without it the car keeps its speed within 2e-5. The inertial terms'
+// dependence on the positions, and the derivatives of the joints' geometry,
+// stay explicit.
 //
 // K and C are built element by element: each element's loads on its bodies
 // ([moment about the body's origin; force], world axes) are differentiated
@@ -132,6 +143,9 @@ void Simulator::linear_force_jacobian(bool with_states)
         w.K = MatX::Zero(nv, nv);
         w.C = MatX::Zero(nv, nv);
         w.W = MatX::Zero(nv, nv);
+        w.D = MatX::Zero(nv, nv);
+        w.W_sym = MatX::Zero(nv, nv);
+        w.llt_sym = Eigen::LLT<MatX>(nv);
         w.a = VecX::Zero(nv);
         w.r = VecX::Zero(nv);
         w.dv = VecX::Zero(nv);
@@ -342,10 +356,14 @@ void Simulator::step_linearly_implicit(Real h)
     const Model& model = system.model;
     const Index nx = x.size();
     const VecX& a = evaluate(q, v, x, time);
+    // The Coriolis matrix, from the evaluation's kinematics
+    // before anything else uses them.
+    bias_force_velocity_derivative(model, data_, q, v);
     linear_force_jacobian(true);   // sizes the work on the first step
     LinearWork& w = *linear_;
     w.a = a;   // the solver's storage, which the constrained solve reuses
     w.v1 = v + h * w.a;
+    w.D = data_.dtau_dv;
 
     // The states first: dx = dx0 + G delta.
     if (nx > 0) {
@@ -371,13 +389,17 @@ void Simulator::step_linearly_implicit(Real h)
         }
     }
 
-    // W = M - h C_s - h^2 K_s - h (Tx G)_s, M the evaluation's mass matrix;
-    // r = h^2 (K_s (v + h a) + C_s a) + h Tx dx0.
+    // W = M - h C_s - h^2 K_s - h (Tx G)_s + h D, M the evaluation's mass
+    // matrix; r = h^2 (K_s (v + h a) + C_s a - D a) + h Tx dx0. Without the
+    // stiffness, then without every derivative, where W is not positive
+    // definite.
     auto assemble = [&](bool stiffness) {
         w.W = data_.M;
         w.W -= (0.5 * h) * (w.C + w.C.transpose());
+        w.W.noalias() += h * w.D;
         w.r.noalias() = w.C * w.a;
         w.r.noalias() += w.C.transpose() * w.a;
+        w.r.noalias() -= 2.0 * (w.D * w.a);
         if (stiffness) {
             w.W -= (0.5 * h * h) * (w.K + w.K.transpose());
             w.r.noalias() += w.K * w.v1;
@@ -391,20 +413,16 @@ void Simulator::step_linearly_implicit(Real h)
         }
     };
     assemble(true);
-    bool solved = solver_.constrained_solve(w.W, w.r, w.dv);
+    bool solved = inertia_solve();
     if (!solved) {
         // Not positive definite: a force that pushes away from where it is
-        // (negative stiffness or damping) beyond what the inertia holds at
-        // this step. The step drops the stiffness, then all the derivatives.
-        if (!w.fallback_reported) {
-            w.fallback_reported = true;
-            report_warning("MBD-K045: kernel::Simulator: at t = " + std::to_string(time)
-                           + " s the linearly implicit step's matrix M - h C - h^2 K is not positive definite; "
-                             "steps like it drop the forces' stiffness, then their damping, and are less "
-                             "stable. Further cases are not reported.");
-        }
+        // (negative stiffness or damping), or a body spinning so fast for
+        // the step that its gyroscopic terms do, beyond what the inertia
+        // holds at this step. The step drops the stiffness, then all the
+        // derivatives.
+        report_not_positive_definite("linearly implicit");
         assemble(false);
-        solved = solver_.constrained_solve(w.W, w.r, w.dv);
+        solved = inertia_solve();
         if (!solved) w.dv.setZero();   // explicit: M is positive definite
     }
     v = w.v1 + w.dv;
@@ -415,6 +433,72 @@ void Simulator::step_linearly_implicit(Real h)
         w.dx.noalias() += w.G * w.dv;
         x += w.dx;
     }
+}
+
+bool Simulator::inertia_solve()
+{
+    LinearWork& w = *linear_;
+    w.W_sym = 0.5 * (w.W + w.W.transpose());
+    w.llt_sym.compute(w.W_sym);
+    if (w.llt_sym.info() != Eigen::Success) return false;
+    // The velocities of the step's end on the constraints, J v+ = nu (D38):
+    // J delta = nu - J (v + h a).
+    drift_work_ = solver_.nu();
+    drift_work_.noalias() -= solver_.J() * w.v1;
+    return solver_.constrained_solve_lu(w.W, w.r, drift_work_, w.dv);
+}
+
+void Simulator::report_not_positive_definite(const char* step)
+{
+    LinearWork& w = *linear_;
+    if (w.fallback_reported) return;
+    w.fallback_reported = true;
+    report_warning("MBD-K045: kernel::Simulator: at t = " + std::to_string(time) + " s the " + std::string(step)
+                   + " step's matrix M - h C - h^2 K + h D is not positive definite; steps like it drop the "
+                     "forces' stiffness, then all the derivatives, and are less stable. Further cases are not "
+                     "reported.");
+}
+
+void Simulator::step_semi_implicit_euler(Real h)
+{
+    // The velocities first, by explicit Euler but with the inertia's velocity
+    // products (Coriolis, centrifugal and gyroscopic terms) linearly implicit
+    // through their derivative D: (M + h D) delta = -h^2 D a, the new
+    // velocities on the constraints (J v+ = nu); then the positions with the
+    // new velocities (D38). Taken explicitly, those terms made a spinning body
+    // gain energy at every step.
+    // The states x by explicit Euler, from the rates at the step's start.
+    const Model& model = system.model;
+    const Index nv = model.nv;
+    const VecX& a = evaluate(q, v, x, time);
+    bias_force_velocity_derivative(model, data_, q, v);
+    if (!linear_) linear_ = std::make_unique<LinearWork>();
+    LinearWork& w = *linear_;
+    if (w.D.rows() != nv) {
+        // First step (the linearly implicit step sizes all of it): the part
+        // this step uses (allocates).
+        w.W = MatX::Zero(nv, nv);
+        w.D = MatX::Zero(nv, nv);
+        w.W_sym = MatX::Zero(nv, nv);
+        w.llt_sym = Eigen::LLT<MatX>(nv);
+        w.a = VecX::Zero(nv);
+        w.r = VecX::Zero(nv);
+        w.dv = VecX::Zero(nv);
+        w.v1 = VecX::Zero(nv);
+    }
+    w.a = a;
+    w.v1 = v + h * w.a;
+    w.D = data_.dtau_dv;
+    w.W = data_.M;
+    w.W.noalias() += h * w.D;
+    w.r.noalias() = (-h * h) * (w.D * w.a);
+    if (!inertia_solve()) {
+        report_not_positive_definite("semi-implicit Euler");
+        w.dv.setZero();
+    }
+    x += h * x_dot_;
+    v = w.v1 + w.dv;
+    integrate(model, q, v, h, q);
 }
 
 } // namespace mbd::kernel

@@ -266,15 +266,6 @@ void Simulator::step_rk4(Real dt)
     normalize(model, q);
 }
 
-void Simulator::step_semi_implicit_euler(Real dt)
-{
-    // The states x advance by explicit Euler, from the rates at the step's
-    // start.
-    v += dt * evaluate(q, v, x, time);
-    x += dt * x_dot_;
-    integrate(system.model, q, v, dt, q);
-}
-
 namespace {
 
 // The Dormand-Prince 5(4) pair (Dormand and Prince 1980; Hairer, Norsett and

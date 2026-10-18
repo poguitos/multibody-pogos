@@ -163,6 +163,13 @@ to a validated engine.*
     it); a drift channel as an output; and a long run that found an
     unrelated limit (gyroscopic terms taken explicitly blow up a spinning
     top). *J: constraints per integrator. D37.*
+31. **Spinning bodies in a cheap step.** The inertia's velocity products in
+    joint coordinates; their exact derivative by a linearized RNEA; three
+    treatments and their energy (explicit, the exact derivative, a frozen
+    Coriolis matrix) and what a closed loop adds (the constraints' own
+    velocity terms, and velocities put on the constraints); the minor-axis
+    rule as a numerical artefact; a green test suite near an instability.
+    *J: the inertia's velocity products implicit. D38.*
 
 ## Part VII onwards: one part per phase still to come
 

@@ -75,6 +75,12 @@ public:
     /// Reference configuration (the identity). The default is all zeros.
     virtual void neutral(VecRef q) const;
 
+    /// Whether S is constant in the child-side frame, so that c is zero at
+    /// every q and v. The default, false, is always safe; the joints below
+    /// but the universal and planar ones say true, which lets
+    /// bias_force_velocity_derivative skip their c.
+    virtual bool constant_motion_subspace() const { return false; }
+
 protected:
     JointModel() = default;
 };
@@ -87,6 +93,7 @@ protected:
 class RevoluteJointModel final : public JointModel {
 public:
     const char* name() const override { return "revolute"; }
+    bool constant_motion_subspace() const override { return true; }
     int nq() const override { return 1; }
     int nv() const override { return 1; }
     void calc(ConstVecRef q, ConstVecRef v, JointData& d) const override;
@@ -96,6 +103,7 @@ public:
 class PrismaticJointModel final : public JointModel {
 public:
     const char* name() const override { return "prismatic"; }
+    bool constant_motion_subspace() const override { return true; }
     int nq() const override { return 1; }
     int nv() const override { return 1; }
     void calc(ConstVecRef q, ConstVecRef v, JointData& d) const override;
@@ -105,6 +113,7 @@ public:
 class FixedJointModel final : public JointModel {
 public:
     const char* name() const override { return "fixed"; }
+    bool constant_motion_subspace() const override { return true; }
     int nq() const override { return 0; }
     int nv() const override { return 0; }
     void calc(ConstVecRef q, ConstVecRef v, JointData& d) const override;
@@ -123,6 +132,7 @@ public:
 class CylindricalJointModel final : public JointModel {
 public:
     const char* name() const override { return "cylindrical"; }
+    bool constant_motion_subspace() const override { return true; }
     int nq() const override { return 2; }
     int nv() const override { return 2; }
     void calc(ConstVecRef q, ConstVecRef v, JointData& d) const override;
@@ -143,6 +153,7 @@ public:
 class SphericalJointModel final : public JointModel {
 public:
     const char* name() const override { return "spherical"; }
+    bool constant_motion_subspace() const override { return true; }
     int nq() const override { return 4; }
     int nv() const override { return 3; }
     void calc(ConstVecRef q, ConstVecRef v, JointData& d) const override;
@@ -159,6 +170,7 @@ public:
 class FreeJointModel final : public JointModel {
 public:
     const char* name() const override { return "free"; }
+    bool constant_motion_subspace() const override { return true; }
     int nq() const override { return 7; }
     int nv() const override { return 6; }
     void calc(ConstVecRef q, ConstVecRef v, JointData& d) const override;

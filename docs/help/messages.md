@@ -215,23 +215,28 @@ or `... has <n> states`
 
 ### MBD-K045
 
-Warning: `kernel::Simulator: at t = <t> s the linearly implicit step's matrix M - h C - h^2 K is not positive definite; steps like it drop the forces' stiffness, then their damping, and are less stable. Further cases are not reported.`
+Warning: `kernel::Simulator: at t = <t> s the <linearly implicit or semi-implicit Euler> step's matrix M - h C - h^2 K + h D is not positive definite; steps like it drop the forces' stiffness, then all the derivatives, and are less stable. Further cases are not reported.`
 
-- **Means:** in a linearly implicit Euler step (task 4.5) the matrix built
-  from the mass matrix and the applied forces' derivatives (see
-  `Simulator::force_jacobian`) had a direction in which it was not positive:
-  some force pushes away from where it is, or speeds up what moves, more
-  strongly than the inertia holds it at this step. That step, and any like
-  it, is taken with the stiffness left out (explicit in it), or, if that is
-  not enough, with the damping left out too. Reported once.
+- **Means:** in a linearly implicit Euler step (task 4.5) or a semi-implicit
+  Euler step, the matrix built from the mass matrix, the applied forces'
+  derivatives (see `Simulator::force_jacobian`; none in semi-implicit Euler)
+  and D, the derivative of the inertia's velocity products (Coriolis,
+  centrifugal and gyroscopic terms, D38), had a direction in which it was
+  not positive (in its symmetric part, D not being symmetric): some force
+  pushes away from where it is, or speeds up what moves, or a body spins so
+  fast for the step that its gyroscopic terms do, more strongly than the
+  inertia holds it at this step. That step, and any like it, is taken with
+  the stiffness left out (explicit in it), or, if that is not enough, with
+  every derivative left out (explicit in all). Reported once.
 - **Usual causes:** a spring or table of negative slope (a curve that
   softens past a peak, a tyre beyond its peak slip); a compressed, preloaded
   element turned sideways (its geometric stiffness is negative); a damper
-  table with a negative slope.
+  table with a negative slope; rarely, a body tumbling fast beside the step
+  (spin about an axis of symmetry leaves D's symmetric part zero).
 - **What to do:** if the model is meant to be unstable there, a shorter step
   keeps h^2 K within the inertia; otherwise check the element's curves. A
-  step with the stiffness left out is explicit in it and may need a step as
-  short as an explicit method's.
+  step with the derivatives left out is explicit in them and may need a step
+  as short as an explicit method's.
 
 ### MBD-K046
 

@@ -358,3 +358,28 @@ What the numbers show:
   13 us of a 130 us step. Holding the constraints inside the step instead
   was not tried for it; for generalised-alpha it cost four and a half times the
   projection.
+
+## D38: the inertia's velocity products implicit in the Euler steps, 18 October 2026
+
+The same benchmark and protocol as task 4.7 above, against `08099dd`, whose
+linearly implicit step is the one before D38, run new, old, new, old,
+pinned. The linearly implicit step's figures (the other methods unchanged):
+
+| Version | median of one step [us] | single steps: min | median | 99th percentile |
+|---|---|---|---|---|
+| first version | 194.4, 193.8 | 144.3, 144.6 | 185.4, 187.1 | 492.2, 265.9 |
+| kept, new | 165.6, 166.8 | 126.3, 126.3 | 159.1, 163.5 | 275.0, 272.1 |
+| before D38, old | 131.4, 129.9 | 100.4, 99.9 | 131.2, 130.6 | 197.2, 183.6 |
+
+What the numbers show:
+
+- **The step costs about 30 us more** (a quarter): the derivative of the
+  velocity products (D, a linearized RNEA per velocity over the joint's
+  subtree and path), an LU of W instead of a Cholesky (D is not symmetric),
+  with a Cholesky of W's symmetric part kept as the check behind MBD-K045,
+  and the solves with all of W^-1 J^T's columns at once.
+- **The first version cost twice that**: a joint-model call per velocity
+  even where the motion subspace is constant, a backward pass over every
+  body for every column, and the solves one column at a time.
+- Every step still does the same work: one evaluation (1.00 a step over the
+  drive).

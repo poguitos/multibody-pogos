@@ -97,6 +97,16 @@ struct Data {
     VecX tau;      ///< Generalized forces (rnea)
     VecX ddq;      ///< Accelerations (aba)
     VecX zero_v;   ///< Zero velocities, used when only positions are wanted
+
+    /// bias_force_velocity_derivative: d tau / dv of the velocity-product
+    /// forces, and its work: each joint's velocity S qd, one column's changes
+    /// of body velocity, acceleration and force, the bodies of one joint's
+    /// subtree, and a joint's data and velocities at a changed velocity.
+    MatX dtau_dv;
+    std::vector<Vec6> vJ, dv, da, df;
+    std::vector<char> in_subtree;
+    JointData joint_work;
+    VecX v_joint;
 };
 
 } // namespace mbd::kernel

@@ -52,7 +52,14 @@ struct System {
 
 enum class Integrator {
     RK4,                ///< Classical fourth order
-    SemiImplicitEuler,  ///< First order and symplectic: velocities, then positions
+    /// First order: velocities, then positions. The velocity products of the
+    /// inertia (Coriolis, centrifugal and gyroscopic terms) are linearly
+    /// implicit and the new velocities on the constraints (D38). A spinning
+    /// top, which blew up with those terms explicit, and a closed four-bar,
+    /// which gained energy with them implicit but the velocities off the
+    /// constraints, both only lose energy. Without either (bodies that only
+    /// translate, no loops) it is the symplectic Euler method.
+    SemiImplicitEuler,
     /// Fifth order with an embedded fourth-order error estimate, step
     /// control (StepControl) and a fourth-order continuous extension
     /// (Simulator::interpolate); Dormand and Prince 1980 (task 4.2).
@@ -82,8 +89,9 @@ enum class Integrator {
     /// Linearly implicit, first order, for real time: the cost of every step
     /// is the same (task 4.5). One evaluation, then one linear solve that
     /// makes the applied forces implicit through their derivatives (see
-    /// Simulator::force_jacobian): (M - h C - h^2 K) dv = ..., restricted to
-    /// the motions the constraints allow; the inertial terms stay explicit.
+    /// Simulator::force_jacobian): (M - h C - h^2 K + h D) dv = ..., D the
+    /// derivative of the inertia's velocity products (gyroscopic terms
+    /// included), the new velocities on the constraints (D38).
     /// The state elements' states are implicit in themselves. Stable at any
     /// step for stiff springs, bushings, contact and tyres; damps every
     /// motion by about (w h)^2 / 2 per step, as backward Euler does.
@@ -425,6 +433,8 @@ private:
     /// dynamics: kinematics, the force elements (whose outputs the rates may
     /// read), the rates, into x_dot_.
     const VecX& state_rates_only(const VecX& q_at, const VecX& v_at, const VecX& x_at, Real t);
+    /// One semi-implicit Euler step of dt, the velocity products linearly
+    /// implicit (simulator_linear.cpp).
     void step_semi_implicit_euler(Real dt);
     /// Dormand-Prince's own steps from time to time + dt, each projected,
     /// with events watched after each.
@@ -466,6 +476,11 @@ private:
     bool radau_factor(Real h);
     /// One linearly implicit Euler step of dt (simulator_linear.cpp).
     void step_linearly_implicit(Real dt);
+    /// The constrained solve of linear_'s W, r into its dv, where W's
+    /// symmetric part is positive definite; false otherwise.
+    bool inertia_solve();
+    /// MBD-K045, once, for the named step.
+    void report_not_positive_definite(const char* step);
     /// K and C (see force_jacobian) into linear_, at the kinematics and body
     /// states of the last evaluation (allocates only the first time); with
     /// `states`, also the state elements' rates' derivatives with respect to

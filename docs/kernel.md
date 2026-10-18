@@ -148,6 +148,7 @@ physical acceleration, `data.a = a_gf + [0; R^T g]`.
 | Inverse dynamics | `rnea` | RBDA chapter 5 |
 | Mass matrix | `crba` | RBDA chapter 6 |
 | Mass matrix, bias forces `rnea(q, v, 0)`, from the last kinematics pass | `mass_matrix`, `bias_forces` | |
+| Derivative of the velocity products (Coriolis, centrifugal, gyroscopic) with respect to v | `bias_force_velocity_derivative` | RNEA linearized (D38) |
 | Forward dynamics | `aba` | RBDA chapter 7 |
 | Body Jacobian, world axes, body origin | `body_jacobian_world` | |
 | Momentum about the world origin | `momentum_world` | |
@@ -340,7 +341,9 @@ one: its wheel spins are integrated states, its brakes lock a wheel at rest as
 a discrete decision at the end of a step, and it shifts gear there.
 
 **Integrators** (`Simulator::method`). `RK4` (fourth order, the default) and
-`SemiImplicitEuler` (first order, symplectic) take one step per `step(dt)`.
+`SemiImplicitEuler` (first order: velocities, then positions, the inertia's
+velocity products linearly implicit and the new velocities on the
+constraints, D38) take one step per `step(dt)`.
 `DormandPrince` (task 4.2, decision D31) is the Dormand-Prince 5(4) pair: a
 fifth-order step with an embedded fourth-order solution whose difference
 estimates the error, and a fourth-order continuous extension. Within each
@@ -421,19 +424,26 @@ integrator: every step does the same work, one evaluation, one set of force
 derivatives and one linear solve, whatever the state. It is backward Euler
 on the velocities (positions moved with the new velocities), linearized
 once per step in the applied forces: (M - h C - h^2 K) times the change from
-an explicit Euler step equals h^2 (K (v + h a) + C a), restricted to the
-motions the constraints allow, with the state elements' states solved with
-it, implicit in themselves and coupled to the velocities through the forces
+an explicit Euler step equals h^2 (K (v + h a) + C a), the new velocities
+on the constraints (J v+ = nu; D38), with the state elements' states solved
+with it, implicit in themselves and coupled to the velocities through the forces
 they share (a wheel's spin and its hub through the tyre's slip). K and C,
 the derivatives of the applied generalized forces
 (`Simulator::force_jacobian`), are built every step element by element:
 each element's loads are differentiated with respect to its own bodies'
 poses and velocities by differences of that element alone, and mapped
 through the bodies' Jacobians; joint forces with respect to their
-coordinates. The inertial terms, the joints' geometry, `tau` and
-`force_callback` stay explicit, and K, C and the states' coupling enter by
-their symmetric parts, so the solve uses forward dynamics' factorizations
-(D35 says why each is safe). First order, L-stable on stiff springs: a
+coordinates. The inertia's velocity products (Coriolis, centrifugal and
+gyroscopic terms) are implicit too, through their exact derivative D
+(`bias_force_velocity_derivative`, D38), which keeps a spinning body
+stable: a free body's nutation is damped exactly as backward Euler damps it,
+whatever its shape. Putting the new velocities on the constraints makes the
+constraints' impulse do no work on them: with the change from explicit
+Euler kept off them instead, a closed four-bar gained energy until it blew
+up. The joints' geometry, `tau` and `force_callback` stay explicit. K,
+C and the states' coupling enter by their symmetric parts (D35 says why
+each is safe), D whole, so the matrix is solved by LU, its symmetric part
+checked for positive definiteness. First order, L-stable on stiff springs: a
 spring 1000 times too stiff for RK4 shrinks by 1 / sqrt(1 + (w h)^2) per
 step, and every motion is damped by about (w h)^2 / 2 per step. On the
 sedan at 1 ms it drives, brakes and stops as RK4 does (top speed within 0.1
@@ -498,10 +508,9 @@ sim)` (`kernel/outputs.hpp`) adds them to a `Recorder`, and the step trace
 has them as columns. Over 1000 simulated seconds of the four-bar and of a
 heavy top held at its tip, every method kept the residuals within the
 tolerance at every step and its drift from growing (the hidden case `[long]`
-in `tests/kernel/test_kernel_drift.cpp`). Semi-implicit Euler and
-the linearly implicit step take the gyroscopic terms explicitly: on the top,
-spinning at 30 rad/s, they blew up within 100 s, whatever the constraints
-did.
+in `tests/kernel/test_kernel_drift.cpp`). Semi-implicit Euler and the
+linearly implicit step, which took the gyroscopic terms explicitly until
+D38, blew up on the top within 100 s.
 
 
 Choosing a method:
@@ -513,7 +522,6 @@ Choosing a method:
 | Smooth, a tolerance to meet, or long output steps | `DormandPrince` |
 | Stiff (stiff springs, bushings, contact, tyres at low speed), fixed steps, accuracy of the order of 1e-4 to 1e-6 | `GeneralizedAlpha` |
 | As above, a closed mechanism at long steps, its accelerations and reactions wanted as accurately as one step allows | `GeneralizedAlpha` with `implicit_control.stabilized_index2` |
-| Free-spinning bodies (a top, a flywheel off its axle) | not `SemiImplicitEuler` or `LinearlyImplicitEuler` (gyroscopic terms explicit) |
 | Stiff, a tolerance to meet, tight accuracy | `RadauIIA` |
 | Stiffness only in first-order states, or a smooth model at a tight tolerance | `SDIRK4` or `RadauIIA` |
 | Real time: the same cost every step, stiff or not | `LinearlyImplicitEuler` |

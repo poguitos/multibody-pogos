@@ -8,6 +8,7 @@
 #include "mbd/kernel/algorithms.hpp"
 
 #include "checks.hpp"
+#include "dense_lu.hpp"
 
 namespace mbd::kernel {
 
@@ -129,6 +130,12 @@ ConstraintSolver::ConstraintSolver(const Model& model,
     dv_.setZero(nv);
     zero_v_.setZero(nv);
     work_v_.setZero(nv);
+    lu_W_.setZero(nv, nv);
+    lu_Y_.setZero(nv, m_);
+    lu_Jr_.setZero(m_, nv);
+    lu_S_.setZero(m_, m_);
+    lu_W_pivots_.assign(static_cast<std::size_t>(nv), 0);
+    lu_S_pivots_.assign(static_cast<std::size_t>(m_), 0);
     info_.equations = m_;
 }
 
@@ -250,6 +257,45 @@ bool ConstraintSolver::constrained_solve(const MatX& W, const VecX& r, VecX& dv)
     work_v_.noalias() = Z_ * mu_;
     llt_W_.matrixU().solveInPlace(work_v_);
     dv += work_v_;
+    return true;
+}
+
+bool ConstraintSolver::constrained_solve_lu(const MatX& W, const VecX& r, const VecX& target, VecX& dv)
+{
+    checks::v("kernel::ConstraintSolver::constrained_solve_lu", model_, r, "r");
+    lu_W_ = W;
+    if (!detail::lu_factor(lu_W_, lu_W_pivots_)) return false;
+    work_v_ = r;
+    detail::lu_solve(lu_W_, lu_W_pivots_, work_v_);   // W^-1 r
+    if (m_ == 0) {
+        dv = work_v_;
+        return true;
+    }
+    // On the independent equations of the last forward dynamics (redundant
+    // ones make J W^-1 J^T singular): Y = W^-1 J_r^T, (J_r Y) mu = c_r - J_r
+    // W^-1 r, dv = W^-1 r + Y mu; Y by the LU's row swaps and two triangular
+    // solves on all its columns at once. The rows past the rank are the
+    // identity's.
+    const int rank = info_.rank;
+    for (int k = 0; k < rank; ++k) lu_Jr_.row(k) = J_.row(ldlt_A_.pivot(k));
+    auto Y = lu_Y_.leftCols(rank);
+    Y = lu_Jr_.topRows(rank).transpose();
+    for (Index k = 0; k < Y.rows(); ++k) {
+        const Index p = lu_W_pivots_[static_cast<std::size_t>(k)];
+        if (p != k) Y.row(k).swap(Y.row(p));
+    }
+    lu_W_.triangularView<Eigen::UnitLower>().solveInPlace(Y);
+    lu_W_.triangularView<Eigen::Upper>().solveInPlace(Y);
+    lu_S_.setIdentity();
+    lu_S_.topLeftCorner(rank, rank).noalias() = lu_Jr_.topRows(rank) * Y;
+    mu_.setZero();
+    mu_.head(rank).noalias() = lu_Jr_.topRows(rank) * work_v_;
+    mu_.head(rank) *= -1.0;
+    for (int k = 0; k < rank; ++k) mu_(k) += target(ldlt_A_.pivot(k));
+    if (!detail::lu_factor(lu_S_, lu_S_pivots_)) return false;
+    detail::lu_solve(lu_S_, lu_S_pivots_, mu_);
+    dv = work_v_;
+    dv.noalias() += Y * mu_.head(rank);
     return true;
 }
 

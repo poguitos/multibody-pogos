@@ -18,7 +18,9 @@
 //     when";
 //   - the drift channel: what each step left before the projection, and the
 //     residuals after, in constraint_drift(), the trace and a Recorder;
-//   - a tolerance that is not positive is refused.
+//   - a tolerance that is not positive is refused;
+//   - semi-implicit and linearly implicit Euler, whose new velocities are
+//     put on the constraints (D38), only lose energy on a closed loop.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -35,6 +37,7 @@
 #include "mbd/analysis/recorder.hpp"
 #include "mbd/core/core.hpp"
 #include "mbd/core/math.hpp"
+#include "mbd/kernel/algorithms.hpp"
 #include "mbd/kernel/constrained_dynamics.hpp"
 #include "mbd/kernel/constraints.hpp"
 #include "mbd/kernel/model.hpp"
@@ -236,16 +239,14 @@ TEST_CASE("Constraints per integrator: the drift stays under the tolerance for 1
     // The plan's "done when" for task 4.7. Hidden: about ten minutes, most of
     // them SDIRK4's (some twenty Newton iterations a step at the default
     // tolerances). Run by hand with -s, which prints the maxima with each
-    // check; the results are in the journal's data. Semi-implicit Euler and
-    // the linearly implicit step leave the top out: both take the gyroscopic
-    // terms explicitly, and a top spinning at 30 rad/s, stepped at 5 ms,
-    // blew up within the first 100 s whatever the constraints did (the
-    // projection then failed at almost every step).
+    // check; the results are in the journal's data. Before semi-implicit
+    // Euler and the linearly implicit step took the gyroscopic terms
+    // implicitly (D38), the top spinning at 30 rad/s, stepped at 5 ms, blew
+    // up with both within the first 100 s.
     FourBar fb(true);
     HeavyTop top;
     for (const Method& m : kMethods) {
         check_drift(fb.sys, release_four_bar, "four-bar", m, 1000.0);
-        if (m.method == Integrator::SemiImplicitEuler || m.method == Integrator::LinearlyImplicitEuler) continue;
         check_drift(top.sys, HeavyTop::release, "heavy top", m, 1000.0);
     }
 }
@@ -318,4 +319,41 @@ TEST_CASE("Constraints per integrator: a tolerance that is not positive is refus
     CHECK_THROWS_WITH(sim.step(0.005), ContainsSubstring("MBD-K047"));
     sim.constraint_tolerance = std::nan("");
     CHECK_THROWS_WITH(sim.step(0.005), ContainsSubstring("MBD-K047"));
+}
+
+TEST_CASE("Constraints per integrator: semi-implicit and linearly implicit Euler only lose energy on a closed loop",
+          "[kernel][integrators][constraints]")
+{
+    // The four-bar has no damping, so its energy may only fall under a
+    // dissipative first-order step. Both steps take the inertia's velocity
+    // products linearly implicitly (D38) and put the new velocities on the
+    // constraints, J v+ = nu, so that the constraints' impulse does no work
+    // on them. With the velocities kept off the constraints instead (J delta
+    // = 0, the explicit part of the constraints' own velocity terms left in),
+    // the same steps gained energy until the four-bar blew up: within 10 s at
+    // 5 ms, 40 s at 2 ms, 80 s at 1 ms. Checked at every step for 20 s.
+    FourBar fb(true);
+    for (const Real h : {0.005, 0.002}) {
+        for (const auto method : {Integrator::SemiImplicitEuler, Integrator::LinearlyImplicitEuler}) {
+            Simulator sim(fb.sys);
+            sim.method = method;
+            release_four_bar(sim);
+            auto energy = [&] {
+                return kinetic_energy(fb.sys.model, sim.data()) + potential_energy(fb.sys.model, sim.data());
+            };
+            const Real e0 = energy();
+            Real highest = -1e300;
+            const int steps = static_cast<int>(std::round(20.0 / h));
+            for (int k = 0; k < steps; ++k) {
+                sim.step(h);
+                highest = std::max(highest, energy() - e0);
+            }
+            INFO((method == Integrator::SemiImplicitEuler ? "semi-implicit" : "linearly implicit")
+                 << " at " << h << " s: energy at most " << highest << " above the start (" << e0 << " J), "
+                 << energy() - e0 << " at the end");
+            CHECK(highest <= 1e-9 * e0);
+            CHECK(energy() < e0);
+            CHECK(sim.projection_failures() == 0);
+        }
+    }
 }

@@ -10,6 +10,8 @@
 
 #include "mbd/kernel/algorithms.hpp"
 
+#include <algorithm>
+
 #include "mbd/spatial/spatial.hpp"
 
 #include "checks.hpp"
@@ -207,6 +209,91 @@ const VecX& bias_forces(const Model& model, Data& data)
     }
     transmit_forces(model, data);
     return data.tau;
+}
+
+const MatX& bias_force_velocity_derivative(const Model& model, Data& data, const VecX& q, const VecX& v)
+{
+    checks::data("kernel::bias_force_velocity_derivative", model, data);
+    checks::q("kernel::bias_force_velocity_derivative", model, q);
+    checks::v("kernel::bias_force_velocity_derivative", model, v);
+    // RNEA at zero joint accelerations, differentiated along one velocity
+    // direction e (column k): with vJ_j = S_j qd_j,
+    //
+    //   dv_j = jXp dv_p + S_j e_j
+    //   da_j = jXp da_p + dc_j,  dc_j = X_CJ dcJ_j + dv_j x vJ_j + v_j x (S_j e_j)
+    //   df_j = I_j da_j + dv_j x* (I_j v_j) + v_j x* (I_j dv_j)
+    //
+    // and the forces back to the root as in rnea; gravity does not depend on
+    // v. e is nonzero only at joint k, so dv and da are zero outside its
+    // subtree, and df outside it and its path to the root. A joint's own term
+    // c_J (universal, planar) is bilinear in its velocities, so a central
+    // difference with a unit step gives its derivative exactly.
+    const int nb = model.nbodies();
+    MatX& D = data.dtau_dv;
+    for (int i = 1; i < nb; ++i) {
+        data.vJ[i].setZero();
+        if (model.nvs[i] > 0) data.vJ[i].noalias() = data.S[i] * v.segment(model.idx_v[i], model.nvs[i]);
+    }
+    for (int i = 1; i < nb; ++i) {
+        const int nvi = model.nvs[i];
+        if (nvi == 0) continue;
+        for (int j = 0; j < nb; ++j) data.in_subtree[j] = j == i;
+        for (int j = i + 1; j < nb; ++j) data.in_subtree[j] = data.in_subtree[model.parent[j]];
+        const JointModel& jm = *model.joint[i];
+        const bool own_term = !jm.constant_motion_subspace();
+        const auto qi = q.segment(model.idx_q[i], model.nqs[i]);
+        for (int s = 0; s < nvi; ++s) {
+            const Index column = model.idx_v[i] + s;
+            Vec6 dcJ = Vec6::Zero();
+            if (own_term) {
+                data.v_joint.head(nvi) = v.segment(model.idx_v[i], nvi);
+                data.v_joint(s) += 1.0;
+                jm.calc(qi, data.v_joint.head(nvi), data.joint_work);
+                dcJ = data.joint_work.c;
+                data.v_joint(s) -= 2.0;
+                jm.calc(qi, data.v_joint.head(nvi), data.joint_work);
+                dcJ -= data.joint_work.c;
+                dcJ *= 0.5;
+            }
+            // Forward over the subtree.
+            for (int j = i; j < nb; ++j) {
+                if (!data.in_subtree[j]) continue;
+                if (j == i) {
+                    const Vec6 e = data.S[i].col(s);
+                    data.dv[j] = e;
+                    data.da[j] = motion_act(model.X_CJ[i], dcJ) + motion_cross_motion(e, data.vJ[i])
+                               + motion_cross_motion(data.v[i], e);
+                } else {
+                    data.dv[j] = motion_act_inv(data.liMi[j], data.dv[model.parent[j]]);
+                    data.da[j] = motion_act_inv(data.liMi[j], data.da[model.parent[j]])
+                               + motion_cross_motion(data.dv[j], data.vJ[j]);
+                }
+                const Vec6 h = model.I[j] * data.v[j];
+                const Vec6 dh = model.I[j] * data.dv[j];
+                data.df[j] = model.I[j] * data.da[j] + motion_cross_force(data.dv[j], h)
+                           + motion_cross_force(data.v[j], dh);
+            }
+            // Backward: the subtree's forces to its root, then along the path.
+            D.col(column).setZero();
+            for (int j = model.parent[i]; j > 0; j = model.parent[j]) data.df[j].setZero();
+            for (int j = nb - 1; j >= i; --j) {
+                if (!data.in_subtree[j]) continue;
+                if (model.nvs[j] > 0) {
+                    D.col(column).segment(model.idx_v[j], model.nvs[j]).noalias() = data.S[j].transpose() * data.df[j];
+                }
+                const int p = model.parent[j];
+                if (p > 0) data.df[p] += force_act(data.liMi[j], data.df[j]);
+            }
+            for (int j = model.parent[i]; j > 0; j = model.parent[j]) {
+                if (model.nvs[j] > 0) {
+                    D.col(column).segment(model.idx_v[j], model.nvs[j]).noalias() = data.S[j].transpose() * data.df[j];
+                }
+                const int p = model.parent[j];
+                if (p > 0) data.df[p] += force_act(data.liMi[j], data.df[j]);
+            }
+        }
+    }
+    return D;
 }
 
 const MatX& crba(const Model& model, Data& data, const VecX& q)

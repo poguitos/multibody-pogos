@@ -100,6 +100,14 @@ Data::Data(const Model& model)
     M      = MatX::Zero(model.nv, model.nv);
     tau    = VecX::Zero(model.nv);
     ddq    = VecX::Zero(model.nv);
+    dtau_dv = MatX::Zero(model.nv, model.nv);
+    vJ.assign(n, Vec6::Zero());
+    dv.assign(n, Vec6::Zero());
+    da.assign(n, Vec6::Zero());
+    df.assign(n, Vec6::Zero());
+    in_subtree.assign(n, 0);
+    joint_work.S.setZero(6, 6);
+    v_joint = VecX::Zero(6);
     zero_v = VecX::Zero(model.nv);
 }
 

@@ -64,6 +64,18 @@ const MatX& mass_matrix(const Model& model, Data& data);
 /// of zero joint accelerations. Returns data.tau.
 const VecX& bias_forces(const Model& model, Data& data);
 
+/// The derivative D = d tau / dv of the velocity-product forces (the
+/// Coriolis, centrifugal and gyroscopic terms: rnea(q, v, 0) less gravity) at
+/// (q, v), the kinematics those of the last forward_kinematics(q, v, ...) into
+/// `data`: column k is d tau / d v_k. Exact, the terms being quadratic in v:
+/// each column is one linearized pass of RNEA over joint k's subtree and back
+/// to the root, about two RNEAs' work in all on a vehicle. The semi-implicit
+/// and linearly implicit steps take these terms implicitly through it (task
+/// 4.7's open end, D38).
+/// Returns data.dtau_dv; allocates nothing.
+const MatX& bias_force_velocity_derivative(const Model& model, Data& data, const VecX& q, const VecX& v);
+
+
 /// Forward dynamics, articulated-body algorithm: the accelerations produced
 /// by generalized forces `tau` at (q, v), under gravity. Returns data.ddq;
 /// also leaves the kinematics and the body accelerations in data.

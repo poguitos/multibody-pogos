@@ -33,8 +33,12 @@ struct Simulator::LinearWork {
     std::vector<RigidBodyForces> forces;
     std::vector<Vec6> load0;
     // The generalized derivatives, the iteration matrix, the accelerations at
-    // the step's start and work vectors.
-    MatX K, C, W;
+    // the step's start and work vectors. D = d b / dv of the inertia's
+    // velocity products (bias_force_velocity_derivative), which makes W
+    // unsymmetric; W's symmetric part, factorized to check that W is
+    // positive definite there (task 4.7's open end, D38).
+    MatX K, C, W, D, W_sym;
+    Eigen::LLT<MatX> llt_sym;
     VecX a, r, dv, v1;
     // Joint forces: perturbed q and v, generalized forces, a coordinate step.
     VecX q1, tau0, tau1, step;

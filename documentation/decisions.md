@@ -45,9 +45,10 @@ and the journal entry of the work refers to them by number
 | D32 | Generalised-alpha on the state-space accelerations, with Newton on difference Jacobians | 14 Oct 2026 | In force, task 4.3; its constraints: D37 |
 | D33 | SDIRK4 on the stacked first-order system, kept for smooth models | 14-16 Oct 2026 | In force, task 4.4 |
 | D34 | Radau IIA for stiff mechanical models, with Newton held to a tolerance-dependent fraction | 16 Oct 2026, the method by the author | In force, task 4.4 |
-| D35 | Linearly implicit Euler, with force derivatives element by element | 16 Oct 2026 | In force, task 4.5 |
+| D35 | Linearly implicit Euler, with force derivatives element by element | 16 Oct 2026 | In force, task 4.5; inertial terms: D38 |
 | D36 | Multirate RK4, fastest first, for the state elements' states | 17 Oct 2026 | In force, task 4.6 |
 | D37 | Constraints per integrator: projection after every method's steps, generalised-alpha's stabilized index-2 form as an option | 17 Oct 2026 | In force, task 4.7 |
+| D38 | The inertia's velocity products implicit, and the new velocities on the constraints, in the two Euler steps | 18 Oct 2026 | In force, task 4.7's open end |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -976,3 +977,69 @@ and the journal entry of the work refers to them by number
   `2026-10-17_constraints-per-integrator.md`; `docs/kernel.md`, constraints
   per integrator; `docs/performance.md`, task 4.7; troubleshooting; messages
   K047, K051, K058.
+
+## D38. The inertia's velocity products implicit, and the new velocities on the constraints, in the two Euler steps
+
+- **Context.** An open end of task 4.7: semi-implicit Euler and the linearly
+  implicit step (D35) took the inertia's velocity products (the Coriolis,
+  centrifugal and gyroscopic terms, b(q, v): rnea(q, v, 0) less gravity)
+  explicitly. On a top spinning at 30 rad/s, stepped at 5 ms, both blew up
+  within 100 s: explicit Euler multiplies a nutation of rate W by sqrt(1 +
+  (W h)^2) per step. The vehicles had not shown it because their wheels'
+  spins are the drivetrain's states, not bodies; a model with spinning
+  bodies (a motorcycle's wheels, a flywheel, a rotor) would, and the
+  linearly implicit step is the real-time integrator.
+- **Decision.** Both steps take these terms linearly implicitly through
+  their exact derivative D = d b / dv, a new kernel algorithm,
+  `bias_force_velocity_derivative`: RNEA linearized along each velocity over
+  that joint's subtree and back to the root, exact because the terms are
+  quadratic in v (a joint's own velocity product, in the universal and
+  planar joints, by a central difference with a unit step, exact for the
+  same reason; `JointModel::constant_motion_subspace` says which joints have
+  none). In the linearly implicit step C becomes C - D: W = M - h C_s - h^2
+  K_s - h (Tx G)_s + h D, r gains -h^2 D a; semi-implicit Euler solves (M +
+  h D) delta = -h^2 D a. And both put the new velocities on the
+  constraints, J v+ = nu, where they had kept the explicit step's (J delta =
+  0): the constraints' impulse then does no work on v+. D enters whole, so
+  W is not symmetric: `ConstraintSolver::constrained_solve_lu` (LU with
+  partial pivoting, the multipliers on the independent equations of the
+  last forward dynamics, a target for J dv), after a Cholesky of W's
+  symmetric part as the positive-definiteness check behind MBD-K045 (now
+  worded for both steps; its second fallback drops every derivative).
+- **Alternatives.** All measured on the closed four-bar with a pendulum
+  (semi-implicit Euler, 100 s at 5, 2 and 1 ms), the heavy top (300 s at 5
+  ms) and two free bodies spinning at 30 rad/s with a small wobble, one
+  flat, one long (5 s at 5 ms). Explicit, as before: the four-bar lost
+  energy (11.9 J of 17.8 at 5 ms), the top blew up. D with the old
+  restriction J delta = 0: the top and both free bodies right (the wobble
+  damped exactly as backward Euler damps it, the spin kept), but the
+  four-bar gained energy until it blew up at every step size (within 10, 40
+  and 80 s): the new velocities kept the explicit part of the constraints'
+  own velocity terms (gamma), which the implicit inertial terms no longer
+  balanced. D's skew part only: the four-bar stable, but the top's spin fell
+  from 30 to 18.7 rad/s. A Coriolis matrix B frozen at the step's start (B v
+  = b, B + B^T = dM/dt, built from the bodies as sum J^T (I dJ/dt + (I v)x^
+  J); implemented and verified, then removed), with which an unconstrained
+  step provably cannot gain kinetic energy: the flat body's wobble fell to
+  0.003 in a second where backward Euler gives 0.15, the long body tumbled
+  end over end (its spin from 30 to 0.002 rad/s in 5 s), and the top lost
+  spin, with or without the velocities on the constraints. D by differences
+  of RNEA over v: 27 RNEAs a step on the sedan, about 130 us. Per-body
+  implicit gyroscopic torques, as game engines do: in joint coordinates the
+  bodies are not independent.
+- **Consequences.** A free body's nutation is damped exactly as backward
+  Euler damps it, by 1 / sqrt(1 + (W h)^2) per step, flat or long, its spin
+  kept; the heavy top runs 1000 s with both steps (data); the closed
+  four-bar only loses energy, at every step checked. Both methods stay
+  first order and dissipative: the four-bar at 5 ms lost 14.7 J of 17.8 in
+  100 s (explicit: 11.9). On the sedan the linearly implicit step costs
+  about 160 us instead of 131 (pinned, against the previous commit): D (no
+  joint-model call where c is zero, the backward pass over each joint's
+  subtree and path only) and the LU solve (blocked triangular solves and one
+  product) took it from a first 186 us. The vehicle tests did not change
+  beyond their tolerances. `bias_force_velocity_derivative` is a kernel
+  algorithm, checked against differences of RNEA on every joint type;
+  `ConstraintSolver::constrained_solve_lu` takes a target for J dv.
+- **Record.** Journal: the inertia's velocity products implicit; data
+  `2026-10-18_implicit-inertia.md`; `docs/kernel.md`, integrators;
+  `docs/performance.md`, D38; troubleshooting; message K045.

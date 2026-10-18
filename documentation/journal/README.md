@@ -75,4 +75,5 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 14-16 Oct 2026 | [Phase 4: SDIRK4, its order on stiff bushings, and Radau IIA](2026-10-16_phase-4-sdirk4-radau.md) | 4.4, D33, D34 | `052f2d9` | At the time; 14 Oct reconstructed |
 | 16 Oct 2026 | [Phase 4: the fixed-cost step for real time](2026-10-16_phase-4-linearly-implicit-euler.md) | 4.5, D35 | `b74a2c5` | At the time |
 | 17 Oct 2026 | [Phase 4: multirate RK4 for the fast states](2026-10-17_phase-4-multirate.md) | 4.6, D36 | `08099dd` | At the time |
-| 17 Oct 2026 | [Phase 4: constraints per integrator](2026-10-17_phase-4-constraints-per-integrator.md) | 4.7, D37 | see git log | At the time |
+| 17 Oct 2026 | [Phase 4: constraints per integrator](2026-10-17_phase-4-constraints-per-integrator.md) | 4.7, D37 | `8ed4c6c` | At the time |
+| 18 Oct 2026 | [Phase 4: the inertia's velocity products implicit in the Euler steps](2026-10-18_phase-4-implicit-inertia.md) | 4.7's open end, D38 | see git log | At the time |
