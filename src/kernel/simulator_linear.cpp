@@ -22,10 +22,13 @@
 // nu (the projection after the step takes up the positions' drift). The
 // second is solved for dx first, dx = dx0 + G delta with G = (I - h X)^-1 h
 // Xv, which leaves (W - h Tx G) delta = r + h Tx dx0 + J^T mu: one
-// constrained solve in the velocities. K, C and Tx G enter by their
-// symmetric parts, in the matrix and on the right (D35); D enters whole, so
-// the matrix is not symmetric: an LU, its symmetric part checked for positive
-// definiteness (D38). Both halves of D38 were measured. Taken explicitly, the
+// constrained solve in the velocities. K, C, Tx G and D enter whole, so the
+// matrix is not symmetric: an LU, its symmetric part checked for positive
+// definiteness (D38, D40). Until task 4.9 K, C and Tx G entered by their
+// symmetric parts only (D35, for a Cholesky); the verification found the
+// step diverging at 1 and 2 ms on a pendulum of two links joined by stiff
+// bushings, whose rotational stiffness, carrying the links' large relative
+// rotation, is far from symmetric (D40). Both halves of D38 were measured. Taken explicitly, the
 // velocity products made a top spinning at 30 rad/s blow up within 100 s at
 // 5 ms; through D, backward Euler's damping of its nutation, exactly, for flat
 // and long bodies alike. With the old restriction J delta = 0 the new
@@ -44,7 +47,9 @@
 // coasting at 0.5 m/s gain 0.5 % of its speed in 2 s at 5 ms (5 % at 10 ms);
 // without it the car keeps its speed within 2e-5. The inertial terms'
 // dependence on the positions, and the derivatives of the joints' geometry,
-// stay explicit.
+// stay explicit: among them, how a body's velocity turns with its pose at
+// fixed joint rates, which leaves about c |v| out of a damper's stiffness
+// (5e3 of 5.6e8 on that pendulum, task 4.9).
 //
 // K and C are built element by element: each element's loads on its bodies
 // ([moment about the body's origin; force], world axes) are differentiated
@@ -389,26 +394,28 @@ void Simulator::step_linearly_implicit(Real h)
         }
     }
 
-    // W = M - h C_s - h^2 K_s - h (Tx G)_s + h D, M the evaluation's mass
-    // matrix; r = h^2 (K_s (v + h a) + C_s a - D a) + h Tx dx0. Without the
-    // stiffness, then without every derivative, where W is not positive
-    // definite.
+    // W = M - h C - h^2 K - h Tx G + h D, M the evaluation's mass matrix; r
+    // = h^2 (K (v + h a) + C a - D a) + h Tx dx0. The derivatives whole,
+    // their antisymmetric parts included (D40): a bushing that carries a
+    // large rotation has a stiffness far from symmetric (k_r times half the
+    // rotation), and the symmetric part alone let the step diverge. W is
+    // not symmetric (D is not either) and is solved by LU; its symmetric
+    // part, M - h C_s - h^2 K_s - h (Tx G)_s + h D_s, is checked for
+    // positive definiteness. Without the stiffness, then without every
+    // derivative, where it is not.
     auto assemble = [&](bool stiffness) {
         w.W = data_.M;
-        w.W -= (0.5 * h) * (w.C + w.C.transpose());
+        w.W -= h * w.C;
         w.W.noalias() += h * w.D;
         w.r.noalias() = w.C * w.a;
-        w.r.noalias() += w.C.transpose() * w.a;
-        w.r.noalias() -= 2.0 * (w.D * w.a);
+        w.r.noalias() -= w.D * w.a;
         if (stiffness) {
-            w.W -= (0.5 * h * h) * (w.K + w.K.transpose());
+            w.W -= (h * h) * w.K;
             w.r.noalias() += w.K * w.v1;
-            w.r.noalias() += w.K.transpose() * w.v1;
         }
-        w.r *= 0.5 * h * h;
+        w.r *= h * h;
         if (nx > 0) {
-            w.W.noalias() -= (0.5 * h) * (w.Tx * w.G);
-            w.W.noalias() -= (0.5 * h) * (w.G.transpose() * w.Tx.transpose());
+            w.W.noalias() -= h * (w.Tx * w.G);
             w.r.noalias() += h * (w.Tx * w.dx0);
         }
     };

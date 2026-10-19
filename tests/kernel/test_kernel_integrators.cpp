@@ -64,6 +64,13 @@
 // with stiff bushings SDIRK4 loses its order (stage order 1, D33) and Radau
 // IIA, with error control, meets a tight error for fewer evaluations than
 // generalised-alpha: the plan's "done when".
+//
+// The verification report (task 4.9, docs/integrators.md): over many steps
+// on the oscillator every method's energy is its own recurrence's (|R|^(2N)
+// for the Runge-Kutta methods and the linearly implicit step), and
+// semi-implicit Euler keeps q^2 + v^2 - h q v exactly; the linearly
+// implicit step, with the force derivatives whole (D40), keeps two links on
+// stiff bushings bounded at long steps, and gains no energy at short ones.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -1121,5 +1128,114 @@ TEST_CASE("Semi-implicit and linearly implicit Euler: a spinning body's nutation
             CHECK(sim.v.tail<3>().norm() < 1e-14);   // the centre stays at rest
             CHECK(energy_fell);
         }
+    }
+}
+
+TEST_CASE("Energy on the oscillator: every method keeps its own recurrence's over many steps",
+          "[kernel][integrators]")
+{
+    // Plan task 4.9 (docs/integrators.md): on an undamped oscillator a
+    // method's energy over many steps is set by its recurrence alone. A
+    // Runge-Kutta step multiplies w = q - i v by its stability function, so
+    // E / E0 = |R(i w h)|^(2N): RK4's 1 + z + z^2/2 + z^3/6 + z^4/24, and
+    // Dormand-Prince's, SDIRK4's and Radau IIA's from their coefficients
+    // (above); the linearly implicit step's is backward Euler's, 1 / (1 - z).
+    // Generalised-alpha follows its recurrence (above). Semi-implicit Euler,
+    // v+ = v - h q, q+ = q + h v+, keeps q^2 + v^2 - h q v exactly (w = 1:
+    // it is symplectic), so its energy only oscillates, between 1 / (1 + h /
+    // 2) and 1 / (1 - h / 2) of the start. 200 steps of 0.5 s (w h = 0.5),
+    // the methods with error control at fixed steps, Newton at 1e-12: each
+    // energy within 1e-10 of its prediction, relatively (seen: 1e-13 at
+    // most), the invariant to 1e-13 (seen: 1.2e-15).
+    const Real h = 0.5, a = Oscillator::a;
+    const int N = 200;
+    const Complex z(0.0, h);
+    auto power = [&](Complex r) { return std::pow(std::abs(r), 2.0 * N); };
+    const Complex rk4 = 1.0 + z + z * z / 2.0 + std::pow(z, 3) / 6.0 + std::pow(z, 4) / 24.0;
+    const auto [qa, va] = alpha_recurrence(1.0, h, N, 0.8, a, 0.0);
+    Real qs = a, vs = 0.0;   // semi-implicit Euler's recurrence
+    for (int k = 0; k < N; ++k) {
+        vs -= h * qs;
+        qs += h * vs;
+    }
+    const std::pair<Integrator, Real> cases[] = {
+        {Integrator::RK4, power(rk4)},
+        {Integrator::DormandPrince, power(stability(z))},
+        {Integrator::SDIRK4, power(sdirk_stability(z))},
+        {Integrator::RadauIIA, power(radau_stability(z))},
+        {Integrator::LinearlyImplicitEuler, power(1.0 / (1.0 - z))},
+        {Integrator::GeneralizedAlpha, (qa * qa + va * va) / (a * a)},
+        {Integrator::SemiImplicitEuler, (qs * qs + vs * vs) / (a * a)}};
+    for (const auto& [method, predicted] : cases) {
+        Oscillator osc;
+        auto sim = osc.simulator();
+        sim->method = method;
+        sim->step_control.adaptive = false;
+        sim->step_control.relative_tolerance = 1e-12;
+        sim->step_control.absolute_tolerance = 1e-12;
+        Real invariant_change = 0.0, low = 1.0, high = 1.0;
+        for (int k = 0; k < N; ++k) {
+            sim->step(h);
+            const Real q = sim->q(0), v = sim->v(0);
+            invariant_change = std::max(invariant_change, std::abs(q * q + v * v - h * q * v - a * a) / (a * a));
+            low = std::min(low, (q * q + v * v) / (a * a));
+            high = std::max(high, (q * q + v * v) / (a * a));
+        }
+        const Real E = (sim->q(0) * sim->q(0) + sim->v(0) * sim->v(0)) / (a * a);
+        INFO("method " << static_cast<int>(method) << ": E / E0 " << E << ", predicted " << predicted
+                       << "; semi-implicit Euler's invariant changed by " << invariant_change << ", energy from "
+                       << low << " to " << high);
+        CHECK(std::abs(E - predicted) <= 1e-10 * predicted);
+        if (method == Integrator::SemiImplicitEuler) {
+            CHECK(invariant_change < 1e-13);
+            CHECK(low >= 1.0 / (1.0 + h / 2.0) - 1e-12);
+            CHECK(high <= 1.0 / (1.0 - h / 2.0) + 1e-12);
+        }
+    }
+}
+
+TEST_CASE("Linearly implicit Euler: two links on stiff bushings swing stably at long steps",
+          "[kernel][integrators][implicit][linear]")
+{
+    // Task 4.9 (D40): the bushed pendulum (bushed_pendulum.hpp, k = 1e8 N/m,
+    // k_r = 1e6 N m/rad), whose links turn far relative to each other about
+    // the hinge the bushings leave free. A bushing's rotational stiffness
+    // then couples its other two axes by about k_r times half that rotation:
+    // the force derivatives are far from symmetric. With their symmetric
+    // parts alone in the step's matrix (D35) the step diverged within the
+    // first second at 2, 1 and 0.5 ms; with them whole it stays bounded: the
+    // tip within the links' reach (two links of 1 m, held together to a few
+    // micrometres).
+    //
+    // Released level, at rest and undeflected, the pendulum starts with zero
+    // energy (gravity's zero at the world origin); its dampers only take
+    // energy out and the bushings' elastic energy is never negative, so
+    // kinetic plus gravity's energy can never rise above zero. At 0.5 ms the
+    // step keeps that (seen: at most -2.1e-5 J). At 1 and 2 ms it does not
+    // (seen: +0.21 and +8.6 J): one linearization per step moves each
+    // attachment point along its tangent, the true motion along an arc, and
+    // the stiff translational spring turns their second-order gap, k L (w
+    // h)^2 / 2, into a force. It depends on k h^2 alone, k_r playing no part
+    // (k = 1e7: a gain only at 2 ms; 1e6: none): the limit of a method that
+    // linearizes once, which generalised-alpha's Newton iterations remove.
+    mbd_test::BushedPendulum bp;
+    for (const Real h : {2e-3, 1e-3, 5e-4}) {
+        Simulator sim(bp.sys);
+        sim.method = Integrator::LinearlyImplicitEuler;
+        bp.release(sim);
+        Data data(bp.sys.model);
+        Real highest = -HUGE_VAL, reach = 0.0;
+        const int steps = static_cast<int>(std::lround(1.0 / h));
+        for (int k = 0; k < steps; ++k) {
+            sim.step(h);
+            forward_kinematics(bp.sys.model, data, sim.q, sim.v);
+            highest = std::max(highest, kinetic_energy(bp.sys.model, data) + potential_energy(bp.sys.model, data));
+            reach = std::max(reach, bp.tip(sim).norm());
+        }
+        INFO("step " << h << " s: kinetic plus gravity's energy at most " << highest << " J; the tip at most "
+                     << reach << " m from the hinge");
+        CHECK(std::isfinite(highest));
+        CHECK(reach <= 2.0 + 1e-3);
+        if (h <= 5e-4) CHECK(highest <= 0.0);
     }
 }

@@ -467,9 +467,12 @@ whatever its shape. Putting the new velocities on the constraints makes the
 constraints' impulse do no work on them: with the change from explicit
 Euler kept off them instead, a closed four-bar gained energy until it blew
 up. The joints' geometry, `tau` and `force_callback` stay explicit. K,
-C and the states' coupling enter by their symmetric parts (D35 says why
-each is safe), D whole, so the matrix is solved by LU, its symmetric part
-checked for positive definiteness. First order, L-stable on stiff springs: a
+C, the states' coupling and D all enter whole, so the matrix is solved by
+LU, its symmetric part checked for positive definiteness (D40). Until task
+4.9 K, C and the coupling entered by their symmetric parts only (D35); the
+verification found the step diverging at 1 and 2 ms on two links joined by
+stiff bushings, whose rotational stiffness, carrying the links' large
+relative rotation, is far from symmetric. First order, L-stable on stiff springs: a
 spring 1000 times too stiff for RK4 shrinks by 1 / sqrt(1 + (w h)^2) per
 step, and every motion is damped by about (w h)^2 / 2 per step. On the
 sedan at 1 ms it drives, brakes and stops as RK4 does (top speed within 0.1
@@ -548,9 +551,13 @@ Choosing a method:
 | Smooth, a tolerance to meet, or long output steps | `DormandPrince` |
 | Stiff (stiff springs, bushings, contact, tyres at low speed), fixed steps, accuracy of the order of 1e-4 to 1e-6 | `GeneralizedAlpha` |
 | As above, a closed mechanism at long steps, its accelerations and reactions wanted as accurately as one step allows | `GeneralizedAlpha` with `implicit_control.stabilized_index2` |
-| Stiff, a tolerance to meet, tight accuracy | `RadauIIA` |
-| Stiffness only in first-order states, or a smooth model at a tight tolerance | `SDIRK4` or `RadauIIA` |
-| Real time: the same cost every step, stiff or not | `LinearlyImplicitEuler` |
+| Stiff, a tolerance to meet, any accuracy (on the stiff pendulum of the verification, the cheapest at every accuracy) | `RadauIIA` |
+| Stiffness only in first-order states (a vehicle on its tyres, offline: the cheapest on the sedan), or a smooth model at a tight tolerance | `SDIRK4` or `RadauIIA` |
+| Real time: the same cost every step, stiff or not; with very stiff springs between turning bodies, k h^2 / m below about 25 | `LinearlyImplicitEuler` |
+
+What each costs for a given accuracy, its order and its energy over long
+runs, measured on six models: [the integrators, verified](integrators.md)
+(task 4.9).
 
 **Outputs** (task 3.3, `kernel/outputs.hpp`). `compute_loads(sim)` evaluates
 the accelerations at the simulator's state and returns them with the

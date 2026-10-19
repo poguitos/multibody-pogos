@@ -222,7 +222,8 @@ Warning: `kernel::Simulator: at t = <t> s the <linearly implicit or semi-implici
   derivatives (see `Simulator::force_jacobian`; none in semi-implicit Euler)
   and D, the derivative of the inertia's velocity products (Coriolis,
   centrifugal and gyroscopic terms, D38), had a direction in which it was
-  not positive (in its symmetric part, D not being symmetric): some force
+  not positive (in its symmetric part: the matrix is not symmetric, D and
+  the force derivatives entering whole, D40): some force
   pushes away from where it is, or speeds up what moves, or a body spins so
   fast for the step that its gyroscopic terms do, more strongly than the
   inertia holds it at this step. That step, and any like it, is taken with

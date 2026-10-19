@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="440" viewBox="0 0 760 440" font-family="Helvetica, Arial, sans-serif" font-size="12">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="302" y="22" text-anchor="middle" font-size="14">Oscillator: error at 10 s against the step</text>
+<line x1="84.0202" y1="36" x2="84.0202" y2="376" stroke="#efefef"/>
+<line x1="102.965" y1="36" x2="102.965" y2="376" stroke="#efefef"/>
+<line x1="119.375" y1="36" x2="119.375" y2="376" stroke="#efefef"/>
+<line x1="133.85" y1="36" x2="133.85" y2="376" stroke="#efefef"/>
+<line x1="146.799" y1="36" x2="146.799" y2="376" stroke="#d8d8d8"/>
+<text x="146.799" y="392" text-anchor="middle">10<tspan dy="-6" font-size="9">-2</tspan></text>
+<line x1="231.984" y1="36" x2="231.984" y2="376" stroke="#efefef"/>
+<text x="231.984" y="392" text-anchor="middle">2&#215;10<tspan dy="-6" font-size="9">-2</tspan></text>
+<line x1="281.814" y1="36" x2="281.814" y2="376" stroke="#efefef"/>
+<line x1="317.169" y1="36" x2="317.169" y2="376" stroke="#efefef"/>
+<line x1="344.593" y1="36" x2="344.593" y2="376" stroke="#efefef"/>
+<text x="344.593" y="392" text-anchor="middle">5&#215;10<tspan dy="-6" font-size="9">-2</tspan></text>
+<line x1="366.999" y1="36" x2="366.999" y2="376" stroke="#efefef"/>
+<line x1="385.944" y1="36" x2="385.944" y2="376" stroke="#efefef"/>
+<line x1="402.354" y1="36" x2="402.354" y2="376" stroke="#efefef"/>
+<line x1="416.829" y1="36" x2="416.829" y2="376" stroke="#efefef"/>
+<line x1="429.778" y1="36" x2="429.778" y2="376" stroke="#d8d8d8"/>
+<text x="429.778" y="392" text-anchor="middle">10<tspan dy="-6" font-size="9">-1</tspan></text>
+<line x1="514.963" y1="36" x2="514.963" y2="376" stroke="#efefef"/>
+<text x="514.963" y="392" text-anchor="middle">2&#215;10<tspan dy="-6" font-size="9">-1</tspan></text>
+<line x1="72" y1="375.648" x2="532" y2="375.648" stroke="#d8d8d8"/>
+<line x1="72" y1="350.096" x2="532" y2="350.096" stroke="#d8d8d8"/>
+<text x="66" y="354.096" text-anchor="end">10<tspan dy="-6" font-size="9">-12</tspan></text>
+<line x1="72" y1="324.543" x2="532" y2="324.543" stroke="#d8d8d8"/>
+<line x1="72" y1="298.99" x2="532" y2="298.99" stroke="#d8d8d8"/>
+<text x="66" y="302.99" text-anchor="end">10<tspan dy="-6" font-size="9">-10</tspan></text>
+<line x1="72" y1="273.438" x2="532" y2="273.438" stroke="#d8d8d8"/>
+<line x1="72" y1="247.885" x2="532" y2="247.885" stroke="#d8d8d8"/>
+<text x="66" y="251.885" text-anchor="end">10<tspan dy="-6" font-size="9">-8</tspan></text>
+<line x1="72" y1="222.333" x2="532" y2="222.333" stroke="#d8d8d8"/>
+<line x1="72" y1="196.78" x2="532" y2="196.78" stroke="#d8d8d8"/>
+<text x="66" y="200.78" text-anchor="end">10<tspan dy="-6" font-size="9">-6</tspan></text>
+<line x1="72" y1="171.227" x2="532" y2="171.227" stroke="#d8d8d8"/>
+<line x1="72" y1="145.675" x2="532" y2="145.675" stroke="#d8d8d8"/>
+<text x="66" y="149.675" text-anchor="end">10<tspan dy="-6" font-size="9">-4</tspan></text>
+<line x1="72" y1="120.122" x2="532" y2="120.122" stroke="#d8d8d8"/>
+<line x1="72" y1="94.5695" x2="532" y2="94.5695" stroke="#d8d8d8"/>
+<text x="66" y="98.5695" text-anchor="end">10<tspan dy="-6" font-size="9">-2</tspan></text>
+<line x1="72" y1="69.0169" x2="532" y2="69.0169" stroke="#d8d8d8"/>
+<line x1="72" y1="43.4643" x2="532" y2="43.4643" stroke="#d8d8d8"/>
+<text x="66" y="47.4643" text-anchor="end">1</text>
+<rect x="72" y="36" width="460" height="340" fill="none" stroke="#333333"/>
+<text x="302" y="428" text-anchor="middle">step h [s]</text>
+<text transform="translate(16,206) rotate(-90)" text-anchor="middle">error</text>
+<clipPath id="plot"><rect x="72" y="36" width="460" height="340"/></clipPath>
+<g clip-path="url(#plot)">
+<line x1="514.963" y1="88.7748" x2="259.407" y2="111.851" stroke="#888888" stroke-dasharray="2,3"/>
+<text x="255.407" y="115.851" text-anchor="end" fill="#666666" font-size="11">order 1</text>
+<line x1="514.963" y1="96.0568" x2="259.407" y2="142.209" stroke="#888888" stroke-dasharray="2,3"/>
+<text x="255.407" y="146.209" text-anchor="end" fill="#666666" font-size="11">order 2</text>
+<line x1="514.963" y1="183.261" x2="259.407" y2="275.566" stroke="#888888" stroke-dasharray="2,3"/>
+<text x="255.407" y="279.566" text-anchor="end" fill="#666666" font-size="11">order 4</text>
+<line x1="514.963" y1="221.184" x2="259.407" y2="336.565" stroke="#888888" stroke-dasharray="2,3"/>
+<text x="255.407" y="340.565" text-anchor="end" fill="#666666" font-size="11">order 5</text>
+<polyline fill="none" stroke="#0072B2" stroke-width="1.6" points="514.963,142.487 429.778,173.252 344.593,204.019 259.407,234.788 174.222,265.556 89.037,296.324 "/>
+<circle cx="514.963" cy="142.487" r="3.5" fill="#0072B2"/>
+<circle cx="429.778" cy="173.252" r="3.5" fill="#0072B2"/>
+<circle cx="344.593" cy="204.019" r="3.5" fill="#0072B2"/>
+<circle cx="259.407" cy="234.788" r="3.5" fill="#0072B2"/>
+<circle cx="174.222" cy="265.556" r="3.5" fill="#0072B2"/>
+<circle cx="89.037" cy="296.324" r="3.5" fill="#0072B2"/>
+<polyline fill="none" stroke="#D55E00" stroke-width="1.6" points="514.963,73.3906 429.778,82.3853 344.593,90.6529 259.407,98.607 174.222,106.423 89.037,114.175 "/>
+<rect x="511.463" y="69.8906" width="7" height="7" fill="#D55E00"/>
+<rect x="426.278" y="78.8853" width="7" height="7" fill="#D55E00"/>
+<rect x="341.093" y="87.1529" width="7" height="7" fill="#D55E00"/>
+<rect x="255.907" y="95.107" width="7" height="7" fill="#D55E00"/>
+<rect x="170.722" y="102.923" width="7" height="7" fill="#D55E00"/>
+<rect x="85.537" y="110.675" width="7" height="7" fill="#D55E00"/>
+<polyline fill="none" stroke="#009E73" stroke-width="1.6" points="514.963,197.936 429.778,236.51 344.593,274.999 259.407,313.466 174.222,351.952 89.037,363.407 "/>
+<polygon points="514.963,193.436 510.963,201.436 518.963,201.436" fill="#009E73"/>
+<polygon points="429.778,232.01 425.778,240.01 433.778,240.01" fill="#009E73"/>
+<polygon points="344.593,270.499 340.593,278.499 348.593,278.499" fill="#009E73"/>
+<polygon points="259.407,308.966 255.407,316.966 263.407,316.966" fill="#009E73"/>
+<polygon points="174.222,347.452 170.222,355.452 178.222,355.452" fill="#009E73"/>
+<polygon points="89.037,358.907 85.037,366.907 93.037,366.907" fill="#009E73"/>
+<polyline fill="none" stroke="#CC79A7" stroke-width="1.6" points="514.963,80.6726 429.778,96.0026 344.593,111.373 259.407,126.754 174.222,142.137 89.037,157.521 "/>
+<polygon points="514.963,76.1726 519.463,80.6726 514.963,85.1726 510.463,80.6726" fill="#CC79A7"/>
+<polygon points="429.778,91.5026 434.278,96.0026 429.778,100.503 425.278,96.0026" fill="#CC79A7"/>
+<polygon points="344.593,106.873 349.093,111.373 344.593,115.873 340.093,111.373" fill="#CC79A7"/>
+<polygon points="259.407,122.254 263.907,126.754 259.407,131.254 254.907,126.754" fill="#CC79A7"/>
+<polygon points="174.222,137.637 178.722,142.137 174.222,146.637 169.722,142.137" fill="#CC79A7"/>
+<polygon points="89.037,153.021 93.537,157.521 89.037,162.021 84.537,157.521" fill="#CC79A7"/>
+<polyline fill="none" stroke="#E69F00" stroke-width="1.6" points="514.963,167.876 429.778,198.635 344.593,229.4 259.407,260.169 174.222,290.939 89.037,321.469 "/>
+<circle cx="514.963" cy="167.876" r="3.5" fill="#ffffff" stroke="#E69F00" stroke-width="1.5"/>
+<circle cx="429.778" cy="198.635" r="3.5" fill="#ffffff" stroke="#E69F00" stroke-width="1.5"/>
+<circle cx="344.593" cy="229.4" r="3.5" fill="#ffffff" stroke="#E69F00" stroke-width="1.5"/>
+<circle cx="259.407" cy="260.169" r="3.5" fill="#ffffff" stroke="#E69F00" stroke-width="1.5"/>
+<circle cx="174.222" cy="290.939" r="3.5" fill="#ffffff" stroke="#E69F00" stroke-width="1.5"/>
+<circle cx="89.037" cy="321.469" r="3.5" fill="#ffffff" stroke="#E69F00" stroke-width="1.5"/>
+<polyline fill="none" stroke="#56B4E9" stroke-width="1.6" points="514.963,205.799 429.778,244.245 344.593,282.701 259.407,321.162 174.222,359.56 89.037,363.395 "/>
+<circle cx="514.963" cy="205.799" r="3.5" fill="#56B4E9"/>
+<circle cx="429.778" cy="244.245" r="3.5" fill="#56B4E9"/>
+<circle cx="344.593" cy="282.701" r="3.5" fill="#56B4E9"/>
+<circle cx="259.407" cy="321.162" r="3.5" fill="#56B4E9"/>
+<circle cx="174.222" cy="359.56" r="3.5" fill="#56B4E9"/>
+<circle cx="89.037" cy="363.395" r="3.5" fill="#56B4E9"/>
+<polyline fill="none" stroke="#000000" stroke-width="1.6" points="514.963,48.5926 429.778,53.8339 344.593,60.2128 259.407,67.2286 174.222,74.5781 89.037,82.0978 "/>
+<rect x="511.463" y="45.0926" width="7" height="7" fill="#000000"/>
+<rect x="426.278" y="50.3339" width="7" height="7" fill="#000000"/>
+<rect x="341.093" y="56.7128" width="7" height="7" fill="#000000"/>
+<rect x="255.907" y="63.7286" width="7" height="7" fill="#000000"/>
+<rect x="170.722" y="71.0781" width="7" height="7" fill="#000000"/>
+<rect x="85.537" y="78.5978" width="7" height="7" fill="#000000"/>
+</g>
+<line x1="546" y1="46" x2="570" y2="46" stroke="#0072B2" stroke-width="1.6"/>
+<circle cx="558" cy="46" r="3.5" fill="#0072B2"/>
+<text x="576" y="50">RK4</text>
+<line x1="546" y1="64" x2="570" y2="64" stroke="#D55E00" stroke-width="1.6"/>
+<rect x="554.5" y="60.5" width="7" height="7" fill="#D55E00"/>
+<text x="576" y="68">semi-implicit Euler</text>
+<line x1="546" y1="82" x2="570" y2="82" stroke="#009E73" stroke-width="1.6"/>
+<polygon points="558,77.5 554,85.5 562,85.5" fill="#009E73"/>
+<text x="576" y="86">Dormand-Prince</text>
+<line x1="546" y1="100" x2="570" y2="100" stroke="#CC79A7" stroke-width="1.6"/>
+<polygon points="558,95.5 562.5,100 558,104.5 553.5,100" fill="#CC79A7"/>
+<text x="576" y="104">generalised-alpha</text>
+<line x1="546" y1="118" x2="570" y2="118" stroke="#E69F00" stroke-width="1.6"/>
+<circle cx="558" cy="118" r="3.5" fill="#ffffff" stroke="#E69F00" stroke-width="1.5"/>
+<text x="576" y="122">SDIRK4</text>
+<line x1="546" y1="136" x2="570" y2="136" stroke="#56B4E9" stroke-width="1.6"/>
+<circle cx="558" cy="136" r="3.5" fill="#56B4E9"/>
+<text x="576" y="140">Radau IIA</text>
+<line x1="546" y1="154" x2="570" y2="154" stroke="#000000" stroke-width="1.6"/>
+<rect x="554.5" y="150.5" width="7" height="7" fill="#000000"/>
+<text x="576" y="158">linearly implicit Euler</text>
+</svg>

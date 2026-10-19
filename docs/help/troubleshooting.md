@@ -159,7 +159,11 @@ along the tree wherever `ConstraintSolver::mass_factorization` (Automatic by
 default) chooses it, and densely otherwise. The two agree to rounding (1e-15
 relative in one evaluation; the sedan's state after 500 steps of RK4 still
 within 1e-14), but a sensitive model can grow such differences over a long
-run.
+run, and a chaotic one grows them to the size of the motion: the four-bar
+with a pendulum on its coupler, run at 1 ms both ways, agreed to six digits
+for 20 s and then separated, ending 100 s with 53 % and 64 % of its energy
+lost ([the integrators, verified](../integrators.md), section 3). Compare
+such runs by their statistics, not point by point.
 To reproduce results from before, set `sim.solver().mass_factorization =
 ConstraintSolver::MassFactorization::Dense`; `tree_factorization()` says
 which one the last solve used. *(The mass matrix along the tree.)*
@@ -275,8 +279,26 @@ use `Integrator::RadauIIA` with error control: fifth order, it reaches 1e-7
 m on the bushed pendulum for less than half the evaluations
 generalised-alpha needs for 1e-6. For real time, where every step must cost
 the same, `Integrator::LinearlyImplicitEuler`: one evaluation a step, stable
-at any step, first order. *(Generalised-alpha; SDIRK4 and Radau IIA; linearly
-implicit Euler.)*
+at any step, first order (but see the next entries for very stiff springs
+between turning bodies). Measured costs for a given accuracy, method by
+method: [the integrators, verified](../integrators.md). *(Generalised-alpha;
+SDIRK4 and Radau IIA; linearly implicit Euler; the integrators verified.)*
+
+**The real-time integrator blows up, or gains energy, on stiff bushings or
+springs between bodies that turn.** Two different limits, both found by
+the verification (task 4.9). Before D40 the linearly implicit step kept only
+the symmetric part of the force derivatives, and a bushing that carries a
+large rotation has a stiffness far from symmetric (k_r times half the
+rotation): the bushed pendulum with 1e6 N m/rad diverged at 2, 1 and 0.5 ms.
+It now takes them whole. What remains is a limit of linearizing once per
+step: each attachment point moves along its tangent, the true motion along
+an arc, and a very stiff spring turns their gap, about k L (w h)^2 / 2, into
+a force that feeds energy in. On the pendulum with 1e8 N/m the energy rose
+by 0.21 J at 1 ms and 8.6 J at 2 ms, and the swing ended 4 cm and 48 cm off;
+at 0.5 ms and below it only lost energy. Keep k h^2 / m below about 25 for
+such springs, make the hinge a joint, or, off line, use `GeneralizedAlpha`
+or `RadauIIA`, whose Newton iterations do not have it. *(The integrators
+verified, D40.)*
 
 **The real-time integrator damps a fast motion away too soon.**
 `LinearlyImplicitEuler` is first order and, like backward Euler, damps
@@ -294,8 +316,8 @@ depends steeply on a body's velocity (a wheel's spin through the tyre's
 slip) must be coupled to it in the step: without that coupling the sedan
 accelerated a fifth too slowly at 1 ms. A dependence on the positions that
 is not symmetric (the tyre's rolling radius changing with its deflection)
-is left out on purpose: in the step's symmetric matrix it made a coasting
-car gain speed. Check a new element against `Simulator::force_jacobian`
+is left out on purpose: in the step's matrix (then symmetric, D35) it made
+a coasting car gain speed. Check a new element against `Simulator::force_jacobian`
 and a run with RK4 at a short step. *(Linearly implicit Euler.)*
 
 **With multirate, a car drifts or creeps although single-rate RK4 at the
@@ -315,8 +337,13 @@ that jumps within the step, or a step so long that the forces change their
 character across it. Check the forces at that state, shorten the step there,
 or make the jump continuous (or decide it at a step's end). With SDIRK4 or
 Radau IIA at a fixed step, error control (`step_control.adaptive`, on by
-default) shortens the step where Newton needs it instead. *(Generalised-alpha;
-SDIRK4 and Radau IIA.)*
+default) shortens the step where Newton needs it instead. A Newton
+tolerance far tighter than the step's accuracy makes it likelier: on the
+stiff bushed pendulum generalised-alpha at 2 ms failed with the tolerances
+at 1e-12 and ran at 1e-9 (its error there 2.7e-5 m); on the four-bar at 8
+ms likewise. Its longest steps measured: 2 ms on that pendulum, 5 ms on the
+sedan ([the integrators, verified](../integrators.md)). *(Generalised-alpha;
+SDIRK4 and Radau IIA; the integrators verified.)*
 
 **SDIRK4 is inaccurate on a model with stiff springs or bushings, and its
 error control does not notice.** Its stage order is 1: as springs stiffen
@@ -516,3 +543,4 @@ Before building on it (working rule 2):
 | Phase 4: constraints per integrator | The drift and its channel; generalised-alpha on a closed mechanism; a spinning body that blows up under explicit gyroscopic terms; a tolerance that is not positive (Simulations; MBD-K047) |
 | Phase 4: the inertia's velocity products implicit | A spinning body's wobble damped by the two Euler steps (Simulations); a matrix not positive definite (MBD-K045) |
 | Phase 4: the mass matrix along the tree | Results that differ in the last digits from before (Simulations); a machine 2.3 times slower from one day to the next (Slow runs) |
+| Phase 4: the integrators verified | The real-time step diverging, then gaining energy, on stiff bushings between turning bodies (Simulations); generalised-alpha's Newton at long steps with a tight tolerance (Simulations: MBD-K058); a chaotic model's long runs depending on rounding (Simulations: results differ) |

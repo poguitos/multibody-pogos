@@ -178,6 +178,16 @@ to a validated engine.*
     operation's fixed cost do to an operation count; where the crossover
     with a dense, blocked factorization lies, and setting a threshold after
     the measurement. *J: the mass matrix along the tree. D39.*
+33. **Choosing an integrator by measurement.** Work-precision diagrams; an
+    oscillator on which every method's answer is known in closed form; step
+    limits read from a model's eigenvalues; what the sedan's are (smooth
+    bodies, stiff wheel spins: the implicit methods with error control win);
+    a claim checked on the wrong kind of model (stable for linear springs,
+    divergent on a bushing carrying a rotation) and a workaround that
+    outlived its reason; a fix that left a second limit, found by a bound
+    derived from the physics (a single linearization per step on stiff
+    springs between turning bodies); chaos found by the smallest
+    perturbation at hand. *J: the integrators verified. D40, D41.*
 
 ## Part VII onwards: one part per phase still to come
 

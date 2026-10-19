@@ -45,11 +45,13 @@ and the journal entry of the work refers to them by number
 | D32 | Generalised-alpha on the state-space accelerations, with Newton on difference Jacobians | 14 Oct 2026 | In force, task 4.3; its constraints: D37 |
 | D33 | SDIRK4 on the stacked first-order system, kept for smooth models | 14-16 Oct 2026 | In force, task 4.4 |
 | D34 | Radau IIA for stiff mechanical models, with Newton held to a tolerance-dependent fraction | 16 Oct 2026, the method by the author | In force, task 4.4 |
-| D35 | Linearly implicit Euler, with force derivatives element by element | 16 Oct 2026 | In force, task 4.5; inertial terms: D38 |
+| D35 | Linearly implicit Euler, with force derivatives element by element | 16 Oct 2026 | In force, task 4.5; inertial terms: D38; derivatives whole: D40 |
 | D36 | Multirate RK4, fastest first, for the state elements' states | 17 Oct 2026 | In force, task 4.6 |
 | D37 | Constraints per integrator: projection after every method's steps, generalised-alpha's stabilized index-2 form as an option | 17 Oct 2026 | In force, task 4.7 |
 | D38 | The inertia's velocity products implicit, and the new velocities on the constraints, in the two Euler steps | 18 Oct 2026 | In force, task 4.7's open end |
 | D39 | The mass matrix factorized along the tree, the dense Cholesky kept for long chains | 18-19 Oct 2026 | In force, task 4.8 |
+| D40 | The linearly implicit step with its force derivatives whole, not their symmetric parts | 19 Oct 2026 | In force, task 4.9 |
+| D41 | The integrators verified by a program that writes the report's figures and tables | 19 Oct 2026 | In force, task 4.9 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -1106,3 +1108,76 @@ and the journal entry of the work refers to them by number
 - **Record.** Journal: the mass matrix along the tree; data
   `2026-10-19_sparse-solve.md`; `docs/kernel.md`, constrained dynamics;
   `docs/performance.md`, task 4.8.
+
+## D40. The linearly implicit step with its force derivatives whole, not their symmetric parts
+
+- **Context.** Task 4.9's verification ran every integrator on the bushed
+  pendulum (two free links held by bushings of 1e8 N/m and 1e6 N m/rad, the
+  hinge axis free). The linearly implicit step, the real-time integrator
+  (D35), whose description promised stability at any step for stiff springs
+  and bushings (checked on linear springs only), diverged within the first
+  second at 2, 1 and 0.5 ms. Probed: the bushings' rotational stiffness
+  decides it (at 1e2 N m/rad even 1e8 N/m ran at 2 ms; at 1e6 N m/rad even
+  1e6 N/m diverged there). The force derivatives were right (without
+  damping, K equal to differences of the whole generalized forces to 5e-8
+  of its norm) but far from symmetric: |K - K^T| 1.46e6 of |K| 5.6e8 after
+  0.3 s, a bushing's rotational stiffness, carrying the links' large
+  relative rotation about the free axis, coupling its other two axes by
+  about k_r times half the rotation. The step's matrix took only the
+  symmetric parts of K, C and the states' coupling (D35, so that a Cholesky
+  could solve it); h^2 times the part it dropped, 1.46 at 1 ms, was larger
+  than the links' inertia.
+- **Decision.** K, C and Tx G enter whole: W = M - h C - h^2 K - h Tx G + h
+  D, r = h^2 (K (v + h a) + C a - D a) + h Tx dx0. What D35 named as the
+  obstacle, a non-symmetric constrained solve that copes with redundant
+  constraints, D38 provided (`ConstraintSolver::constrained_solve_lu`), and
+  the step already used it because of D. W's symmetric part is still
+  checked for positive definiteness (MBD-K045). The assembly has fewer
+  terms; the solve is the same.
+- **Alternatives.** The symmetric parts (D35): divergence. The whole
+  dynamics differentiated (2 nv evaluations a step): not needed, since K
+  element by element was right; with damping it leaves out about c |v| (5e3
+  of 5.6e8 here: how a body's velocity turns with its pose at fixed joint
+  rates, part of the joints' geometry D35 left explicit), which is not the
+  cause (without damping the step diverged as well). Shorter steps: 0.25 ms
+  ran, a burden on every user of such a model.
+- **Consequences.** The pendulum runs at every step from 4 ms to 62.5 us,
+  of first order from 0.25 ms. The step still gains energy on it at 1 and
+  2 ms (kinetic plus gravity's energy up to +0.21 and +8.6 J, where it can
+  only fall): one linearization per step moves each attachment point along
+  its tangent, the true motion along an arc, and the stiff translational
+  spring turns their second-order gap, k L (w h)^2 / 2, into a force. The
+  gain depends on k h^2 alone (1e7 N/m: only at 2 ms; 1e6: none; the
+  rotational stiffness plays no part): the limit of a method that
+  linearizes once, which generalised-alpha's Newton iterations do not have.
+  Every other test passed unchanged, the vehicle's drives with the step
+  among them. A test keeps the pendulum bounded at 2 and 1 ms and without
+  energy gain at 0.5 ms.
+- **Record.** Journal: the integrators verified; data
+  `2026-10-19_integrators-verified.md`; `docs/integrators.md`;
+  `docs/kernel.md`, integrators; message K045.
+
+## D41. The integrators verified by a program that writes the report's figures and tables
+
+- **Context.** Task 4.9: "convergence plots, energy drift tables and
+  work-against-precision curves for each method, stored in
+  `docs/integrators.md`". The project builds with CMake and a C++ compiler
+  only; no Python with a plotting library is installed, and figures pasted
+  in by hand go stale when an integrator changes.
+- **Decision.** `bench/verify_integrators.cpp` (`mbd_verify`, built on
+  request like the benchmark) runs every method on six models, from an
+  oscillator with an exact solution to the sedan, and writes the figures as
+  SVG (`bench/svg_plot.hpp`, a small log-log plotter), the data as CSV into
+  `docs/integrators/`, and the report's tables to standard output. The
+  report quotes them; running the program again reproduces them. The
+  oscillator's figures are checked against each method's own recurrence,
+  and a test keeps that check (every method's energy over many steps equal
+  to its recurrence's, to 1e-13).
+- **Alternatives.** Python and matplotlib: a second toolchain for one
+  report. Tests that print: they run in every build and would make the
+  suite minutes longer. Tables only: the plan asks for plots, and a
+  work-precision comparison of eleven series reads better as a figure.
+- **Consequences.** Text-based figures that show up in a diff; the report
+  regenerated in about two minutes, pinned. The plotter is small and
+  general enough for later reports.
+- **Record.** Journal: the integrators verified; `docs/integrators.md`.

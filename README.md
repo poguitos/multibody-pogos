@@ -20,6 +20,7 @@ How the project has been developed, and why it is built the way it is, is record
 | `include/mbd/vehicle` | Suspension corners, vehicle builders, drivetrain |
 | `include/mbd/analysis` | Suspension kinematics, bicycle model, track, lap simulation, optimisation |
 | `tests` | One executable per folder above |
+| `bench` | Built on request: the timings (`mbd_bench`, [performance](docs/performance.md)) and the integrators' verification (`mbd_verify`, [the report](docs/integrators.md)) |
 | `documentation` | The plan, the development record (journal, decisions, book outline), review evidence, reference notes |
 | `docs` | Project documentation |
 | `scripts` | Build helper |

@@ -18,6 +18,9 @@ task that adds or changes a message, an option or a behaviour updates it.
   and Data, the recursive algorithms, constraints, the constrained solve, the
   simulator, initial-condition assembly, static equilibrium, linearisation,
   the checks and `validate()`.
+- [The integrators, verified](../integrators.md): each integrator's order,
+  energy over long runs and cost for a given accuracy, measured on six
+  models from an oscillator to the sedan, and what each is cheapest for.
 
 ## How-to guides
 
@@ -28,7 +31,7 @@ examples:
 |---|---|
 | Build a mechanism with loops | `tests/kernel/test_kernel_constrained.cpp` (four-bar), `tests/kernel/test_kernel_validate.cpp` |
 | Simulate it | `tests/kernel/test_kernel_simulator.cpp`, `tests/kernel/test_kernel_joints_physics.cpp` |
-| Simulate a stiff model (very stiff springs, bushings, contact; tyres at low speed) at long steps, or to a tight tolerance; choose an integrator | [The kernel, forces and simulation](../kernel.md#forces-and-simulation) (integrators, and the table for choosing one); `Integrator::GeneralizedAlpha`, `Integrator::RadauIIA`, `Integrator::SDIRK4`, `Integrator::LinearlyImplicitEuler` (real time), `implicit_control`; `tests/kernel/test_kernel_integrators.cpp` |
+| Simulate a stiff model (very stiff springs, bushings, contact; tyres at low speed) at long steps, or to a tight tolerance; choose an integrator | [The kernel, forces and simulation](../kernel.md#forces-and-simulation) (integrators, and the table for choosing one); [the integrators, verified](../integrators.md) (what each costs for a given accuracy, measured); `Integrator::GeneralizedAlpha`, `Integrator::RadauIIA`, `Integrator::SDIRK4`, `Integrator::LinearlyImplicitEuler` (real time), `implicit_control`; `tests/kernel/test_kernel_integrators.cpp` |
 | Simulate to a tolerance instead of a fixed step, see the steps taken, read the state between steps | [The kernel, forces and simulation](../kernel.md#forces-and-simulation) (integrators); `Integrator::DormandPrince`, `step_control`, `integrator_stats()`, `interpolate()`; `tests/kernel/test_kernel_integrators.cpp` |
 | Add states of your own (an actuator lag, a controller) integrated with the bodies | [The kernel, forces and simulation](../kernel.md#forces-and-simulation); `StateElement`, `sim.attach()`; `tests/kernel/test_kernel_states.cpp` |
 | Stop at the moment something happens (an impact, a threshold) and act on it | [The kernel, events](../kernel.md#events); `Simulator::events`; `tests/kernel/test_kernel_events.cpp` |
