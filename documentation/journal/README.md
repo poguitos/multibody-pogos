@@ -78,4 +78,5 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 17 Oct 2026 | [Phase 4: constraints per integrator](2026-10-17_phase-4-constraints-per-integrator.md) | 4.7, D37 | `8ed4c6c` | At the time |
 | 18 Oct 2026 | [Phase 4: the inertia's velocity products implicit in the Euler steps](2026-10-18_phase-4-implicit-inertia.md) | 4.7's open end, D38 | `576df64` | At the time |
 | 18-19 Oct 2026 | [Phase 4: the mass matrix factorized along the tree](2026-10-19_phase-4-sparse-solve.md) | 4.8, D39 | `953f48b` | At the time |
-| 19 Oct 2026 | [Phase 4: the integrators verified](2026-10-19_phase-4-integrators-verified.md) | 4.9, D40, D41 | see git log | At the time |
+| 19 Oct 2026 | [Phase 4: the integrators verified](2026-10-19_phase-4-integrators-verified.md) | 4.9, D40, D41 | `acf05c6` | At the time |
+| 19 Oct 2026 | [Phase 4 retrospective](2026-10-19_phase-4-retrospective.md) | Phase 4 gate, tag `v0.5.0`; H.6 for Phase 4 | `aa8876c` to this entry | At the time |

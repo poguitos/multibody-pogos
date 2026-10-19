@@ -124,3 +124,10 @@ mbd_add_test_exe(test_analysis
     test_bicycle_model.cpp
     test_optimization.cpp
 )
+
+# The how-to guides' examples (task H.6): each example of docs/help/howto/
+# runs here, and a test checks that the guides quote them exactly.
+mbd_add_test_exe(test_howto
+    howto/test_howto_time_integration.cpp
+    howto/test_howto_pages.cpp
+)

@@ -24,16 +24,23 @@ task that adds or changes a message, an option or a behaviour updates it.
 
 ## How-to guides
 
-Planned with each phase (task H.6). Until then, the tests are the worked
-examples:
+Written at each phase's gate (task H.6); every example in them is compiled
+and run as a test (`tests/howto/`), and a test checks that the guide quotes
+that code exactly:
+
+- [Time integration](howto/time-integration.md) (Phase 4): run with a fixed
+  step or to a tolerance, a stiff model, real time, states of your own
+  (actuators, lags) and multirate, a closed mechanism and its drift channel.
+
+For what has no guide yet, the tests are the worked examples:
 
 | To do this | See |
 |---|---|
 | Build a mechanism with loops | `tests/kernel/test_kernel_constrained.cpp` (four-bar), `tests/kernel/test_kernel_validate.cpp` |
 | Simulate it | `tests/kernel/test_kernel_simulator.cpp`, `tests/kernel/test_kernel_joints_physics.cpp` |
-| Simulate a stiff model (very stiff springs, bushings, contact; tyres at low speed) at long steps, or to a tight tolerance; choose an integrator | [The kernel, forces and simulation](../kernel.md#forces-and-simulation) (integrators, and the table for choosing one); [the integrators, verified](../integrators.md) (what each costs for a given accuracy, measured); `Integrator::GeneralizedAlpha`, `Integrator::RadauIIA`, `Integrator::SDIRK4`, `Integrator::LinearlyImplicitEuler` (real time), `implicit_control`; `tests/kernel/test_kernel_integrators.cpp` |
-| Simulate to a tolerance instead of a fixed step, see the steps taken, read the state between steps | [The kernel, forces and simulation](../kernel.md#forces-and-simulation) (integrators); `Integrator::DormandPrince`, `step_control`, `integrator_stats()`, `interpolate()`; `tests/kernel/test_kernel_integrators.cpp` |
-| Add states of your own (an actuator lag, a controller) integrated with the bodies | [The kernel, forces and simulation](../kernel.md#forces-and-simulation); `StateElement`, `sim.attach()`; `tests/kernel/test_kernel_states.cpp` |
+| Simulate a stiff model (very stiff springs, bushings, contact; tyres at low speed) at long steps, or to a tight tolerance; choose an integrator | [Guide](howto/time-integration.md#a-stiff-model); [the kernel, forces and simulation](../kernel.md#forces-and-simulation) (integrators, and the table for choosing one); [the integrators, verified](../integrators.md) (what each costs for a given accuracy, measured); `Integrator::GeneralizedAlpha`, `Integrator::RadauIIA`, `Integrator::SDIRK4`, `Integrator::LinearlyImplicitEuler` (real time), `implicit_control`; `tests/kernel/test_kernel_integrators.cpp` |
+| Simulate to a tolerance instead of a fixed step, see the steps taken, read the state between steps | [Guide](howto/time-integration.md#run-to-a-tolerance); [the kernel, forces and simulation](../kernel.md#forces-and-simulation) (integrators); `Integrator::DormandPrince`, `step_control`, `integrator_stats()`, `interpolate()`; `tests/kernel/test_kernel_integrators.cpp` |
+| Add states of your own (an actuator lag, a controller) integrated with the bodies | [Guide](howto/time-integration.md#states-of-your-own); [the kernel, forces and simulation](../kernel.md#forces-and-simulation); `StateElement`, `sim.attach()`; `tests/kernel/test_kernel_states.cpp` |
 | Stop at the moment something happens (an impact, a threshold) and act on it | [The kernel, events](../kernel.md#events); `Simulator::events`; `tests/kernel/test_kernel_events.cpp` |
 | Natural frequencies, damping and mode shapes about an equilibrium | [The kernel, linearisation](../kernel.md#linearisation); `linearize(sim)`; `tests/kernel/test_kernel_linearization.cpp`, `tests/test_quarter_car.cpp` |
 | Find the static equilibrium (a vehicle settled on its tyres), with its loads | [The kernel, static equilibrium](../kernel.md#static-equilibrium); `static_equilibrium(sim)`; `tests/kernel/test_kernel_statics.cpp`, `tests/vehicle/test_vehicle_statics.cpp` |
@@ -47,7 +54,7 @@ examples:
 | Make points or spheres touch a plane, with friction | [The kernel, contact](../kernel.md#forces-and-simulation); `PlaneContact`; `tests/forces/test_contact.cpp` |
 | Read joint reactions, constraint forces and energies | `compute_loads(sim)`; `tests/kernel/test_kernel_outputs.cpp` |
 | Record channels over a run and write them as CSV | `Recorder`; `tests/kernel/test_kernel_outputs.cpp` |
-| Watch how far a closed mechanism drifts from its constraints, and keep it on them | [The kernel, constraints per integrator](../kernel.md#forces-and-simulation); `constraint_drift()`, `add_drift_channels(recorder, sim)`, `enforce_constraints`, `constraint_tolerance`; `tests/kernel/test_kernel_drift.cpp` |
+| Watch how far a closed mechanism drifts from its constraints, and keep it on them | [Guide](howto/time-integration.md#a-closed-mechanism); [the kernel, constraints per integrator](../kernel.md#forces-and-simulation); `constraint_drift()`, `add_drift_channels(recorder, sim)`, `enforce_constraints`, `constraint_tolerance`; `tests/kernel/test_kernel_drift.cpp` |
 | Choose how the mass matrix is factorized (along the tree, or dense), or see which one a solve used | [The kernel, constrained dynamics](../kernel.md#constrained-dynamics); `sim.solver().mass_factorization`, `tree_factorization()`; `tests/kernel/test_kernel_sparse.cpp` |
 | Check a model before simulating it | [The kernel, checks](../kernel.md#checks); `validate()` |
 | See a model as text: bodies, joints, constraints, forces, counts | `describe(system)` or `describe(system, q)`; `tests/kernel/test_kernel_debugging.cpp` |
