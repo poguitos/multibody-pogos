@@ -49,6 +49,7 @@ and the journal entry of the work refers to them by number
 | D36 | Multirate RK4, fastest first, for the state elements' states | 17 Oct 2026 | In force, task 4.6 |
 | D37 | Constraints per integrator: projection after every method's steps, generalised-alpha's stabilized index-2 form as an option | 17 Oct 2026 | In force, task 4.7 |
 | D38 | The inertia's velocity products implicit, and the new velocities on the constraints, in the two Euler steps | 18 Oct 2026 | In force, task 4.7's open end |
+| D39 | The mass matrix factorized along the tree, the dense Cholesky kept for long chains | 18-19 Oct 2026 | In force, task 4.8 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -1043,3 +1044,65 @@ and the journal entry of the work refers to them by number
 - **Record.** Journal: the inertia's velocity products implicit; data
   `2026-10-18_implicit-inertia.md`; `docs/kernel.md`, integrators;
   `docs/performance.md`, D38; troubleshooting; message K045.
+
+## D39. The mass matrix factorized along the tree, the dense Cholesky kept for long chains
+
+- **Context.** Task 4.8: "sparse assembly and factorisation above a size
+  threshold; done when dense and sparse results agree and the crossover
+  size is measured". Every evaluation of the constrained dynamics
+  factorized the mass matrix by Eigen's dense Cholesky, n^3 / 6
+  multiply-adds for n velocities. A tree's mass matrix is zero wherever
+  neither of two velocities is the other's ancestor; a car's corners, each
+  hung from the chassis, leave most of it zero. The composite-rigid-body
+  algorithm already computes only the nonzero entries (its work follows the
+  same paths), so the assembly was sparse; the factorization was not.
+- **Decision.** Featherstone's LTL factorization (RBDA section 6.5),
+  `TreeCholesky`: M = L^T L along the velocity-level tree, eliminating from
+  the last velocity to the first, which leaves no fill-in when parents are
+  numbered first (the model's order); work sum_k (d_k (d_k + 1) / 2 + d_k +
+  1), d_k the number of velocity k's ancestors. L is stored transposed, so
+  that walking a velocity's ancestors runs down a column, and a path is
+  walked as runs of consecutively numbered velocities, each by a plain loop.
+  The range-space solve is unchanged with R = L^T in place of the dense
+  factor (M = R R^T): Z = L^-T J^T, M^-1 J^T x = L^-1 (Z x).
+  `ConstraintSolver::mass_factorization`: Automatic (default), Dense, Tree.
+  Automatic takes the tree's unless the model has more than 40 velocities
+  and the tree's work is at least 0.8 of the dense one's: a long chain. M
+  stays a dense nv x nv matrix of which the pattern is read.
+- **Alternatives.** All measured pinned in one session, alternately (data).
+  The dense Cholesky everywhere (as before): on the sedan (27 velocities,
+  tree work 0.26 of dense) the constrained forward dynamics 23.3 to 23.7 us
+  against 19.7, an RK4 step 123 to 125 us against 105 to 107. The same
+  factorization with L stored as in the book, scalar loops along the parent
+  pointers: each step along a path a stride of n doubles, 78 us on a chain
+  of 64 against 21 dense (the same work); as fast as the kept version on
+  short runs (the binary tree of 64: 2.0 against 2.6 us). Each run as an
+  Eigen segment operation: the chain of 64 at 34 us, but a fixed cost per
+  run that made the binary tree of 64 13.1 us and the sedan's forward
+  dynamics slower than dense (24.3 to 24.7 us against 23.6 to 24.1).
+  Eigen's general sparse Cholesky (SimplicialLLT, natural ordering, the
+  pattern analysed once, M's values copied in at each call): slower than
+  the dense one on every model measured (1.1 to 2.9 times) and than the
+  tree's by 1.6 to 13.7 times; its indexing costs more than the zeros save
+  at these sizes. A rule on the work ratio alone (the first, the tree's
+  below half the dense work): it chose dense for small models and chains up
+  to 32 velocities, where the tree's was measured faster, because the dense
+  factorization's speed per multiply-add grows with size. The tree's
+  always: 8 to 11 % slower than dense on a chain of 64, and more on longer
+  ones.
+- **Consequences.** The results agree to rounding: L^T L = M to 2e-16 of
+  |M|, the solver's accelerations to 2e-15 relative, the projected
+  positions identical, the sedan's state after 500 steps of RK4 within
+  1e-14. On the sedan the constrained forward dynamics takes 16 % less time;
+  against the previous commit a step takes 13 % less with RK4, 12 % with
+  generalised-alpha and 3 % with the linearly implicit step (which
+  factorizes its own W densely). The tree's factorization is faster on every
+  branched tree measured (up to 64 velocities: 3 to 8 times on a binary
+  tree, about 2 times with two chains) and on chains up to 32 velocities;
+  the dense one on longer chains, by 2 to 4 % at 48 and 8 to 11 % at 64.
+  Vehicles are trees of short branches. The rest of the constrained solve
+  (J M^-1 J^T, dense even where J is sparse) and the implicit steps'
+  iteration matrices stay dense.
+- **Record.** Journal: the mass matrix along the tree; data
+  `2026-10-19_sparse-solve.md`; `docs/kernel.md`, constrained dynamics;
+  `docs/performance.md`, task 4.8.

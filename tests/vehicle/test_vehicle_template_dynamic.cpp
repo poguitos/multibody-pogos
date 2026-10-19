@@ -1,7 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <Eigen/Geometry>
+#include <algorithm>
 #include <cmath>
+#include <utility>
 
 #include "mbd/vehicle/vehicle_template.hpp"
 #include "mbd/vehicle/drivetrain.hpp"
@@ -354,4 +356,46 @@ TEST_CASE("Template vehicles pass validate() with ten degrees of freedom", "[veh
         CHECK(r.redundant_equations == 0);
         CHECK(r.degrees_of_freedom == 10);
     }
+}
+
+TEST_CASE("Dynamic template: the sedan drives the same with the mass matrix factorized along its tree",
+          "[tmpl_dyn][sparse]")
+{
+    // Task 4.8 (D39): the double-wishbone sedan, a chassis on a free joint
+    // with four corners and a steering rack hung from it, half a second of
+    // throttle and steering with RK4 at 1 ms, once with the dense Cholesky of
+    // the mass matrix and once with the tree's factorization. Every step's
+    // solves differ by rounding only, so the states agree to rounding grown
+    // over 500 steps.
+    using namespace mbd;
+    auto run = [](kernel::ConstraintSolver::MassFactorization how, bool& tree_used) {
+        auto tmpl = VehicleTemplate::DefaultSedan();
+        tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
+        tmpl.rear_axle.suspension_type = SuspensionType::DoubleWishbone;
+        kernel::System sys;
+        auto vh = build_vehicle(sys, tmpl);
+        kernel::Simulator sim(sys);
+        sim.solver().mass_factorization = how;
+        set_vehicle_equilibrium(sim, vh);
+        sim.initialize();
+        Drivetrain dt(tmpl.drivetrain);
+        dt.initialize(sim, vh);
+        dt.connect(sim, vh);
+        dt.throttle = 0.4;
+        for (int k = 0; k < 500; ++k) {
+            vh.set_steering(0.01 * std::min(1.0, k / 200.0));
+            sim.step(0.001);
+        }
+        tree_used = sim.solver().tree_factorization();
+        return std::make_pair(VecX(sim.q), VecX(sim.v));
+    };
+    bool dense_tree = true, tree_tree = false;
+    const auto [q_dense, v_dense] = run(kernel::ConstraintSolver::MassFactorization::Dense, dense_tree);
+    const auto [q_tree, v_tree] = run(kernel::ConstraintSolver::MassFactorization::Tree, tree_tree);
+    INFO("|q| " << q_dense.norm() << ", difference " << (q_tree - q_dense).norm() << "; |v| " << v_dense.norm()
+                << ", difference " << (v_tree - v_dense).norm());
+    CHECK(!dense_tree);
+    CHECK(tree_tree);
+    CHECK((q_tree - q_dense).norm() < 1e-9 * q_dense.norm());
+    CHECK((v_tree - v_dense).norm() < 1e-8 * (1.0 + v_dense.norm()));
 }

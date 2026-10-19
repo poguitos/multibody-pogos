@@ -383,3 +383,55 @@ What the numbers show:
   body for every column, and the solves one column at a time.
 - Every step still does the same work: one evaluation (1.00 a step over the
   drive).
+
+## Task 4.8: the mass matrix along the tree, 19 October 2026
+
+The benchmark's rows "mass matrix factor and solve" time one factorization
+of an assembled mass matrix and one solve: Eigen's dense Cholesky, the
+factorization along the tree (`TreeCholesky`, D39) and, for comparison,
+Eigen's general sparse Cholesky (`SimplicialLLT`, natural ordering, pattern
+analysed once). A sweep of a root body carrying 1, 2 or 4 chains locates the
+crossover. Pinned, two runs alternated with the previous commit (`576df64`,
+built from an archive); figures from one session (raw data:
+`documentation/journal/data/2026-10-19_sparse-solve.md`).
+
+| model (velocities) | work ratio | dense [us] | tree [us] | Eigen sparse [us] |
+|---|---|---|---|---|
+| chain (16) | 1.20 | 1.72, 1.67 | 1.48, 1.44 | 2.45, 2.47 |
+| chain (32) | 1.10 | 6.66, 6.63 | 5.80, 5.67 | 10.60, 10.27 |
+| chain (48) | 1.06 | 13.82, 13.96 | 14.37, 14.18 | 26.22, 27.08 |
+| chain (64) | 1.05 | 25.64, 25.62 | 27.08, 27.86 | 53.89, 52.53 |
+| root and 2 chains (64) | 0.29 | 24.57, 24.78 | 11.87, 11.89 | 46.32, 48.32 |
+| root and 4 chains (64) | 0.09 | 25.39, 25.55 | 6.17, 6.19 | 44.95, 47.27 |
+| binary tree (64) | 0.02 | 24.45, 24.95 | 4.16, 3.15 | 43.13, 43.08 |
+
+The sedan (27 velocities, work ratio 0.26), every method, median of one 1 ms
+step [us]:
+
+| Method | before (576df64) | after |
+|---|---|---|
+| RK4 | 147.7, 143.6 | 126.1, 125.9 |
+| generalised-alpha | 99.0, 96.8 | 87.9, 83.6 |
+| generalised-alpha, stabilized | 141.4, 140.1 | 126.0, 123.3 |
+| linearly implicit Euler | 173.5, 168.1 | 166.1, 164.4 |
+
+What the numbers show:
+
+- **The tree's factorization wins on every branched tree**, by 2 times with
+  two chains and 4 to 8 with four or a binary tree, and on chains up to 32
+  velocities; Eigen's blocked dense Cholesky wins on longer chains (2 to 4 %
+  at 48, 8 to 11 % at 64 in two sessions). `ConstraintSolver`'s Automatic
+  setting follows: dense only above 40 velocities with the tree's work at
+  least 0.8 of the dense one's.
+- **On the sedan** the constrained forward dynamics takes 16 % less time, an
+  RK4 step 13 % less, generalised-alpha 11 to 12 %; the linearly implicit
+  step only 3 %, since it factorizes its own iteration matrix W, which need
+  not have the tree's pattern, densely.
+- **A general sparse Cholesky does not pay at these sizes**: Eigen's is
+  slower than the dense one on every model (1.1 to 2.9 times).
+- **How the loops are written matters as much as the operation count.** The
+  same factorization stored as in the book (L's rows walked in a
+  column-major matrix) took 3.8 times the dense time on a chain of 64; each
+  run of consecutive ancestors as an Eigen segment operation, 6.5 times its
+  scalar time on a binary tree of 64; plain loops over runs of L^T's columns
+  keep both cases fast (data, section 2).

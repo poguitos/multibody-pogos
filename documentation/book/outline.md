@@ -170,6 +170,14 @@ to a validated engine.*
     velocity terms, and velocities put on the constraints); the minor-axis
     rule as a numerical artefact; a green test suite near an instability.
     *J: the inertia's velocity products implicit. D38.*
+32. **Sparsity from topology.** Why a tree's mass matrix has the tree's
+    pattern and why numbering parents first leaves no fill-in; the
+    factorization along the tree and its work count; one algorithm written
+    three ways (the book's storage, vector operations, plain loops) and
+    timed on a chain and on trees, with what a cache line and a vector
+    operation's fixed cost do to an operation count; where the crossover
+    with a dense, blocked factorization lies, and setting a threshold after
+    the measurement. *J: the mass matrix along the tree. D39.*
 
 ## Part VII onwards: one part per phase still to come
 

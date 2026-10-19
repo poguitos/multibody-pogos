@@ -111,6 +111,7 @@ ConstraintSolver::ConstraintSolver(const Model& model,
     , constraints_(std::move(constraints))
     , m_(total_size(model, constraints_))
     , llt_M_(model.nv)
+    , tree_M_(model)
     , ldlt_A_(m_)
 {
     const int nv = model.nv;
@@ -161,10 +162,30 @@ void ConstraintSolver::calc_constraints(const Data& data, Real t)
     }
 }
 
+bool ConstraintSolver::uses_tree() const
+{
+    switch (mass_factorization) {
+        case MassFactorization::Dense: return false;
+        case MassFactorization::Tree: return true;
+        case MassFactorization::Automatic: break;
+    }
+    return model_.nv <= kDenseAboveVelocities || tree_M_.work() < kTreeWorkFraction * tree_M_.dense_work();
+}
+
+void ConstraintSolver::factorize_mass_matrix(const MatX& M)
+{
+    // The tree's factorization where it is chosen and M is positive definite
+    // on its pattern; the dense Cholesky otherwise.
+    tree_active_ = uses_tree() && tree_M_.compute(M);
+    if (!tree_active_) llt_M_.compute(M);
+    mass_matrix_factorized_ = true;
+}
+
 void ConstraintSolver::add_constraint_motion(const VecX& x, VecX& out)
 {
     work_v_.noalias() = Z_ * x;
-    llt_M_.matrixU().solveInPlace(work_v_);
+    if (tree_active_) tree_M_.solve_L(work_v_);   // M = L^T L: M^-1 J^T x = L^-1 (Z x)
+    else llt_M_.matrixU().solveInPlace(work_v_);
     out += work_v_;
 }
 
@@ -173,7 +194,8 @@ void ConstraintSolver::factorize_constraint_matrix()
     // With M = L L^T, J M^-1 J^T = (L^-1 J^T)^T (L^-1 J^T): one triangular
     // solve, and M^-1 J^T is never needed as a matrix.
     Z_ = J_.transpose();
-    llt_M_.matrixL().solveInPlace(Z_);
+    if (tree_active_) tree_M_.solve_Lt(Z_);   // M = L^T L: Z = L^-T J^T
+    else llt_M_.matrixL().solveInPlace(Z_);
     A_.noalias() = Z_.transpose() * Z_;
     // The equations behind dropped pivots are redundant.
     ldlt_A_.compute(A_);
@@ -209,11 +231,11 @@ const VecX& ConstraintSolver::forward_dynamics_from_kinematics(Data& data, const
     // Unconstrained accelerations, from the one kinematics pass.
     mass_matrix(model_, data);
     bias_forces(model_, data);
-    llt_M_.compute(data.M);
-    mass_matrix_factorized_ = true;
+    factorize_mass_matrix(data.M);
     rhs_v_ = tau - data.tau;
     v_dot_free_ = rhs_v_;
-    llt_M_.solveInPlace(v_dot_free_);
+    if (tree_active_) tree_M_.solve(v_dot_free_);
+    else llt_M_.solveInPlace(v_dot_free_);
     if (m_ == 0) {
         v_dot_ = v_dot_free_;
         return v_dot_;
@@ -315,8 +337,7 @@ ProjectionInfo ConstraintSolver::project(Data& data, VecX& q, VecX& v, Real t,
     // last forward_dynamics factorized (see reuse_mass_matrix).
     if (!(reuse_mass_matrix && mass_matrix_factorized_)) {
         crba(model_, data, q);
-        llt_M_.compute(data.M);
-        mass_matrix_factorized_ = true;
+        factorize_mass_matrix(data.M);
     }
 
     // Positions: Gauss-Newton steps dq = -M^-1 J^T (J M^-1 J^T)^-1 phi, each

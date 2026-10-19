@@ -30,6 +30,7 @@
 
 #include "mbd/kernel/constraints.hpp"
 #include "mbd/kernel/model.hpp"
+#include "mbd/kernel/tree_cholesky.hpp"
 
 namespace mbd::kernel {
 
@@ -161,6 +162,28 @@ public:
     /// point of the constraint manifold is chosen changes, to second order.
     bool reuse_mass_matrix{false};
 
+    /// How the mass matrix is factorized (task 4.8, D39): Dense, Eigen's
+    /// Cholesky; Tree, Featherstone's factorization along the tree
+    /// (TreeCholesky), which touches only the entries the tree's branches
+    /// leave nonzero; Automatic, the tree's, except on a model of more than
+    /// kDenseAboveVelocities velocities whose tree work, by the count of
+    /// each velocity's ancestors, is at least kTreeWorkFraction of the dense
+    /// one's: a long chain, where Eigen's blocked Cholesky is faster. The
+    /// results agree to rounding.
+    enum class MassFactorization { Automatic, Dense, Tree };
+    MassFactorization mass_factorization{MassFactorization::Automatic};
+    /// Automatic's rule, from the crossover measured in task 4.8: the tree's
+    /// factorization was faster on every branched tree measured (up to 64
+    /// velocities) and on chains up to 32; the dense one on chains of 48
+    /// (by 3 %) and 64 (by 11 %), where the two meet at about 0.9 of the
+    /// dense work.
+    static constexpr Index kDenseAboveVelocities = 40;
+    static constexpr Real kTreeWorkFraction = 0.8;
+    /// Whether the last factorization of the mass matrix was the tree's.
+    bool tree_factorization() const { return tree_active_; }
+    /// The tree factorization's structure and work estimate.
+    const TreeCholesky& tree_cholesky() const { return tree_M_; }
+
     const VecX& phi() const { return phi_; }
     const MatX& J() const { return J_; }
     const VecX& nu() const { return nu_; }
@@ -188,9 +211,16 @@ private:
     /// phi, J, nu and gamma from `data`, which holds forward_kinematics(q, v, 0).
     void calc_constraints(const Data& data, Real t);
 
-    /// With llt_M_ holding M = L L^T: Z_ = L^-1 J^T and A_ = J M^-1 J^T =
-    /// Z_^T Z_, factorized; sets info_.rank.
+    /// With M factorized, M = R R^T (R = L of the dense Cholesky, or L^T of
+    /// the tree's M = L^T L): Z_ = R^-1 J^T and A_ = J M^-1 J^T = Z_^T Z_,
+    /// factorized; sets info_.rank.
     void factorize_constraint_matrix();
+
+    /// Whether mass_factorization asks for the tree's factorization.
+    bool uses_tree() const;
+
+    /// Factorize M by the chosen method; sets tree_active_.
+    void factorize_mass_matrix(const MatX& M);
 
     /// x with A x = r, dropping the pivots of redundant equations.
     void solve_constraint_matrix(const VecX& r, VecX& x);
@@ -203,6 +233,8 @@ private:
     MatX J_, Z_, A_;
     VecX q_save_, v_dot_, v_dot_free_, rhs_v_, dv_, zero_v_, work_v_;
     Eigen::LLT<MatX> llt_M_;
+    TreeCholesky tree_M_;   ///< the tree's factorization of M
+    bool tree_active_{false};   ///< whether it holds the last factorization
     Eigen::LLT<MatX> llt_W_;   ///< constrained_solve's W
     /// constrained_solve_lu: W factorized with its pivots, W^-1 J^T on the
     /// independent equations, J W^-1 J^T on them factorized with its pivots.

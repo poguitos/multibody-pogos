@@ -75,6 +75,7 @@ mbd_add_test_exe(test_kernel
     kernel/test_kernel_states.cpp
     kernel/test_kernel_integrators.cpp
     kernel/test_kernel_drift.cpp
+    kernel/test_kernel_sparse.cpp
 )
 find_package(Threads REQUIRED)
 target_link_libraries(test_kernel PRIVATE Threads::Threads)

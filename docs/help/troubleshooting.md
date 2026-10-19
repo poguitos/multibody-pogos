@@ -153,6 +153,17 @@ target jumps, or a step too long for the motion. Switch on the step trace:
 the step where `projection_converged` first drops to 0, and the drift before
 it, locate the cause; `dump_state(sim)` there shows the configuration.
 
+**Results differ in the last digits from an earlier version, or a long run
+ends slightly elsewhere.** Since task 4.8 the mass matrix is factorized
+along the tree wherever `ConstraintSolver::mass_factorization` (Automatic by
+default) chooses it, and densely otherwise. The two agree to rounding (1e-15
+relative in one evaluation; the sedan's state after 500 steps of RK4 still
+within 1e-14), but a sensitive model can grow such differences over a long
+run.
+To reproduce results from before, set `sim.solver().mass_factorization =
+ConstraintSolver::MassFactorization::Dense`; `tree_factorization()` says
+which one the last solve used. *(The mass matrix along the tree.)*
+
 **The constraints drift.** `Simulator::constraint_drift()` (the drift
 channel; `add_drift_channels` puts it in a `Recorder`, and the trace has it
 as the `drift` and `velocity_drift` columns) gives what each step left off
@@ -385,8 +396,9 @@ agree within 1 %. *(Phase 2: performance, D21.)*
 **A run is slower than the recorded figure.** Build the commit of the recorded
 figure separately (`git archive -o x.tar <commit>`, `tar -xf`, configure with
 the main build's dependency sources) and run both alternately, pinned. The
-machine's own state can make everything 2.2 times slower. *(Phase 2:
-performance; static equilibrium.)*
+machine's own state can make everything 2.2 to 2.3 times slower (one RK4
+step of the sedan: 282 us one day, 123 the next). *(Phase 2: performance;
+static equilibrium; the mass matrix along the tree.)*
 
 **Single steps far longer than the median.** When single steps are timed
 (for a real-time budget), the first ones size the integrator's work and warm
@@ -503,3 +515,4 @@ Before building on it (working rule 2):
 | Phase 4: multirate | Held states that biased braking, and the drift from fast steps beyond the spins' limit (Simulations: multirate) |
 | Phase 4: constraints per integrator | The drift and its channel; generalised-alpha on a closed mechanism; a spinning body that blows up under explicit gyroscopic terms; a tolerance that is not positive (Simulations; MBD-K047) |
 | Phase 4: the inertia's velocity products implicit | A spinning body's wobble damped by the two Euler steps (Simulations); a matrix not positive definite (MBD-K045) |
+| Phase 4: the mass matrix along the tree | Results that differ in the last digits from before (Simulations); a machine 2.3 times slower from one day to the next (Slow runs) |

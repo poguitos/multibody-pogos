@@ -221,7 +221,8 @@ equations of a tree closed by constraints:
 
 with `b = rnea(q, v, 0)` (velocity products and gravity) and `J^T lambda`
 the constraint forces. It uses the range-space method: with the Cholesky
-factor `M = L L^T` and `Z = L^-1 J^T`, it solves
+factor `M = L L^T` (dense, or along the tree: below) and `Z = L^-1 J^T`, it
+solves
 `(Z^T Z) lambda = rhs - J M^-1 (tau - b)`, since `Z^T Z = J M^-1 J^T`, and
 adds `M^-1 J^T lambda = L^-T (Z lambda)` to the free accelerations; the
 matrix `M^-1 J^T` itself is never formed. One kinematics pass,
@@ -258,6 +259,31 @@ nearby point of the constraint manifold is chosen. It then moves v onto
 **Baumgarte stabilization** (`baumgarte_alpha`, `baumgarte_beta`) is off by
 default; with it the constraint error obeys `phi'' + 2 alpha phi' + beta^2
 phi = 0`.
+
+**The mass matrix along the tree** (task 4.8, D39). A tree's mass matrix is
+zero wherever neither of two velocities is the other's ancestor: a car's four
+corners, each hung from the chassis, leave most of it empty. `TreeCholesky`
+factorizes it as `M = L^T L` from the last velocity to the first
+(Featherstone's LTL factorization), which keeps that pattern exactly (no
+fill-in) and costs `sum_k (d_k (d_k + 1) / 2 + d_k + 1)` multiply-adds, `d_k`
+the number of velocity k's ancestors, against `n^3 / 6` dense. The range-space
+solve is unchanged with `R = L^T` in place of the dense factor: `Z = L^-T
+J^T`, `M^-1 J^T x = L^-1 (Z x)`. `mass_factorization` chooses:
+
+| Value | Factorization |
+|---|---|
+| `Automatic` (default) | The tree's, except on a model of more than 40 velocities whose tree work is at least 0.8 of the dense one's: a long chain, where Eigen's blocked dense Cholesky is faster |
+| `Dense` | Eigen's dense Cholesky, as before task 4.8 |
+| `Tree` | The tree's, always |
+
+The two agree to rounding (the tests compare them on every joint type, on the
+four-bar and on the sedan driving 500 steps); `tree_factorization()` says
+which the last solve used, and `tree_cholesky().work()` and `dense_work()`
+give the counts. On the sedan (27 velocities, a quarter of the dense work)
+the constrained forward dynamics takes 16 % less time, an RK4 step 14 % less
+([performance](performance.md#task-48-the-mass-matrix-along-the-tree-19-october-2026)).
+The composite-rigid-body algorithm already computes only the nonzero entries,
+so `M` stays an `nv x nv` matrix; only its pattern is read.
 
 **Memory.** The solver holds all its working storage, so `forward_dynamics`
 and `project` allocate nothing after construction, and neither do the
@@ -779,6 +805,15 @@ four-bar closed in 3D (rank 2 of 5) conserves energy over two seconds while
 its crank turns twice; that projection and Baumgarte stabilization return
 the state to the constraints; and, in the hidden `[alloc]` test, that nothing
 is allocated.
+
+`tests/kernel/test_kernel_sparse.cpp` checks the mass matrix's factorization
+along the tree (D39) on every joint type, in chains and branching trees: `L`
+has exactly the tree's pattern, the runs of consecutively numbered ancestors
+list each velocity's ancestors, `L^T L` is `M` to rounding and the solves are
+the dense ones; the work counts against their closed forms; the solver's
+accelerations, multipliers and projections with either factorization; and
+Automatic's choice on either side of its two thresholds. The dynamic sedan
+test drives 500 steps with each factorization and compares the states.
 
 `tests/kernel/test_kernel_analytic.cpp` holds closed-form cases: a free body
 at constant velocity, in free fall, Euler's equations and the torque-free

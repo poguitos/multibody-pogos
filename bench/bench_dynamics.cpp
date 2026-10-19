@@ -1,5 +1,6 @@
-// Timing of the dynamics algorithms (plan task 2.10), and of the
-// integrators on the sedan (task 4.5).
+// Timing of the dynamics algorithms (plan task 2.10), of the integrators on
+// the sedan (task 4.5), and of the mass matrix factorized densely and along
+// the tree (task 4.8).
 //
 // Built on request only:  scripts\build.ps1 -Target mbd_bench
 // Run:                    build\bench\mbd_bench.exe
@@ -16,9 +17,14 @@
 #include <string>
 #include <vector>
 
+#include <Eigen/Cholesky>
+#include <Eigen/SparseCholesky>
+#include <Eigen/SparseCore>
+
 #include "mbd/kernel/algorithms.hpp"
 #include "mbd/kernel/constrained_dynamics.hpp"
 #include "mbd/kernel/simulator.hpp"
+#include "mbd/kernel/tree_cholesky.hpp"
 #include "mbd/vehicle/vehicle_template.hpp"
 #include "mbd/vehicle/drivetrain.hpp"
 
@@ -73,15 +79,15 @@ namespace
                                rng.range(-offset, offset)));
     }
 
-    // n bodies on revolute joints with generic axes, and a random state.
-    // `tree` makes body i a child of body i / 2 (a binary tree); otherwise
-    // each body is a child of the previous one.
-    void build_revolute_system(kernel::Model& model, VecX& q, VecX& v, int n, bool tree)
+    // n bodies on revolute joints with generic axes, and a random state;
+    // body i is a child of body parent_of(i).
+    void build_revolute_system(kernel::Model& model, VecX& q, VecX& v, int n,
+                               const std::function<int(int)>& parent_of)
     {
         Lcg rng;
         const auto revolute = std::make_shared<kernel::RevoluteJointModel>();
         for (int i = 1; i <= n; ++i) {
-            const BodyIndex parent = tree ? BodyIndex(i / 2) : BodyIndex(i - 1);
+            const BodyIndex parent = BodyIndex(parent_of(i));
             auto inertia = RigidBodyInertia::from_solid_box(
                 rng.range(0.5, 3.0), Vec3(rng.range(0.05, 0.3), rng.range(0.05, 0.3), rng.range(0.05, 0.3)));
             inertia.com_B = Vec3(rng.range(-0.1, 0.1), rng.range(-0.1, 0.1), rng.range(-0.1, 0.1));
@@ -101,6 +107,36 @@ namespace
     {
         std::printf("| %-30s | %-32s | %10.2f |\n", model.c_str(), op.c_str(), us);
     }
+
+    // Task 4.8: Eigen's general sparse Cholesky on the mass matrix's lower
+    // triangle, its pattern analysed once and not reordered (the tree's
+    // numbering has no fill-in); timed with the copy of M's values into it.
+    double sparse_factor_and_solve_us(const kernel::TreeCholesky& tc, const MatX& M)
+    {
+        const Index n = M.rows();
+        std::vector<Eigen::Triplet<double>> entries;
+        for (Index k = 0; k < n; ++k) {
+            entries.emplace_back(static_cast<int>(k), static_cast<int>(k), M(k, k));
+            for (Index i = tc.parent(k); i >= 0; i = tc.parent(i)) {
+                entries.emplace_back(static_cast<int>(k), static_cast<int>(i), M(k, i));
+            }
+        }
+        Eigen::SparseMatrix<double> S(n, n);
+        S.setFromTriplets(entries.begin(), entries.end());
+        Eigen::SimplicialLLT<Eigen::SparseMatrix<double>, Eigen::Lower, Eigen::NaturalOrdering<int>> llt;
+        llt.analyzePattern(S);
+        const VecX b = VecX::Ones(n);
+        VecX x = b;
+        return time_per_call_us([&] {
+            for (int j = 0; j < S.outerSize(); ++j) {
+                for (Eigen::SparseMatrix<double>::InnerIterator it(S, j); it; ++it) {
+                    it.valueRef() = M(it.row(), it.col());
+                }
+            }
+            llt.factorize(S);
+            x = llt.solve(b);
+        });
+    }
 }
 
 int main()
@@ -112,7 +148,8 @@ int main()
         for (int n : {2, 4, 8, 16, 32, 64}) {
             kernel::Model model;
             VecX q, v;
-            build_revolute_system(model, q, v, n, tree);
+            // A binary tree (body i a child of body i / 2) or a chain.
+            build_revolute_system(model, q, v, n, [tree](int i) { return tree ? i / 2 : i - 1; });
             model.gravity = Vec3(0.0, -g_accel, 0.0);
             kernel::Data data(model);
             const VecX zero = VecX::Zero(model.nv);
@@ -127,6 +164,47 @@ int main()
                 time_per_call_us([&] { volatile double x = kernel::rnea(model, data, q, v, zero)(0); (void)x; }));
             row(name, "forward dynamics",
                 time_per_call_us([&] { volatile double x = kernel::aba(model, data, q, v, zero)(0); (void)x; }));
+            // Task 4.8: the mass matrix factorized and solved densely and along
+            // the tree, and the tree's work estimate against the dense one.
+            const MatX M = kernel::crba(model, data, q);
+            const VecX b = VecX::Ones(model.nv);
+            VecX x = b;
+            Eigen::LLT<MatX> llt(model.nv);
+            kernel::TreeCholesky tree_factor(model);
+            row(name, "mass matrix factor and solve, dense", time_per_call_us([&] {
+                llt.compute(M); x = b; llt.solveInPlace(x); }));
+            row(name, "mass matrix factor and solve, tree", time_per_call_us([&] {
+                tree_factor.compute(M); x = b; tree_factor.solve(x); }));
+            row(name, "mass matrix factor and solve, Eigen sparse", sparse_factor_and_solve_us(tree_factor, M));
+            row(name, "tree work / dense work (ratio, not us)", tree_factor.work() / tree_factor.dense_work());
+        }
+    }
+
+    // Task 4.8, the crossover: the mass matrix factorized densely and along
+    // the tree, on a root body carrying 1, 2 or 4 chains numbered one after
+    // the other (a chain, a fork, a car's corners), at the sizes around
+    // where the two meet.
+    for (int branches : {1, 2, 4}) {
+        for (int n : {12, 16, 24, 32, 48, 64}) {
+            const int length = (n - 1 + branches - 1) / branches;   // bodies per chain
+            kernel::Model model;
+            VecX q, v;
+            build_revolute_system(model, q, v, n, [length](int i) {
+                return i == 1 ? 0 : (i - 2) % length == 0 ? 1 : i - 1; });
+            kernel::Data data(model);
+            const std::string name = "root and " + std::to_string(branches) + " chain"
+                                   + (branches > 1 ? "s, " : ", ") + std::to_string(n) + " bodies";
+            const MatX M = kernel::crba(model, data, q);
+            const VecX b = VecX::Ones(model.nv);
+            VecX x = b;
+            Eigen::LLT<MatX> llt(model.nv);
+            kernel::TreeCholesky tree_factor(model);
+            row(name, "mass matrix factor and solve, dense", time_per_call_us([&] {
+                llt.compute(M); x = b; llt.solveInPlace(x); }));
+            row(name, "mass matrix factor and solve, tree", time_per_call_us([&] {
+                tree_factor.compute(M); x = b; tree_factor.solve(x); }));
+            row(name, "mass matrix factor and solve, Eigen sparse", sparse_factor_and_solve_us(tree_factor, M));
+            row(name, "tree work / dense work (ratio, not us)", tree_factor.work() / tree_factor.dense_work());
         }
     }
 
@@ -162,14 +240,26 @@ int main()
             volatile double x = kernel::crba(model, data, q)(0, 0); (void)x; }));
         row(name, "bias forces", time_per_call_us([&] {
             volatile double x = kernel::rnea(model, data, q, v, zero)(0); (void)x; }));
+        solver.mass_factorization = kernel::ConstraintSolver::MassFactorization::Dense;
         row(name, "constrained forward dynamics", time_per_call_us([&] {
             volatile double x = solver.forward_dynamics(data, q, v, zero, 0.0)(0); (void)x; }));
+        solver.mass_factorization = kernel::ConstraintSolver::MassFactorization::Tree;
+        row(name, "constrained forward dynamics, tree", time_per_call_us([&] {
+            volatile double x = solver.forward_dynamics(data, q, v, zero, 0.0)(0); (void)x; }));
+        row(name, "tree work / dense work (ratio, not us)",
+            solver.tree_cholesky().work() / solver.tree_cholesky().dense_work());
+        row(name, "velocities (count, not us)", static_cast<double>(model.nv));
+        solver.mass_factorization = kernel::ConstraintSolver::MassFactorization::Dense;
         row(name, "accelerations, with the forces", time_per_call_us([&] {
             volatile double x = sim.acceleration(q, v, sim.time)(0); (void)x; }));
         row(name, "constraint projection", time_per_call_us([&] {
             VecX qp = q, vp = v;
             solver.project(data, qp, vp, 0.0); }));
+        sim.solver().mass_factorization = kernel::ConstraintSolver::MassFactorization::Dense;
         row(name, "one RK4 step of 1 ms, everything", time_per_call_us([&] { sim.step(0.001); }));
+        sim.solver().mass_factorization = kernel::ConstraintSolver::MassFactorization::Tree;
+        row(name, "one RK4 step of 1 ms, tree", time_per_call_us([&] { sim.step(0.001); }));
+        sim.solver().mass_factorization = kernel::ConstraintSolver::MassFactorization::Automatic;
     }
 
     // The integrators on the sedan (task 4.5): the median time of one 1 ms

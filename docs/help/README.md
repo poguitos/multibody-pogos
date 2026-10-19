@@ -45,6 +45,7 @@ examples:
 | Read joint reactions, constraint forces and energies | `compute_loads(sim)`; `tests/kernel/test_kernel_outputs.cpp` |
 | Record channels over a run and write them as CSV | `Recorder`; `tests/kernel/test_kernel_outputs.cpp` |
 | Watch how far a closed mechanism drifts from its constraints, and keep it on them | [The kernel, constraints per integrator](../kernel.md#forces-and-simulation); `constraint_drift()`, `add_drift_channels(recorder, sim)`, `enforce_constraints`, `constraint_tolerance`; `tests/kernel/test_kernel_drift.cpp` |
+| Choose how the mass matrix is factorized (along the tree, or dense), or see which one a solve used | [The kernel, constrained dynamics](../kernel.md#constrained-dynamics); `sim.solver().mass_factorization`, `tree_factorization()`; `tests/kernel/test_kernel_sparse.cpp` |
 | Check a model before simulating it | [The kernel, checks](../kernel.md#checks); `validate()` |
 | See a model as text: bodies, joints, constraints, forces, counts | `describe(system)` or `describe(system, q)`; `tests/kernel/test_kernel_debugging.cpp` |
 | Record how every step went (projection, residuals, rank, energy, events) and find what went wrong | `Simulator::trace_steps`, `write_trace(path)`, `dump_state(sim)`; [the kernel, checks](../kernel.md#checks); `tests/kernel/test_kernel_debugging.cpp` |

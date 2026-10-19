@@ -14,6 +14,7 @@ add_library(multibody_core
     kernel/simulator_implicit.cpp
     kernel/simulator_linear.cpp
     kernel/simulator_multirate.cpp
+    kernel/tree_cholesky.cpp
     kernel/checks.cpp
     kernel/validate.cpp
     kernel/joint_forces.cpp
