@@ -226,10 +226,12 @@ Tests added (506 registered with ctest on Linux, all passing; 499 before):
   in 556 s (the two new cases 4.4 and 6.7 s). The closing commit
   (`85de229`) recorded that run as having no sanitizer report; its full log
   held two undefined-behaviour reports ("What went wrong", D45). With the
-  code fixed, 508 of 508 passed again on Linux. The sanitizer configuration
-  with CI's new flags, which stop at the first report, was running on this
-  machine when the fix was committed; its result is recorded with the next
-  commit.
+  code fixed (`e7ea65e`), 508 of 508 passed again on Linux, and the
+  sanitizer configuration rebuilt with CI's new flags, which stop at the
+  first report: 175 of 175 passed in 348 s, its full log without an
+  undefined-behaviour or address report. CI's Debug no-allocation job, run
+  here the same way (`EIGEN_RUNTIME_NO_MALLOC`): `test_kernel "[alloc]"` (1
+  case) and `test_alloc` (2 cases, 24 assertions) passed.
 
 Before the first push (`cc76a14`), CI's sanitizer configuration was also run
 on this machine: 173 of 173 tests passed, in 535 s, of which the five
@@ -237,8 +239,8 @@ benchmarks took 195 s (A05 80 s, A04 63 s; 3 s in a normal build). It was
 recorded as having no sanitizer report, read from the ctest summary in the
 same way; its full log was overwritten, and the code behind the reports was
 there. Not run here: the Windows build (no MSVC on this machine) and the
-Doxygen reference (Doxygen not installed); CI runs both. CI's Debug no-allocation job
-(`EIGEN_RUNTIME_NO_MALLOC`) had not been run here either up to this point.
+Doxygen reference (Doxygen not installed); CI runs both. Until the fix, CI's
+Debug no-allocation job had not been run here either.
 
 ## Measurements
 
@@ -289,8 +291,13 @@ González, at six and at nine digits).
   Ours changes by at most 8.2e-10 m between tolerances 1e-8 and 1e-10. The
   bounds would catch a fault of the model: a period off by a fraction e
   moves the sleeve at 10 s by up to 7.5 e m (half the swing, 0.122 m, times
-  2 pi times 9.76 swings), so e = 7e-7 already fails against the six-digit
-  result.
+  2 pi times 9.76 swings). Both results lie above ours at 10 s, where the
+  sleeve falls, and a longer period raises ours there, so the limits depend
+  on the sign. Measured on our own motion run slower or faster by 1 + e: a
+  period shorter by 4.3e-7 or longer by 8.1e-7 fails against the six-digit
+  result, one shorter by 1.8e-6 or longer by 3.6e-6 against the nine-digit
+  one. (The closing commit, `85de229`, said that e = 7e-7 fails either way:
+  true only for a period too short, as a second check found.)
 - **The mistake it exposed**: the 40 s "slow swing" (in "What went wrong").
 
 With that, every problem meets a published reference (A03, A04, A05) or a

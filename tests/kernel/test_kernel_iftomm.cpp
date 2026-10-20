@@ -594,15 +594,19 @@ TEST_CASE("IFToMM A05: the flyball governor against two results in the library",
     //     already 9.2e-7 m off at 1 s, each second's largest from 7.7e-7 to
     //     2.0e-6 m (at 9.5 s), rising slowly. Allowed 5e-6 m.
     //   - 117, nine digits: 1.3e-7 m off at 1 s, then drifting at about 7e-7
-    //     m per second, to 6.8e-6 m at 10 s; it moves away from 116 in the
-    //     same way (1.05e-6 m at 1 s, 5.7e-6 m at 10 s). Allowed 2e-5 m,
-    //     room for that drift to grow threefold.
+    //     m per second, to 6.8e-6 m at 10 s; it moves away from 116 more
+    //     slowly, about 5e-7 m per second (1.05e-6 m at 1 s, 5.7e-6 m at
+    //     10 s). Allowed 2e-5 m, room for that drift to grow threefold.
     //
     // The swing is the same in all three: between 0.500 and 0.744 m, period
     // 1.025 s. The bounds are tight against a fault of the model: a period
     // longer or shorter by a fraction e moves s at 10 s by up to 0.122 m
-    // (half the swing) x 2 pi x 9.76 swings x e = 7.5 e m, so a period off by
-    // about 7e-7 of itself fails against 116 and one off by 3e-6 against 117.
+    // (half the swing) x 2 pi x 9.76 swings x e = 7.5 e m. Both results lie
+    // above ours at 10 s, where s falls (116 by 1.1e-6 m, 117 by 6.8e-6), and
+    // a longer period raises ours there, so the limits depend on the sign.
+    // Measured on our motion run slower or faster by 1 + e (data file of the
+    // record): a period shorter by 4.3e-7 or longer by 8.1e-7 fails against
+    // 116, and one shorter by 1.8e-6 or longer by 3.6e-6 against 117.
     Flyball f;
     Simulator sim(f.sys);
     configure(sim, Integrator::RadauIIA, 1e-8);

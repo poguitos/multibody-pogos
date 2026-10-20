@@ -12,7 +12,7 @@ also needed a temporary edit of `RankRevealingLDLT::kRankTolerance`, undone
 afterwards. Section 6 is the committed tests' own output. Section 7 is mixed:
 the committed library cases print the size of each largest difference (the
 table's last row, the governor's two), with the commands given there; the
-rest comes from two more scratch cases of the same kind, also removed and
+rest comes from three more scratch cases of the same kind, also removed and
 described there, except González's energy column, read with awk. The
 commands for section 6:
 
@@ -223,7 +223,9 @@ Everything else here is from scratch cases (removed). The first, which read
 the uploads, printed the largest distance of P2 from each result with its
 time (the table's last row, the same at 1e-10 and 1e-12), and our P2 at
 1e-12 at the five times given below the table. The second, written after a
-review of this section, printed the rest. It used the committed cases'
+review of this section, printed the rest but the governor's thresholds,
+which a third gave (at the end of this section). The second used the
+committed cases'
 models and settings, ran each model again at a tighter tolerance (Bricard's
 mechanism at 1e-12, the governor at 1e-10), and ran the governor once more
 with Radau IIA at 1e-8, sampled every 1 ms to 30 s. It printed the values at
@@ -345,3 +347,32 @@ reproduces the first run of section 5 (t, s [m], ds/dt [m/s]):
 2 s is 2 / 1.02467 = 1.9518 swings, so each sample falls 0.0482 of a swing
 earlier in it than the one before: the samples trace one swing every
 2 / 0.0482 = 41.5 s, the "period near 40 s" of section 5.
+
+The governor's thresholds, from the third scratch case, written after a
+second check of this record had found the first estimate wrong. A model
+whose period is longer by the fraction e moves as s(t / (1 + e)). Ours was
+run with Radau IIA at 1e-8 every 1 ms to 10.01 s, s between samples taken by
+cubic Hermite interpolation on (s, ds/dt) (against a separate run sampled
+every 0.1 s: within 6.6e-10 m), and the largest |result - s(t / (1 + e))|
+over the result's 101 rows found for each e; the limits by bisection:
+
+```
+e = 0:        116 2.035e-06 m,           117 6.771e-06 m
+e = -7.0e-07: 116 6.894e-06 m (t 9.5)    117 1.200e-05 m (t 10.0)
+e = +7.0e-07: 116 4.150e-06 m (t 10.0)   117 1.538e-06 m (t 10.0)
+e = -1.0e-06: 116 8.977e-06 m (t 9.5)    117 1.425e-05 m (t 10.0)
+e = +1.0e-06: 116 6.393e-06 m (t 10.0)   117 1.155e-06 m (t 9.5)
+e = -3.0e-06: 116 2.351e-05 m (t 10.0)   117 2.920e-05 m (t 10.0)
+e = +3.0e-06: 116 2.134e-05 m (t 10.0)   117 1.566e-05 m (t 10.0)
+116 (bound 5e-6) fails for a period shorter by 4.271e-07 (first at t 9.5) or longer by 8.137e-07 (t 10.0)
+117 (bound 2e-5) fails for a period shorter by 1.769e-06 (first at t 10.0) or longer by 3.581e-06 (t 10.0)
+t |ds/dt| at 10 s: 7.4760 m, the largest over the 0.1 s samples
+```
+
+The limits differ by sign because both results lie above ours at 10 s, where
+s falls at 0.748 m/s, and a longer period raises ours there. 117 comes within
+1.2e-6 m of ours run 1e-6 slower: it behaves like a period about 1e-6 longer
+than ours. The first estimate, 7.5 e m against each bound without the
+results' own differences, gave 7e-7 and 3e-6 in either direction; it was
+recorded so in the test's comment and the closing commit's message
+(`85de229`).
