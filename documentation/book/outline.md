@@ -213,7 +213,17 @@ journal entries and retrospective.
   debugging aids.*
 - **Working with an AI assistant.** The March 2026 rewrite from an AI proposal,
   the review, and the collaboration since: what worked, what had to be
-  checked, and why every claim was tied to a measurement. *All journal entries.*
+  checked, and why every claim was tied to a measurement. With it, the
+  book's statement on the use of AI (what was written with the assistant, how
+  it was specified and checked, what remained the author's), as Díaz Rivera's
+  2026 thesis has one; Barba's numerical-methods course (its appendix on
+  working with agents) as the vocabulary: task specification, acceptance
+  evidence decided first, independent expectations. *All journal entries;
+  J: ideas from external sources; D42.*
+- **Weighing outside work.** Sixteen sources read against the program,
+  each with a verdict and a place in the plan or a reason for none; the
+  strongest ideas came from outside vehicle dynamics. *J: ideas from external
+  sources; D42.*
 
 ## Appendices
 

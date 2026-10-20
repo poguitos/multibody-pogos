@@ -52,6 +52,7 @@ and the journal entry of the work refers to them by number
 | D39 | The mass matrix factorized along the tree, the dense Cholesky kept for long chains | 18-19 Oct 2026 | In force, task 4.8 |
 | D40 | The linearly implicit step with its force derivatives whole, not their symmetric parts | 19 Oct 2026 | In force, task 4.9 |
 | D41 | The integrators verified by a program that writes the report's figures and tables | 19 Oct 2026 | In force, task 4.9 |
+| D42 | Ideas from external sources adopted into the plan | 20 Oct 2026 | In force, plan amended (5.1, 5.2, 5.5, 7.2, 7.6, 7.8, 8.2, 8.6, 9.1, 9.3, 9.5, 9.7, 10.1, 10.7, 13.2, 13.3, 13.5, 13.8, 13.9, 14.7, H.7) |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -1181,3 +1182,68 @@ and the journal entry of the work refers to them by number
   regenerated in about two minutes, pinned. The plotter is small and
   general enough for later reports.
 - **Record.** Journal: the integrators verified; `docs/integrators.md`.
+
+## D42. Ideas from external sources adopted into the plan
+
+- **Context.** Before Phase 5 the author gave nine links (five GitHub
+  repositories, a course, a product site, a plot catalogue, an article) and
+  five documents, then two more repositories, asking which ideas would make
+  the program better. Each was read and judged against what the program
+  already has (`documentation/review_2026-10-20/external_sources.md`); the
+  review proposed fourteen changes, ranked, and the author adopted them all
+  (20 October 2026).
+- **Decision.** The plan is amended in the phases where each belongs, every
+  amended task marked D42:
+  - **5.1** manufactured trajectories (a prescribed motion, its forces by
+    inverse dynamics, every integrator required to return it at its order),
+    from the verification methods of Barba's numerical-methods course; a rigid
+    body on three bushings against eig(K, M) in closed form, with the modal
+    energy distribution added to the linearisation, from Seddighi's
+    motor-mount optimisation. **5.2** contradictory constraints reported by
+    the conflicting equations (JAOT's minimal conflicting set). **5.5**
+    optional mutation testing (JAOT).
+  - **7.2** ISO 8608 random roads (the SciML brief). **7.6** a damper with a
+    series stiffness and a Bouc-Wen bushing as state elements, checked on a
+    virtual damper dyno (the SciML brief, Dobre et al. 2026); parametric
+    bushing curves (Chindamo et al.). **7.8** a hysteretic driveline isolator.
+  - **8.2** unknown keys are errors; **8.6** a test that every parameter of a
+    reference car changes the built model (JAOT's input-sensitivity gate).
+  - **9.1** exact hardpoint sensitivities from the constraint Jacobians, and
+    Magri et al. 2024 as a compliance reference (Chindamo et al.). **9.3**
+    pure pursuit or Stanley with a PI speed loop, then LQR (Yano's guide),
+    tested by derived results. **9.5** channels named with their units and the
+    derived vehicle-dynamics channels, laps, corners and phases (TUM).
+    **9.7, new:** correlation with measured data (MOVEdot, TUM, Fast-F1).
+  - **10.1** an elevation profile from public telemetry; **10.7** real laps as
+    a realism check (Fast-F1).
+  - **13.2, 13.3** kinematic sensitivities and the motor-mount benchmark;
+    **13.5** discipline for fitted models (held-out test used once, constant
+    baseline, errors with the range, a coded out-of-range warning; the
+    Díaz Rivera thesis, the Siemens white paper); **13.8** compact results
+    with handles, structured errors from the message catalogue, an MCP
+    server, skills for users' agents (headroom, REA, JAOT, ampl-agents);
+    **13.9, new:** parameter sensitivities of a simulation.
+  - **14.7, new:** Adams/Car property files.
+  - **H.7, new:** the working rules in the repository (`CLAUDE.md`,
+    `AGENTS.md`; ampl-agents, the course's `AGENTS.md`).
+  - Effort estimates raised by about 100 to 150 hours; the risk "no measured
+    vehicle data" and the reference appendix updated.
+- **Alternatives.** Not adopted: installing headroom (it routes the sessions
+  through a proxy and compresses logs that are read exactly); using REA on
+  any program (the commercial tools forbid reverse engineering, and the
+  formats needed are documented text); anyplot (the plots already use a
+  colour-blind-safe palette); field surrogates on meshes and PINNs (relevant
+  only with our own CFD; PINNs not proven at scale); ingestion of ROS, MCAP
+  and CAN logs; path planning. Copying code: nothing is copied; ideas are
+  reimplemented from their published descriptions and cited (licences: Apache
+  2.0, MIT, CC-BY 4.0 and BSD-3).
+- **Consequences.** Phase 5 gains two strong checks (manufactured
+  trajectories; the mount case) at small cost. The plan now validates the
+  car against measured data (9.7), not only against other models. Several
+  later tasks have sharper "done when" conditions. Local copies of the
+  sources are in `C:\dev\references\` (outside the repository), as the review
+  records; the five PDFs stay in `documentation/`, which git does not track
+  for PDFs.
+- **Record.** Journal: ideas from external sources;
+  `documentation/review_2026-10-20/external_sources.md`;
+  `documentation/Master_plan.md`.

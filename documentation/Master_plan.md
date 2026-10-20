@@ -1,6 +1,6 @@
 # Multibody engine: review and master plan
 
-Revision of 2 October 2026. This document replaces `Development_schedule.txt` (November 2025) and `Multibody plan.pdf` (February 2026) as the single roadmap. Both older plans are folded in here; nothing in them has been dropped.
+Revision of 2 October 2026. This document replaces `Development_schedule.txt` (November 2025) and `Multibody plan.pdf` (February 2026) as the single roadmap. Both older plans are folded in here; nothing in them has been dropped. Amended on 20 October 2026 with ideas from external sources (D42; [review_2026-10-20/external_sources.md](review_2026-10-20/external_sources.md)); each amended task says so.
 
 It has four parts: where the project stands (section 1), what "finished" means (section 2), what the review found (section 3), and the plan itself (sections 4 to 7).
 
@@ -192,20 +192,20 @@ Decisions taken since the review, from D9 on, are recorded in [decisions.md](dec
 | 2 | One kinematics kernel, compiled library | 1 | 60 to 90 |
 | 3 | Solver completeness: forces, motions, statics, reactions | 2 | 60 to 100 |
 | 4 | Time integration, including stiff systems | 2 | 50 to 80 |
-| 5 | Validation suite and cross-checks | 3, 4 | 40 to 60 |
+| 5 | Validation suite and cross-checks | 3, 4 | 50 to 75 |
 | 6 | Python interface | 2 (grows with every later phase) | 30 to 50 |
-| 7 | Vehicle subsystems | 5 | 100 to 150 |
-| 8 | Vehicle builder | 6, 7 | 50 to 80 |
-| 9 | Vehicle analyses and manoeuvres | 8 | 60 to 90 |
-| 10 | Lap-time simulation and optimisation | 9 | 80 to 120 |
+| 7 | Vehicle subsystems | 5 | 110 to 170 |
+| 8 | Vehicle builder | 6, 7 | 55 to 85 |
+| 9 | Vehicle analyses and manoeuvres | 8 | 85 to 130 |
+| 10 | Lap-time simulation and optimisation | 9 | 85 to 125 |
 | 11 | Aerodynamics and CFD | 9 | 100 to 160 |
 | 12 | Real-time simulation | 9 | 100 to 150 |
-| 13 | Optimisation and AI layer | 9 | 100 to 150 |
-| 14 | Flexible bodies, FEM coupling, FMI | 5 | 100 to 150 |
+| 13 | Optimisation and AI layer | 9 | 130 to 210 |
+| 14 | Flexible bodies, FEM coupling, FMI | 5 | 110 to 160 |
 | 15 | Documentation and release | all | 60 to 100 |
 | H | Help and debugging documentation, alongside every phase from 3 on | 2 | 40 to 70 |
 
-The total is roughly 1,000 to 1,650 hours, the same order as the 950 to 1,380 hours of your original schedule. These are planning guesses, not commitments. The spread is wide because the vehicle, CFD and real-time phases depend on choices not yet made.
+The total is roughly 1,100 to 1,800 hours: 1,000 to 1,650 as first planned, the same order as the 950 to 1,380 hours of your original schedule, and about 100 to 150 more for what D42 added on 20 October 2026 (Phases 5, 7, 8, 9, 10, 13 and 14). These are planning guesses, not commitments. The spread is wide because the vehicle, CFD and real-time phases depend on choices not yet made.
 
 **Milestones.**
 - **M1, trustworthy core:** end of Phase 5.
@@ -304,11 +304,11 @@ Goal: accurate integration for ordinary models and stable integration for stiff 
 
 Goal: evidence, independent of our own tests, that the solver is right. This closes milestone M1.
 
-- [ ] **5.1 Analytic cases.** Torque-free body with unequal inertias, heavy top, pendulums, bead on rod, spring-mass systems. *Done when each matches to a stated tolerance.*
-- [ ] **5.2 IFToMM benchmarks.** Simple pendulum, N-four-bar mechanism, Andrew's mechanism, Bricard mechanism (redundant constraints), flyball governor (stiff). *Done when each meets its published reference.*
+- [ ] **5.1 Analytic cases.** Torque-free body with unequal inertias, heavy top, pendulums, bead on rod, spring-mass systems. A rigid body on three bushings against the frequencies and mode shapes of eig(K, M) in closed form, with the modal energy distribution (each mode's kinetic energy by coordinate) added to the linearisation and checked against the same closed form. Manufactured trajectories: a smooth motion prescribed for random trees of every joint type and for closed loops, its driving forces from inverse dynamics (with the constraint forces for loops), and every integrator required to return that motion at its order (D42). *Done when each matches to a stated tolerance.*
+- [ ] **5.2 IFToMM benchmarks.** Simple pendulum, N-four-bar mechanism, Andrew's mechanism, Bricard mechanism (redundant constraints), flyball governor (stiff). When a mechanism cannot be closed because its constraints contradict each other, the message names the conflicting equations, not only the residual (D42). *Done when each meets its published reference.*
 - [ ] **5.3 Independent code.** Compare accelerations on random trees against Pinocchio to 1e-8. Compare constrained mechanisms against Project Chrono. *Done when the comparison scripts run in CI.*
 - [ ] **5.4 The HMMWV benchmark from your reference paper.** Fourteen bodies, four double-wishbone corners, tie rods as distance constraints, driven at 10 mph over a 0.1 m half-cylinder. Then the bushed variant (2e7 N/m, 2e6 Ns/m). *Done when explicit and implicit runs agree and their costs are tabulated.*
-- [ ] **5.5 Regression harness.** Stored reference results with tolerances. A fast suite for every commit and a long suite nightly. *Done when a deliberate physics change is caught.*
+- [ ] **5.5 Regression harness.** Stored reference results with tolerances. A fast suite for every commit and a long suite nightly. Optionally, mutation testing of the kernel in a Linux CI job: a deliberately altered source line must make some test fail (D42). *Done when a deliberate physics change is caught.*
 - [ ] **5.6 Validation report.** `docs/validation.md`, version 1.
 
 ### Phase 6. Python interface
@@ -327,13 +327,13 @@ Goal: everything the engine can do, callable from Python. Start after Phase 2 an
 Goal: each subsystem modelled properly, on the corrected core.
 
 - [ ] **7.1 Axes (F11).** Move the vehicle layer to ISO 8855. Remove every hard-coded "up". *Done when the same manoeuvre gives the same physical result before and after.*
-- [ ] **7.2 Road.** One interface returning height, normal and friction at a point. Flat, analytic (ramp, bump, kerb, sine), gridded height map, and a three-dimensional track surface. *Done when the tyre uses only this interface.*
+- [ ] **7.2 Road.** One interface returning height, normal and friction at a point. Flat, analytic (ramp, bump, kerb, sine), gridded height map, and a three-dimensional track surface. ISO 8608 random roads, classes A to H, generated from the standard's displacement spectrum with a seed (D42). *Done when the tyre uses only this interface, and a generated ISO 8608 road reproduces its class's spectrum.*
 - [ ] **7.3 Wheel and contact (F6, F8).** Wheel as a rotating body on a spin joint. Contact point and frame from the wheel plane and the road. *Done when a pitching upright no longer moves the contact point, and a spinning wheel shows gyroscopic precession.*
 - [ ] **7.4 Tyre (F7).** Magic Formula 5.2 with its full coefficient set, a `.tir` file reader, camber, aligning and overturning moments, rolling resistance, combined slip, and scaling factors. Lag through relaxation length, valid to standstill. *Done when curves match the reference curves in Pacejka chapter 4 and an independent Magic Formula implementation, and a car held on its brakes on a slope stays put.*
 - [ ] **7.5 Simple tyres.** Linear with saturation, Fiala and brush models, kept for real-time use and for teaching.
-- [ ] **7.6 Suspensions (F9, F10).** Double wishbone, McPherson, five-link, trailing arm, with a solid axle optional. All built from the constraint primitives with real masses and centres of mass. Coil-over and pushrod layouts. Damper curves, bump stops, and an anti-roll bar acting through drop links. *Done when the motion ratio from geometry equals the one from virtual work.*
+- [ ] **7.6 Suspensions (F9, F10).** Double wishbone, McPherson, five-link, trailing arm, with a solid axle optional. All built from the constraint primitives with real masses and centres of mass. Coil-over and pushrod layouts. Damper curves, bump stops, and an anti-roll bar acting through drop links. Hysteresis as state elements: a damper with a stiffness in series (a Maxwell element: top mount, oil and gas compliance) and a Bouc-Wen bushing, checked on a virtual damper dyno (a sinusoidal stroke; force against stroke and against velocity). Bushing curves given by a few shape parameters (linear range, progressive end, stop), so that optimisation can move their shape (D42). *Done when the motion ratio from geometry equals the one from virtual work, and the series damper's loop matches its closed-form steady-state response.*
 - [ ] **7.7 Steering (F10).** A rack body with tie rods as links, pinion ratio, and column compliance. Input as angle or as torque. *Done when Ackermann behaviour emerges from geometry and the rack moves as one piece.*
-- [ ] **7.8 Powertrain (F6).** Engine map with engine braking, clutch or torque converter, gearbox with shift time and hysteresis, open, locked and limited-slip differentials, half-shaft compliance, a centre differential, and an electric motor option. Reactions applied to the correct bodies. *Done when anti-squat matches the geometric value.*
+- [ ] **7.8 Powertrain (F6).** Engine map with engine braking, clutch or torque converter, gearbox with shift time and hysteresis, open, locked and limited-slip differentials, half-shaft compliance, a centre differential, and an electric motor option. A hysteretic driveline isolator (Bouc-Wen) as a state element (D42). Reactions applied to the correct bodies. *Done when anti-squat matches the geometric value.*
 - [ ] **7.9 Brakes (F5, F6).** Pedal to pressure to torque per wheel, bias, locked-wheel handling, and an optional anti-lock controller. *Done when stopping distance matches a hand calculation.*
 - [ ] **7.10 Aerodynamic element (F12).** Forces and moments from a table over front and rear ride height, pitch, roll and yaw, applied in the body frame, with wind. The present constant model becomes a special case. *Done when a synthetic map is reproduced exactly.*
 - [ ] **7.11 Mass properties (F9).** Explicit centre of mass and full inertia tensor for the body. Lumped driver, fuel and payload. A roll-up report of total mass, centre-of-gravity height, sprung and unsprung mass per corner, and yaw inertia. *Done when the report matches the inputs.*
@@ -344,35 +344,36 @@ Goal: each subsystem modelled properly, on the corrected core.
 Goal: a car defined in files and built in one call.
 
 - [ ] **8.1 Data model.** Subsystems, hardpoint tables in vehicle axes (left side given, right side mirrored unless overridden), parameter sets and adjustments.
-- [ ] **8.2 File format.** JSON with a schema, units and a version. Curve files for dampers, springs, engine map, tyre and aero map. *Done when an invalid file gives a message naming the field.*
+- [ ] **8.2 File format.** JSON with a schema, units and a version. Curve files for dampers, springs, engine map, tyre and aero map. An unknown key is an error, never ignored: a misspelt key must not fall back to a default (D42). *Done when an invalid file, or an unknown key, gives a message naming the field.*
 - [ ] **8.3 Builder (F16).** One function from specification to model, with fidelity chosen per subsystem. One `Vehicle` handle with named access. `VehicleModel` and `VehicleHandle` are removed.
 - [ ] **8.4 Setup procedure.** Static equilibrium on the ground, then adjustment to targets: ride heights, corner weights, toe and camber. *Done when targets are met to 0.1 mm and 1 N.*
 - [ ] **8.5 Diagnostics.** Constraint count, mass roll-up, link lengths, joint angles, left-right symmetry.
-- [ ] **8.6 Reference cars.** A sedan, a sports car, a formula-style car with pushrods and an aero map, and the HMMWV benchmark, all as files.
+- [ ] **8.6 Reference cars.** A sedan, a sports car, a formula-style car with pushrods and an aero map, and the HMMWV benchmark, all as files. A test moves every parameter of each reference car up and down and requires the built model to change; parameters that legitimately leave it unchanged are listed with their reasons (D42).
 - [ ] **8.7 Python front end.** Parameters addressed by path, for use by optimisers.
 
 ### Phase 9. Vehicle analyses and manoeuvres
 
 Goal: the standard tests a vehicle dynamics engineer runs. This closes milestone M2.
 
-- [ ] **9.1 Suspension test rig.** Parallel and opposite wheel travel, roll, steer, and compliance under lateral, longitudinal and aligning loads. Outputs: camber, toe, caster, kingpin inclination, scrub radius, trails, roll-centre height, anti-dive and anti-squat, motion ratio, wheel rate, roll stiffness and its distribution, track and wheelbase change, bump steer, roll steer, Ackermann. *Done when each matches Dixon chapters 4 to 6.*
+- [ ] **9.1 Suspension test rig.** Parallel and opposite wheel travel, roll, steer, and compliance under lateral, longitudinal and aligning loads. Outputs: camber, toe, caster, kingpin inclination, scrub radius, trails, roll-centre height, anti-dive and anti-squat, motion ratio, wheel rate, roll stiffness and its distribution, track and wheelbase change, bump steer, roll steer, Ackermann. Exact sensitivities of every output to each hardpoint, from the constraint Jacobians (dq/dp = -phi_q^+ phi_p), as a table and as gradients for optimisation (13.3). The compliance results also compared with Magri, Gadola, Chindamo and Sandrini 2024 (double wishbone, *J. Comput. Nonlinear Dyn.*, doi:10.1115/1.4066092) if it publishes its data (D42). *Done when each matches Dixon chapters 4 to 6.*
 - [ ] **9.2 Quasi-static vehicle.** Corner weights, ride height against speed, roll gradient, and steady cornering solved as a trim problem. *Done when the understeer gradient matches the bicycle model at low lateral acceleration.*
-- [ ] **9.3 Driver models.** Input tables, speed control, path following with preview, gear shifting.
+- [ ] **9.3 Driver models.** Input tables, speed control, path following with preview, gear shifting. Steering by pure pursuit or Stanley with preview and a PI speed loop first, then LQR on the lateral-error dynamics; MPC with 10.5 (Yano's guide as a reference) (D42). *Done when each controller meets a derived result: the radius a car settles on around a circle, the decay of an offset on a straight.*
 - [ ] **9.4 Manoeuvre library.** Acceleration and braking, steady-state circle (ISO 4138), step steer (ISO 7401), frequency sweep, sine with dwell, double lane change (ISO 3888), braking in a turn (ISO 7975), bump and kerb strikes, and a four-post ride rig. *Done when each produces its standard metrics.*
-- [ ] **9.5 Reports.** Plots and metrics per manoeuvre, and comparison of two setups.
+- [ ] **9.5 Reports.** Plots and metrics per manoeuvre, and comparison of two setups. Channels named with their units (`vx_mps`, `ay_mps2`), and the derived vehicle-dynamics channels computed from simulation output with the formulas used on measured data (sideslip, slip angles and ratios, curvature, load transfer, friction utilisation, understeer gradient, `r cos phi`), as the TUM analysis tool computes them; lap slicing, corners and their phases for lap results (D42).
 - [ ] **9.6 Vehicle validation.** Against the bicycle model at small inputs, the quarter car for ride, and the Chrono HMMWV for step steer and lane change. *Done when recorded in the validation report.*
+- [ ] **9.7 Correlation with measured data (D42).** Import measured channels, align them with the simulation by distance, crop the manoeuvres, overlay, and compute per-channel errors normalised by each channel's spread; compute on each source's own time base and resample only results. Identify parameters one group at a time in a set sequence (straight line, then steady cornering, then a lap), with a log tying each change to its manoeuvre and data. First real data: public race telemetry (Fast-F1, through the Python layer), cached with its provenance. *Done when a "measurement" made by the program with altered parameters is correlated back to those parameters within a stated tolerance.*
 
 ### Phase 10. Lap-time simulation and optimisation
 
 Goal: lap time from the real car model, and the setup that minimises it.
 
-- [ ] **10.1 Track (F17).** Three-dimensional centreline with curvature, banking, slope, vertical curvature and widths. Import from CSV and from the TUM racetrack database format. Smoothing with continuous curvature. Fix `from_polyline`. *Done when a real circuit loads and closes.*
+- [ ] **10.1 Track (F17).** Three-dimensional centreline with curvature, banking, slope, vertical curvature and widths. Import from CSV and from the TUM racetrack database format. Smoothing with continuous curvature. Fix `from_polyline`. Where no survey exists, a circuit's elevation profile estimated from public telemetry positions (Fast-F1) and checked against a published profile (D42). *Done when a real circuit loads and closes.*
 - [ ] **10.2 Quasi-steady lap, version 2.** Performance envelope (longitudinal against lateral acceleration, by speed) computed from the full car by the trim solver of 9.2, including aero map, load transfer and tyre load sensitivity. *Done when it reduces to the present point-mass result for a point-mass car.*
 - [ ] **10.3 Racing line.** Minimum-curvature and then minimum-time line within the track limits.
 - [ ] **10.4 Transient optimal control.** A reduced car (two-track, load transfer, Magic Formula tyres, aero map, powertrain) in track coordinates, solved by direct collocation with CasADi and IPOPT. *Done when it returns line, controls and lap time, and refining the mesh changes lap time by under 0.1 %.*
 - [ ] **10.5 Closed-loop check with the full car.** The multibody car tracks the optimal trajectory. Lap time and states are compared, and the reduced model's parameters are adapted, following the planning-and-tracking papers in your article collection. *Done when the two lap times agree within 1 %.*
 - [ ] **10.6 Setup optimisation.** Lap time as the objective over springs, bars, wing, ride heights, gearing and brake bias, with a sensitivity table.
-- [ ] **10.7 Validation.** Against published benchmark laps where data exist.
+- [ ] **10.7 Validation.** Against published benchmark laps where data exist. Against real laps (Fast-F1: speed traces, braking points, minimum corner speeds, lap time) as a check of the formula-style car's realism, its parameters being unknown (D42).
 
 ### Phase 11. Aerodynamics and CFD
 
@@ -418,13 +419,14 @@ Goal: a 1 kHz vehicle model with measured timing.
 Goal: Block 4 of your original schedule.
 
 - [ ] **13.1 Batch runner.** Many simulations in separate processes with a core limit, caching, and a results store. *Done when a repeated batch reproduces identical numbers.*
-- [ ] **13.2 Sampling and sensitivity.** Latin hypercube and Sobol sampling. Sensitivity indices.
-- [ ] **13.3 Single-objective optimisation.** CMA-ES and Bayesian optimisation, with bounds and constraints. *Done when a naive setup is improved and the result is physically reasonable.*
+- [ ] **13.2 Sampling and sensitivity.** Latin hypercube and Sobol sampling. Sensitivity indices. The exact kinematic sensitivities of 9.1 where they apply (D42).
+- [ ] **13.3 Single-objective optimisation.** CMA-ES and Bayesian optimisation, with bounds and constraints. A first benchmark with a known feasible optimum: Seddighi's motor mounts (a rigid body on three bushings; frequencies out of forbidden bands, modal energy decoupling, deflection limits under load cases) (D42). *Done when a naive setup is improved and the result is physically reasonable.*
 - [ ] **13.4 Multi-objective optimisation.** NSGA-II on handling against comfort, with the Pareto front plotted and spot-checked.
-- [ ] **13.5 Surrogates.** Data generation, then neural-network or Gaussian-process models of the tyre, the suspension maps and the aero map, with error reports. *Target: error under 5 to 10 % in the range of interest.*
+- [ ] **13.5 Surrogates.** Data generation, then neural-network or Gaussian-process models of the tyre, the suspension maps and the aero map, with error reports. A test set held out and used once; a constant baseline each model must beat by a margin fixed in advance; errors in physical units beside the target's range; a coded warning when a query falls outside the sampled range (D42). *Target: error under 5 to 10 % in the range of interest.*
 - [ ] **13.6 Deployment.** ONNX export and ONNX Runtime in C++ behind the same tyre and aero interfaces, switchable by configuration. *Done when outputs and timings are compared.*
 - [ ] **13.7 Reinforcement-learning environment.** A Gymnasium environment with reset, step, observation and reward, plus a short training run with PPO to prove the integration.
-- [ ] **13.8 Agent interface (optional).** A small, validated set of functions (build a car, run a manoeuvre, read metrics) that a language-model agent can call, with range checks.
+- [ ] **13.8 Agent interface (optional).** A small, validated set of functions (build a car, run a manoeuvre, read metrics) that a language-model agent can call, with range checks. Runs returned as a compact summary (metrics, warnings with their codes, events) with a handle to the full channels; errors as structured records (code, category, whether retrying helps, the remedy) from the message catalogue exported as data; results that separate computed values from unknowns; an MCP server over the Python API; skills and rules for users' agents built from `docs/help/` (D42).
+- [ ] **13.9 Parameter sensitivities of a simulation (D42).** Forward sensitivities of a run with respect to model parameters: gradients for correlation (9.7) and optimisation, and the training of hybrid models with a learned residual force. Scope and method decided when Phase 13 is planned in detail.
 
 ### Phase 14. Flexible bodies, FEM coupling and interoperability
 
@@ -434,6 +436,7 @@ Goal: Block 4 of your original schedule.
 - [ ] **14.4 Loads export.** Load histories at hardpoints for external finite-element analysis. Two-way co-simulation is a stretch goal.
 - [ ] **14.5 FMI.** Export the car as a co-simulation unit and import controller units. *Done when tested with FMPy.*
 - [ ] **14.6 Controls.** Controller blocks with a sample time, and worked examples: anti-lock braking, traction control, stability control, active suspension.
+- [ ] **14.7 Adams/Car property files (D42).** Read spring, damper and bushing property files (the TeimOrbit text format), so that existing data can be used without retyping. *Done when an example file's curves are reproduced exactly.*
 
 ### Phase 15. Documentation and release
 
@@ -457,6 +460,7 @@ Goal: the help every program has, written while the program is built (D23): how 
 - [x] **H.4 Debugging aids in the program.** `describe(system)`: bodies, joints, constraints, force elements and the degree-of-freedom count, as text. A step trace switched on by an option, written to CSV: projection iterations and residuals, constraint residual, energy, redundancy, per step. A state dump. *Done when a test shows a deliberately broken model diagnosed from its trace alone.* *Result, 13 Oct 2026: `describe(system)` and `describe(system, q)`, `dump_state(sim)` (`kernel/describe.hpp`), and `Simulator::trace_steps` with `write_trace(path)`: per step the drift before the projection, the residuals after it, its iterations and convergence, the equations and their rank, kinetic and gravitational energy, events. A slider driven to two different positions is diagnosed from its CSV trace alone (rank 1 of 2, projection failing every step, residual equal to the targets' difference to 3e-17), and told apart from the same slider with agreeing targets. Code K053. 423 tests pass.*
 - [x] **H.5 API reference.** Doxygen from the header comments, a CMake target `docs`, built in CI. *Done when CI builds it with no warnings for the public headers.* *Result, 13 Oct 2026: a `docs` target (`doxygen_add_docs` over `include/mbd`, when Doxygen is installed; HTML in `<build>/docs/html`; undocumented members listed rather than warned about; every warning an error) and a CI job `docs` that installs Doxygen, builds it and checks the HTML was written. Green on its first run (38448929154) and with the check (38449183633): no warnings for the public headers.*
 - [ ] **H.6 Guides grow with the phases.** Each phase adds the how-to pages of what it delivers, with examples that are compiled and run as tests so they cannot go stale. Python docstrings (Phase 6) and the command-line `--help` (with the model files of Phase 8) use the same message catalogue. *Done at each phase gate.* *Phase 4 gate, 19 Oct 2026: `docs/help/howto/time-integration.md` (a fixed step, a tolerance, a stiff model, real time, states of your own and multirate, a closed mechanism and its drift channel), its examples compiled, run and checked in `tests/howto/` (`test_howto`), with a test that the guide quotes them exactly. Phase 3's, owed since its gate, written 20 Oct 2026: `forces-and-drives.md`, `analyses.md` and `outputs-contact-events.md` (tasks 3.1 to 3.9 and the debugging aids of H.4), 12 examples, each checked against a value derived from the physics or the geometry.*
+- [ ] **H.7 Working rules in the repository (D42).** A `CLAUDE.md` at the root, and an `AGENTS.md` for other tools, holding the working rules now kept only in the author's local agent memory: one compiler at a time and the build script, the record kept with every task, derived values in tests, the help kept current, the commit format. *Done when the rules are in the repository and the local memory points to them instead of repeating them.*
 
 ---
 
@@ -475,7 +479,7 @@ Goal: the help every program has, written while the program is built (D23): how 
 
 - **The laptop.** A default parallel build can exhaust its 16 GB. Sustained all-core load also matters for CFD, which runs every core for hours. Before Phase 11, check that the machine survives a long all-core stress test, or plan to run CFD elsewhere.
 - **Tyre data.** Real `.tir` files are proprietary. Use the published example sets and the open Formula SAE tyre test data until you have your own.
-- **No measured vehicle data.** Validation therefore rests on analytic cases and on agreement with independent codes. If you can obtain test data for one real car, Phase 9 becomes much stronger.
+- **No measured vehicle data.** Validation therefore rests on analytic cases and on agreement with independent codes. If you can obtain test data for one real car, Phase 9 becomes much stronger. Public race telemetry (Fast-F1: speed, gear, throttle, brake and position, coarse and without forces) gives real laps to compare with (9.7, 10.7; D42).
 - **Scope.** Phases 10 to 14 are each large. The milestones exist so that the project is useful at M2 even if later phases slip.
 
 ## Appendix. Which reference serves which phase
@@ -485,8 +489,12 @@ Goal: the help every program has, written while the program is built (D23): how 
 | 2, 3 | Shabana, *Computational Dynamics* (chapters 3 to 5 in your selection); Wittenburg |
 | 4 | Hairer and Wanner; Eich-Soellner and Führer; Haug et al. 1999 |
 | 5, 12 | Haug et al. 1999 (HMMWV benchmark, multirate, real time); `Knowledge.txt` real-time section |
-| 7 | Pacejka chapter 4; Schramm; Blundell and Harty |
-| 9 | Dixon chapters 4 to 6; Popp and Schiehlen; Mastinu and Ploechl |
-| 10 | The planning-and-tracking papers in `ScienceDirect Articles.pdf`; Mastinu, Gobbi and Miano |
+| 5 | Barba et al., *Practical Numerical Methods* (verification, manufactured solutions); Seddighi, `document1.pdf` (a rigid body on three mounts) (D42) |
+| 7 | Pacejka chapter 4; Schramm; Blundell and Harty; ISO 8608 (road classes); the JuliaHub SciML brief (Bouc-Wen and Maxwell elements, ISO 8608 roads); Dobre et al. 2026 (damper loops) (D42) |
+| 9 | Dixon chapters 4 to 6; Popp and Schiehlen; Mastinu and Ploechl; Magri et al. 2024 and Chindamo et al., `document-2.pdf` (elastokinematics); the TUM analysis tool (channels, corners); Yano's guide (path tracking); MOVEdot (correlation) (D42) |
+| 10 | The planning-and-tracking papers in `ScienceDirect Articles.pdf`; Mastinu, Gobbi and Miano; the TUM analysis tool; Fast-F1 (real laps) (D42) |
 | 11 | White and Majdalani; Mastinu and Ploechl section 14.4 (aero maps) |
+| 13 | The Siemens surrogate white paper; Díaz Rivera 2026, `document2.pdf` (model selection and validation); JAOT (parameter-reach tests); ampl-agents, headroom and REA (agent interfaces) (D42) |
 | 14 | Shabana, *Dynamics of Multibody Systems*; Malen |
+
+The sources marked D42 are not all in `documentation/`: the review that adopted them, [review_2026-10-20/external_sources.md](review_2026-10-20/external_sources.md), says where each is, and local copies of the repositories and web pages are in `C:\dev\references\`.
