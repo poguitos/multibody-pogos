@@ -23,28 +23,15 @@
 #include "mbd/kernel/simulator.hpp"
 #include "mbd/kernel/state_element.hpp"
 
+#include "howto/howto_models.hpp"
+
 using namespace mbd;
 using namespace mbd::kernel;
+using mbd_howto::build_pendulum;
+using mbd_howto::build_spring_block;
+using mbd_howto::pendulum_w;
 
 namespace {
-
-/// A 1 kg rod 1 m long hanging from a hinge along Z at its top end, gravity
-/// along -Y. About the hinge its moment of inertia is I = m (b^2 + w^2) / 3 +
-/// m d^2 with half-length b = 0.5, half-width w = 0.02 and d = 0.5, so
-/// 0.33347 kg m^2; small swings have w^2 = m g d / I.
-void build_pendulum(System& sys)
-{
-    sys.model.gravity = Vec3(0.0, -g_accel, 0.0);
-    RigidBodyInertia rod = RigidBodyInertia::from_solid_box(1.0, Vec3(0.02, 0.5, 0.02));
-    rod.com_B = Vec3(0.0, -0.5, 0.0);
-    sys.model.add_body(0, std::make_shared<RevoluteJointModel>(), Transform3(), Transform3(), rod, "rod");
-}
-
-Real pendulum_w()
-{
-    const Real I = (0.5 * 0.5 + 0.02 * 0.02) / 3.0 + 0.5 * 0.5;
-    return std::sqrt(g_accel * 0.5 / I);
-}
 
 /// Generalised-alpha's recurrence (Chung and Hulbert) for q'' = -w^2 q at
 /// rho_infinity rho, started from a = -w^2 q: (q, v) after n steps of h.
@@ -61,17 +48,6 @@ std::pair<Real, Real> alpha_steps(Real w, Real h, Real rho, int n, Real q, Real 
         a = a1;
     }
     return {q, v};
-}
-
-/// A 1 kg block on a slider with a spring of k N/m, no gravity.
-void build_spring_block(System& sys, Real k)
-{
-    sys.model.gravity = Vec3::Zero();
-    const int block = sys.model.add_body(0, std::make_shared<PrismaticJointModel>(), Transform3(), Transform3(),
-                                         RigidBodyInertia::from_solid_box(1.0, Vec3(0.05, 0.05, 0.05)), "block");
-    JointCoordinateForceParams spring;
-    spring.spring = Curve::linear(k);
-    sys.joint_forces.push_back(std::make_shared<JointCoordinateForce>(sys.model, block, spring));
 }
 
 // [example: actuator]

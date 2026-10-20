@@ -129,5 +129,8 @@ mbd_add_test_exe(test_analysis
 # runs here, and a test checks that the guides quote them exactly.
 mbd_add_test_exe(test_howto
     howto/test_howto_time_integration.cpp
+    howto/test_howto_forces.cpp
+    howto/test_howto_analyses.cpp
+    howto/test_howto_outputs.cpp
     howto/test_howto_pages.cpp
 )

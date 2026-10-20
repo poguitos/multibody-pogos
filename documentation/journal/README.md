@@ -80,3 +80,4 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 18-19 Oct 2026 | [Phase 4: the mass matrix factorized along the tree](2026-10-19_phase-4-sparse-solve.md) | 4.8, D39 | `953f48b` | At the time |
 | 19 Oct 2026 | [Phase 4: the integrators verified](2026-10-19_phase-4-integrators-verified.md) | 4.9, D40, D41 | `acf05c6` | At the time |
 | 19 Oct 2026 | [Phase 4 retrospective](2026-10-19_phase-4-retrospective.md) | Phase 4 gate, tag `v0.5.0`; H.6 for Phase 4 | `aa8876c` to this entry | At the time |
+| 20 Oct 2026 | [Phase 3's how-to guides](2026-10-20_phase-3-howto-guides.md) | H.6 for Phase 3 | see git log | At the time |

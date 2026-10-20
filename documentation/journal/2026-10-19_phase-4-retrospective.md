@@ -108,15 +108,16 @@ report states.
 - A manoeuvre with events (braking, locking, contact) for the methods with
   error control.
 - The how-to guides of Phase 3 (assembly, statics, linearisation, outputs,
-  contact, events).
+  contact, events). Written 20 October, on `phase-5`.
 - From Phase 3, still open: the vehicle template's rebound stops and wheel
   contact point; sticking friction (a bristle model).
 
 ## Gate
 
 All tasks of the phase meet their "done when" conditions; CI is green on
-`phase-4`. With the author's go-ahead (19 October), `main` was
-fast-forwarded to the commit that adds this entry and tagged `v0.5.0`.
+`phase-4` (run 39307560608). With the author's go-ahead (19 October),
+`main` was fast-forwarded to the commit that adds this entry (`fdfe637`)
+and tagged `v0.5.0`; CI run 39311161466 on `main` passed all four jobs.
 
 ## For the book
 
