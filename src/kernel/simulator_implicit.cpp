@@ -296,7 +296,10 @@ void Simulator::step_generalized_alpha(Real h)
         implicit_P_ = MatX::Zero(nv, m);
         implicit_Gc_ = MatX::Zero(m, nv);
         implicit_A_ = MatX::Zero(m, m);
-        implicit_llt_ = Eigen::LLT<MatX>(m);
+        // Sized by factorizing the identity: Eigen's LLT(size) leaves its
+        // info unset, and moving such an LLT in copied that unset value
+        // (undefined behaviour, reported by UBSan).
+        implicit_llt_.compute(MatX::Identity(m, m));
         implicit_F_ = MatX::Zero(m, n);
         implicit_JqP_ = MatX::Zero(n, m);
         implicit_GP_ = MatX::Zero(m, m);

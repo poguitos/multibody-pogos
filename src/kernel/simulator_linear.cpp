@@ -150,7 +150,10 @@ void Simulator::linear_force_jacobian(bool with_states)
         w.W = MatX::Zero(nv, nv);
         w.D = MatX::Zero(nv, nv);
         w.W_sym = MatX::Zero(nv, nv);
-        w.llt_sym = Eigen::LLT<MatX>(nv);
+        // Sized by factorizing the identity: Eigen's LLT(size) leaves its
+        // info unset, and moving such an LLT in copied that unset value
+        // (undefined behaviour, reported by UBSan).
+        w.llt_sym.compute(MatX::Identity(nv, nv));
         w.a = VecX::Zero(nv);
         w.r = VecX::Zero(nv);
         w.dv = VecX::Zero(nv);
@@ -487,7 +490,7 @@ void Simulator::step_semi_implicit_euler(Real h)
         w.W = MatX::Zero(nv, nv);
         w.D = MatX::Zero(nv, nv);
         w.W_sym = MatX::Zero(nv, nv);
-        w.llt_sym = Eigen::LLT<MatX>(nv);
+        w.llt_sym.compute(MatX::Identity(nv, nv));   // sized as in the setup above
         w.a = VecX::Zero(nv);
         w.r = VecX::Zero(nv);
         w.dv = VecX::Zero(nv);

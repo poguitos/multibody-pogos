@@ -169,6 +169,14 @@ own configuration (GCC, address and undefined-behaviour sanitizers,
 here: the Windows build (no MSVC on this machine) and the Doxygen reference
 (Doxygen not installed); CI runs both.
 
+*Correction, added at task 5.2's close (D45):* "no sanitizer report" was
+read from the ctest summary, which shows nothing of a test that passes. The
+sanitizer then recovered from undefined behaviour without failing the test,
+and in task 5.2's run the full log held two such reports, from code already
+there (one in the span test above). This run's full log was overwritten, so
+whether it had them cannot be checked. CI's no-allocation job (Debug,
+`EIGEN_RUNTIME_NO_MALLOC`) was not run here either; CI ran it.
+
 ## Measurements
 
 No timings. The error tables and the margins are in

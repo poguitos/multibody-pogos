@@ -81,9 +81,10 @@ be in `docs/help/messages.md` and every catalogued code used
 exactly from `tests/howto/` (`test_howto_pages`).
 
 **CI** (GitHub Actions, every push to any branch): Windows through the build
-script; Linux with GCC and the address and undefined-behaviour sanitizers;
-Linux Debug checking that nothing allocates; the Doxygen reference with every
-warning an error. A task is finished when CI is green on its commit.
+script; Linux with GCC and the address and undefined-behaviour sanitizers,
+any report failing its test (D45); Linux Debug checking that nothing
+allocates; the Doxygen reference with every warning an error. A task is
+finished when CI is green on its commit.
 
 **Timings** compare only on one machine in one session: the laptop's speed
 varies by a factor of two between days. Its benchmarks run pinned to one
@@ -145,3 +146,10 @@ not there. Use British spelling, as the existing text does.
   rounding; compare such runs by their statistics.
 - A tight Newton tolerance can fail where a looser one, still far below the
   step's error, runs.
+- `ctest --output-on-failure` prints nothing of a test that passes, so a
+  sanitizer report in one is hidden from its summary. Build the sanitizer
+  configuration as CI does (`-fno-sanitize-recover=undefined`, D45), or read
+  `Testing/Temporary/LastTest.log`, before calling a run clean.
+- An `Eigen::LLT` (or `LDLT`) built with its size only leaves its status
+  unset; moving one copies that unset value (undefined behaviour). Size a
+  factorization by computing it, on the identity if need be.

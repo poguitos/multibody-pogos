@@ -55,6 +55,7 @@ and the journal entry of the work refers to them by number
 | D42 | Ideas from external sources adopted into the plan | 20 Oct 2026 | In force, plan amended (5.1, 5.2, 5.5, 7.2, 7.6, 7.8, 8.2, 8.6, 9.1, 9.3, 9.5, 9.7, 10.1, 10.7, 13.2, 13.3, 13.5, 13.8, 13.9, 14.7, H.7) |
 | D43 | Analytic cases: manufactured trajectories checked by one step and over a span; the modal energy from the whole mass matrix | 20 Oct 2026 | In force, task 5.1 |
 | D44 | The IFToMM benchmarks against closed forms; singular positions passed by holding the constraints near rounding; conflicting equations named by a deletion filter | 20 Oct 2026 | In force, task 5.2 |
+| D45 | A sanitizer report fails its test; an Eigen factorization sized by computing it, never by moving an empty one | 20 Oct 2026 | In force, task 5.2's close |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -1438,3 +1439,70 @@ and the journal entry of the work refers to them by number
   `tests/kernel/iftomm.hpp`, `tests/kernel/test_kernel_iftomm.cpp`,
   `tests/kernel/data/iftomm/`, `src/kernel/conflicts.cpp`;
   `documentation/journal/data/2026-10-20_iftomm-benchmarks.md`.
+
+## D45. A sanitizer report fails its test; an Eigen factorization sized by computing it, never by moving an empty one
+
+- **Context.** CI's Linux job (task 0.5) builds `test_core`, `test_model`
+  and `test_kernel` with GCC's address and undefined-behaviour sanitizers
+  and runs them with `ctest --output-on-failure`. The undefined-behaviour
+  sanitizer, by default, prints a report and lets the program go on, so the
+  test passes; and ctest prints a test's output only when it fails. A report
+  in a passing test was therefore shown nowhere: not in CI's log, not in the
+  summary a developer reads. A check of task 5.2's records, after its
+  closing commit (`85de229`) was pushed, read the full log of the run
+  recorded there as "175 of 175 passed with no sanitizer report"
+  (`build-asan/Testing/Temporary/LastTest.log`) and found two reports in it,
+  in "Constraints per integrator: semi-implicit and linearly implicit Euler
+  only lose energy on a closed loop" and "Manufactured trajectories: every
+  integrator returns the motion at its order":
+
+  ```
+  Eigen/src/Cholesky/LLT.h:66:49: runtime error: load of value 32697, which is not a valid value for type 'ComputationInfo'
+  ```
+
+  With `UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1` the first test
+  fails, and the stack names `Simulator::step_semi_implicit_euler`,
+  `src/kernel/simulator_linear.cpp:490`, `w.llt_sym =
+  Eigen::LLT<MatX>(nv);`. Eigen's sized constructor `LLT(Index)` sets the
+  storage and `m_isInitialized` but not `m_info`; the move assignment then
+  copies `m_info`, reading an enum that was never set. The same line is at
+  `simulator_linear.cpp:153` and `simulator_implicit.cpp:299`. It came with
+  tasks 4.7 (`8ed4c6c`, 17 October) and its open end (`576df64`, 18
+  October). It did no harm in practice (each step's `compute` sets `m_info`
+  before `info()` is read), but it is undefined behaviour, and every
+  sanitizer run since had reported it unseen.
+- **Decision.**
+  - **The sanitizer job stops at the first report.** It builds with
+    `-fno-sanitize-recover=undefined`, so an undefined-behaviour report ends
+    the test with an error: the test fails, and ctest prints its output.
+    `UBSAN_OPTIONS=print_stacktrace=1` adds the stack. The address
+    sanitizer already stops at its first report.
+  - **A factorization is sized by computing it.** The three places compute
+    the factorization of the identity of the right size
+    (`compute(MatX::Identity(n, n))`), which sets every member, instead of
+    moving in a sized, empty one. They stay in the set-up branches, which
+    allocate anyway; the steps after set-up do not allocate (CI's
+    no-allocation job).
+  - **A run is called clean from its full log**, not from the ctest
+    summary.
+- **Alternatives.**
+  - **`UBSAN_OPTIONS=halt_on_error=1` in CI's environment only**: the same
+    in CI, but a build made on another machine with the same flags, without
+    the variable, keeps recovering. The compile flag puts it in the build.
+    Rejected.
+  - **A CI step that searches the full log for "runtime error"**: it finds
+    the reports but leaves the tests passing, and the failure would name a
+    log, not a test. Rejected.
+  - **Constructing the factorization of the identity and moving it in**
+    (`Eigen::LLT<MatX>(MatX::Identity(n, n))`): correct as well, but it
+    builds a second factorization to move; computing in place does not.
+    Rejected.
+- **Consequences.** Any later report fails CI on the commit that brings it.
+  The records of earlier sanitizer runs that said "no sanitizer report"
+  (tasks 5.1 and 5.2, read from the ctest summary) were wrong in the same
+  way and are corrected in their journal entries; their full logs were
+  overwritten, so whether those runs had the same reports can no longer be
+  checked, but the code that caused them was there.
+- **Record.** Journal: Phase 5, the IFToMM benchmarks ("What went wrong");
+  `.github/workflows/ci.yml`, `src/kernel/simulator_linear.cpp`,
+  `src/kernel/simulator_implicit.cpp`; `CLAUDE.md` (pitfalls).

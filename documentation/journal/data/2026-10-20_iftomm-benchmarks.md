@@ -10,10 +10,11 @@ Sections 1 to 5 come from scratch test cases, written into
 removed before the commit (their output is copied here as printed); section 2
 also needed a temporary edit of `RankRevealingLDLT::kRankTolerance`, undone
 afterwards. Section 6 is the committed tests' own output. Section 7 is mixed:
-its largest values (the table's last row, the governor's two largest
-differences) are printed by the committed library cases, whose commands it
-gives; everything else in it comes from one more scratch case of the same
-kind, also removed, described there. The commands for section 6:
+the committed library cases print the size of each largest difference (the
+table's last row, the governor's two), with the commands given there; the
+rest comes from two more scratch cases of the same kind, also removed and
+described there, except González's energy column, read with awk. The
+commands for section 6:
 
 ```bash
 build-linux/tests/test_kernel "[iftomm]~[long]" -s     # the five problems
@@ -219,12 +220,14 @@ build-linux/tests/test_kernel "IFToMM A05: the flyball governor against two resu
 ```
 
 Everything else here is from scratch cases (removed). The first, which read
-the uploads, printed our P2 at 1e-12 at the five times given below the table.
-A last one, run after a review of this section, printed the rest: the
-committed cases' models and settings, a second run at a tighter tolerance
-(Bricard's mechanism at 1e-12, the governor at 1e-10), and for the governor
-a third, Radau IIA at 1e-8 sampled every 1 ms to 30 s; the values at the
-times shown, the peaks, and the results' distances from each other (rows
+the uploads, printed the largest distance of P2 from each result with its
+time (the table's last row, the same at 1e-10 and 1e-12), and our P2 at
+1e-12 at the five times given below the table. The second, written after a
+review of this section, printed the rest. It used the committed cases'
+models and settings, ran each model again at a tighter tolerance (Bricard's
+mechanism at 1e-12, the governor at 1e-10), and ran the governor once more
+with Radau IIA at 1e-8, sampled every 1 ms to 30 s. It printed the values at
+the times shown, the peaks, and the results' distances from each other (rows
 matched by time).
 
 Bricard's mechanism, point P2, ours (Dormand-Prince at 1e-12; at 1e-10 within
@@ -305,8 +308,10 @@ t     ours (1e-8)  116-ours   117-ours   117-116 | largest |116-ours| (t)  |117-
 ```
 
 117 drifts from ours at about 7e-7 m per second ((6.77e-6 - 1.3e-7) / 9 s),
-and from 116 in the same way; 116 stays within 2.03e-6 m, beyond its rounding
-of 5e-7 m from the start.
+and from 116 at about 5e-7 m per second ((5.69e-6 - 1.05e-6) / 9 s), 116
+moving from ours in the same direction (-9.2e-7 m at 1 s, +1.08e-6 m at
+10 s); 116 stays within 2.03e-6 m, beyond its rounding of 5e-7 m from the
+start.
 
 The swing, from the run sampled every 1 ms (each extreme refined by a
 parabola through three samples): s between 0.499911 m (t = 1.025 s) and

@@ -27,7 +27,9 @@ jobs:
 
   # Portability and memory-safety check: GCC with the address and
   # undefined-behaviour sanitizers, on the fast part of the suite, without the
-  # precompiled header so that missing includes are caught.
+  # precompiled header so that missing includes are caught. Any report fails
+  # its test: the undefined-behaviour sanitizer otherwise recovers, and ctest
+  # shows a passing test's output nowhere (D45).
   linux-sanitizers:
     runs-on: ubuntu-latest
 
@@ -45,12 +47,14 @@ jobs:
           -DMBD_COMPILE_JOBS=3
           -DMBD_PCH=OFF
           -DMBD_BUILD_PYTHON=OFF
-          "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer"
+          "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer"
 
       - name: Build the core test executables
         run: cmake --build build-linux --target test_core test_model test_kernel
 
       - name: Run tests
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1
         run: ctest --test-dir build-linux --output-on-failure -E "_NOT_BUILT"
 
   # The kernel must not allocate memory once set up (plan tasks 2.6, 2.10).

@@ -169,6 +169,25 @@ messages in scientific notation.
   read. The committed tests did not depend on it (they sample every 0.1 s);
   the claim was corrected in the model's comment, this entry and the data
   file.
+- **A sanitizer run read as clean that was not** (D45). The run before the
+  closing commit (`85de229`) was recorded, there and in its message, as
+  "175 of 175 passed with no sanitizer report": a search of the ctest
+  summary for reports found none. A second check of the closing, run after
+  that push, read the run's full log
+  (`build-asan/Testing/Temporary/LastTest.log`) and found two
+  undefined-behaviour reports, `LLT.h:66: load of value 32697, which is not
+  a valid value for type 'ComputationInfo'`, in a constraints-per-integrator
+  case and a manufactured-trajectories case. The sanitizer recovers and the
+  tests pass, and ctest shows a passing test's output nowhere, so neither
+  this machine's summary nor CI's log had ever shown them. Stopped at the
+  first report, the first case failed, with the stack at
+  `src/kernel/simulator_linear.cpp:490`: an `Eigen::LLT` built with its
+  size only, whose status Eigen leaves unset, moved into the work space.
+  The same at two more places, there since task 4.7 (17 and 18 October).
+  Fixed by computing the factorization of the identity instead, and CI's
+  sanitizer job now stops at the first report. The earlier runs recorded as
+  clean (173 of 173 before `cc76a14`, 166 of 166 in task 5.1) were read the
+  same way; their full logs are gone.
 
 ## Verification
 
@@ -203,14 +222,23 @@ Tests added (506 registered with ctest on Linux, all passing; 499 before):
   read as no rows and passed; copies in UTF-16 and cut to six lines now
   fail at the row count). After that, 508 tests registered with ctest on
   Linux, all passing, and CI's sanitizer configuration (`test_core`,
-  `test_model`, `test_kernel`) run again on this machine: 175 of 175 passed
-  with no sanitizer report, in 556 s (the two new cases 4.4 and 6.7 s).
+  `test_model`, `test_kernel`) run again on this machine: 175 of 175 passed,
+  in 556 s (the two new cases 4.4 and 6.7 s). The closing commit
+  (`85de229`) recorded that run as having no sanitizer report; its full log
+  held two undefined-behaviour reports ("What went wrong", D45). With the
+  code fixed, 508 of 508 passed again on Linux. The sanitizer configuration
+  with CI's new flags, which stop at the first report, was running on this
+  machine when the fix was committed; its result is recorded with the next
+  commit.
 
 Before the first push (`cc76a14`), CI's sanitizer configuration was also run
-on this machine: 173 of 173 tests passed with no sanitizer report, in 535 s,
-of which the five benchmarks took 195 s (A05 80 s, A04 63 s; 3 s in a normal
-build). Not run here: the Windows build (no MSVC on this machine) and the
-Doxygen reference (Doxygen not installed); CI runs both.
+on this machine: 173 of 173 tests passed, in 535 s, of which the five
+benchmarks took 195 s (A05 80 s, A04 63 s; 3 s in a normal build). It was
+recorded as having no sanitizer report, read from the ctest summary in the
+same way; its full log was overwritten, and the code behind the reports was
+there. Not run here: the Windows build (no MSVC on this machine) and the
+Doxygen reference (Doxygen not installed); CI runs both. CI's Debug no-allocation job
+(`EIGEN_RUNTIME_NO_MALLOC`) had not been run here either up to this point.
 
 ## Measurements
 
