@@ -81,4 +81,5 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 19 Oct 2026 | [Phase 4: the integrators verified](2026-10-19_phase-4-integrators-verified.md) | 4.9, D40, D41 | `acf05c6` | At the time |
 | 19 Oct 2026 | [Phase 4 retrospective](2026-10-19_phase-4-retrospective.md) | Phase 4 gate, tag `v0.5.0`; H.6 for Phase 4 | `aa8876c` to this entry | At the time |
 | 20 Oct 2026 | [Phase 3's how-to guides](2026-10-20_phase-3-howto-guides.md) | H.6 for Phase 3 | `4d8d677` | At the time |
-| 20 Oct 2026 | [Ideas from external sources](2026-10-20_external-sources.md) | D42 (plan amended) | see git log | At the time |
+| 20 Oct 2026 | [Ideas from external sources](2026-10-20_external-sources.md) | D42 (plan amended) | `318295c` | At the time |
+| 20 Oct 2026 | [The working rules in the repository](2026-10-20_working-rules-in-repository.md) | H.7 (D42) | see git log | At the time |

@@ -24,6 +24,7 @@ How the project has been developed, and why it is built the way it is, is record
 | `documentation` | The plan, the development record (journal, decisions, book outline), review evidence, reference notes |
 | `docs` | Project documentation |
 | `scripts` | Build helper |
+| `CLAUDE.md`, `AGENTS.md` | The working rules, for people and agents: building and testing on Windows and Linux, the record kept with every task |
 
 The engine is one compiled library, `multibody_core`. Each folder under `include/mbd` has its source files in the same folder under `src`; the headers hold declarations, small inline functions and templates.
 
