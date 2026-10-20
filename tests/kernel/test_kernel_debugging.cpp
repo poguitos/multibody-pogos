@@ -150,6 +150,18 @@ TEST_CASE("Debugging: two drivers fighting over a coordinate are diagnosed from 
             CHECK(std::abs(trace.at("position_residual")[k] - 0.2) < 1e-12);
         }
         CHECK(captured().size() == 2);   // K050 (redundancy) and K051 (projection), once each
+        // The projection's warning names the two equations that conflict
+        // (task 5.2, D44): the driver's and the point constraint's.
+        bool named = false;
+        for (const auto& m : captured()) {
+            if (m.find("MBD-K051") == std::string::npos) continue;
+            INFO(m);
+            CHECK(m.find("cannot all hold together") != std::string::npos);
+            CHECK(m.find("constraint 0 (joint driver)") != std::string::npos);
+            CHECK(m.find("constraint 1 (dot-2)") != std::string::npos);
+            named = true;
+        }
+        CHECK(named);
     }
     // The same model with the targets agreeing: still two equations of rank
     // 1 (redundant, and harmless), but the projection converges and the

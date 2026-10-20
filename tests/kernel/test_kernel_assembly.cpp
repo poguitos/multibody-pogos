@@ -9,7 +9,10 @@
 //   - a coordinate that no constraint involves is never changed;
 //   - held coordinates that over-determine the loop are reported;
 //   - the held parts of a free joint are kept exactly;
-//   - a hold on a coordinate that does not exist is refused.
+//   - a hold on a coordinate that does not exist is refused;
+//   - constraints that contradict each other are named (task 5.2, D44): of a
+//     model with a four-bar that closes and a bob held at 1 m from two
+//     anchors 3 m apart, the two distances, and nothing else.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -331,4 +334,59 @@ TEST_CASE("Assembly: a hold on a coordinate that does not exist is refused", "[k
     CHECK_THROWS_WITH(assemble(sim, options), ContainsSubstring("MBD-K060"));
     CHECK_THROWS_WITH(AssemblyOptions().hold_joint(fb.sys.model, 0), ContainsSubstring("MBD-K060"));
     CHECK_THROWS_WITH(AssemblyOptions().hold_joint(fb.sys.model, 4), ContainsSubstring("MBD-K060"));
+}
+
+TEST_CASE("Assembly: constraints that contradict each other are named, and only they", "[kernel][assembly]")
+{
+    // The four-bar closes (its revolute closure, constraint 0). The bob, a
+    // free body, must be 1 m from (0, 0, 2) and 1 m from (3, 0, 2): no point
+    // is, so the positions cannot be assembled. Gauss-Newton stops between
+    // the anchors, where the two distance equations, linearised, ask for
+    // opposite moves along X (each alone could be met): those two equations,
+    // constraints 1 and 2, are the smallest set that cannot all hold, and no
+    // equation of the four-bar belongs to it.
+    FourBar fb;
+    const int bob = fb.sys.model.add_body(0, std::make_shared<FreeJointModel>(), Transform3(), Transform3(),
+                                          RigidBodyInertia::from_solid_box(1.0, Vec3(0.05, 0.05, 0.05)), "bob");
+    fb.sys.constraints.push_back(
+        std::make_shared<Distance>(Marker{0, Transform3::FromTranslation(Vec3(0.0, 0.0, 2.0))}, Marker{bob, Transform3()}, 1.0));
+    fb.sys.constraints.push_back(
+        std::make_shared<Distance>(Marker{0, Transform3::FromTranslation(Vec3(3.0, 0.0, 2.0))}, Marker{bob, Transform3()}, 1.0));
+    Simulator sim(fb.sys);
+    sim.q.head(3) = FourBar::configuration(0.7);
+    sim.q.segment<3>(3) = Vec3(1.2, 0.3, 2.1);   // the bob, somewhere between the anchors
+    const AssemblyReport r = assemble(sim);
+    INFO(r.summary(fb.sys.model));
+    REQUIRE_FALSE(r.positions_assembled);
+    const int first = fb.sys.constraints[0]->size();   // the distances' rows follow the closure's
+    CHECK(r.conflicting_equations == std::vector<int>{first, first + 1});
+    REQUIRE(has_warning(r, "MBD-K062"));
+    for (const auto& m : r.warnings) {
+        if (m.find("MBD-K062") == std::string::npos) continue;
+        CHECK_THAT(m, ContainsSubstring("constraint 1 (distance), its equation 1 of 1, on body 0 (ground) and body 4 (bob)"));
+        CHECK_THAT(m, ContainsSubstring("constraint 2 (distance)"));
+        CHECK(m.find("constraint 0") == std::string::npos);
+    }
+}
+
+TEST_CASE("Assembly: a loop far from closing but not contradicted says so", "[kernel][assembly]")
+{
+    // The four-bar alone, given positions that need more Gauss-Newton steps
+    // than allowed (one): the linearised equations there can all hold, so no
+    // equation is named, and the message says why the positions were not
+    // assembled instead.
+    FourBar fb;
+    Simulator sim(fb.sys);
+    sim.q.head(3) = FourBar::configuration(0.7) + Vec3(0.4, -0.3, 0.2);
+    AssemblyOptions options;
+    options.max_iterations = 1;
+    const AssemblyReport r = assemble(sim, options);
+    INFO(r.summary(fb.sys.model));
+    REQUIRE_FALSE(r.positions_assembled);
+    CHECK(r.conflicting_equations.empty());
+    bool said = false;
+    for (const auto& m : r.warnings) {
+        if (m.find("MBD-K062") != std::string::npos) said = m.find("can all hold there") != std::string::npos;
+    }
+    CHECK(said);
 }

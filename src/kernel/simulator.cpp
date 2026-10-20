@@ -10,6 +10,8 @@
 #include "mbd/kernel/forces.hpp"
 
 #include "checks.hpp"
+#include "conflicts.hpp"
+#include "labels.hpp"
 #include "linear_work.hpp"
 #include "step_messages.hpp"
 
@@ -23,15 +25,15 @@ void check_step_control(const StepControl& sc)
                      || sc.max_steps < 1,
                  "MBD-K054: kernel::Simulator: step_control needs absolute_tolerance > 0, relative_tolerance >= 0, "
                  "min_step >= 0 and max_steps >= 1; it has "
-                     + std::to_string(sc.absolute_tolerance) + ", " + std::to_string(sc.relative_tolerance) + ", "
-                     + std::to_string(sc.min_step) + " and " + std::to_string(sc.max_steps) + ".");
+                     + sci(sc.absolute_tolerance) + ", " + sci(sc.relative_tolerance) + ", " + sci(sc.min_step)
+                     + " and " + std::to_string(sc.max_steps) + ".");
 }
 
 void throw_step_too_short(const char* method, Real h, Real t, Real min_step, Real error)
 {
-    throw MbdError("MBD-K055: kernel::Simulator: " + std::string(method) + " needs a step of " + std::to_string(h)
-                   + " s at t = " + std::to_string(t) + " s, below step_control.min_step (" + std::to_string(min_step)
-                   + " s); the error measure of the last try was " + std::to_string(error)
+    throw MbdError("MBD-K055: kernel::Simulator: " + std::string(method) + " needs a step of " + sci(h)
+                   + " s at t = " + std::to_string(t) + " s, below step_control.min_step (" + sci(min_step)
+                   + " s); the error measure of the last try was " + sci(error)
                    + ". The model is stiff or discontinuous here.");
 }
 
@@ -717,10 +719,18 @@ void Simulator::project_step()
         ++projection_failures_;
         if (!projection_failure_reported_) {
             projection_failure_reported_ = true;
+            // Which equations conflict there (D44), with a solver of its own so
+            // that the state of this one stays as the projection left it.
+            ConstraintSolver diagnosis(system.model, system.constraints);
+            Data diagnosis_data(system.model);
+            const std::vector<int> rows = detail::conflicting_equations(system.model, diagnosis, diagnosis_data, q,
+                                                                        time, {}, constraint_tolerance);
             report_warning("MBD-K051: Constraint projection did not converge at t = " + std::to_string(time)
-                           + " s: residual " + std::to_string(last_projection_.position_residual) + " after "
-                           + std::to_string(last_projection_.iterations)
-                           + " iterations. Further failures are counted, not reported.");
+                           + " s: residual " + detail::sci(last_projection_.position_residual) + " after "
+                           + std::to_string(last_projection_.iterations) + " iterations (constraint_tolerance "
+                           + detail::sci(constraint_tolerance) + "). "
+                           + detail::conflict_text(system.model, system.constraints, rows)
+                           + " Further failures are counted, not reported.");
         }
     }
 }
@@ -733,7 +743,7 @@ void Simulator::advance(Real dt)
                      + std::to_string(multirate) + ".");
     MBD_THROW_IF(!(constraint_tolerance > 0.0),
                  "MBD-K047: kernel::Simulator: constraint_tolerance needs a positive value; it is "
-                     + std::to_string(constraint_tolerance) + ".");
+                     + detail::sci(constraint_tolerance) + ".");
     switch (method) {
         case Integrator::RK4:
             if (multirate > 1) step_rk4_multirate(dt);

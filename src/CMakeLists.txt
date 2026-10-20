@@ -20,6 +20,7 @@ add_library(multibody_core
     kernel/joint_forces.cpp
     kernel/outputs.cpp
     kernel/least_change.cpp
+    kernel/conflicts.cpp
     kernel/assembly.cpp
     kernel/statics.cpp
     kernel/linearization.cpp

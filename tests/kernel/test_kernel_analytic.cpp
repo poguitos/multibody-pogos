@@ -29,9 +29,12 @@
 #include "mbd/spatial/spatial.hpp"
 
 #include "kernel/kernel_helpers.hpp"
+#include "support/elliptic.hpp"
 
 using namespace mbd;
 using namespace mbd::kernel;
+using mbd_test::elliptic_K;
+using mbd_test::jacobi;
 
 namespace {
 
@@ -74,46 +77,6 @@ void rk4_constrained(const Model& model, ConstraintSolver& solver, Data& data,
     v += dt / 6.0 * (k1v + 2.0 * k2v + 2.0 * k3v + k4v);
     normalize(model, q);
     solver.project(data, q, v, t + dt);
-}
-
-/// Jacobi's elliptic functions sn, cn and dn of u for the parameter m = k^2,
-/// by the descending Landen transformation (the arithmetic-geometric mean;
-/// Abramowitz and Stegun 16.4).
-void jacobi(Real u, Real m, Real& sn, Real& cn, Real& dn)
-{
-    Real a[32], c[32];
-    a[0] = 1.0;
-    Real b = std::sqrt(1.0 - m);
-    c[0] = std::sqrt(m);
-    int n = 0;
-    while (std::abs(c[n]) > 1e-16 && n < 30) {
-        a[n + 1] = 0.5 * (a[n] + b);
-        c[n + 1] = 0.5 * (a[n] - b);
-        b = std::sqrt(a[n] * b);
-        ++n;
-    }
-    Real phi = std::ldexp(a[n] * u, n);   // 2^n a_n u
-    Real phi_next = phi;
-    for (int i = n; i > 0; --i) {
-        phi_next = phi;
-        phi = 0.5 * (phi + std::asin(c[i] / a[i] * std::sin(phi)));
-    }
-    sn = std::sin(phi);
-    cn = std::cos(phi);
-    dn = n > 0 ? cn / std::cos(phi_next - phi) : 1.0;
-}
-
-/// Complete elliptic integral of the first kind, K(k), by the
-/// arithmetic-geometric mean: K = pi / (2 AGM(1, sqrt(1 - k^2))).
-Real elliptic_K(Real k)
-{
-    Real a = 1.0, b = std::sqrt(1.0 - k * k);
-    for (int i = 0; i < 30 && std::abs(a - b) > 1e-16; ++i) {
-        const Real m = 0.5 * (a + b);
-        b = std::sqrt(a * b);
-        a = m;
-    }
-    return pi / (2.0 * a);
 }
 
 } // namespace

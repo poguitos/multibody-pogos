@@ -279,16 +279,24 @@ Warning: `Redundant constraints: <m> equations of rank <r>. The motion is unaffe
 
 ### MBD-K051
 
-Warning: `Constraint projection did not converge at t = <t> s: residual <r> after <n> iterations. Further failures are counted, not reported.`
+Warning: `Constraint projection did not converge at t = <t> s: residual <r> after <n> iterations (constraint_tolerance <tol>). <the equations that cannot all hold together, or that the linearised equations can all hold>. Further failures are counted, not reported.`
 
 - **Means:** after a step, the state could not be brought back onto the
   constraints to the tolerance (`Simulator::constraint_tolerance`, 1e-10 by
   default). Every method projects after its steps, unless generalised-alpha
   solves them on the constraints (`implicit_control.stabilized_index2`): a
-  step it cannot solve there stops with MBD-K058 instead.
+  step it cannot solve there stops with MBD-K058 instead. The message then
+  names a smallest set of constraint equations that cannot all hold
+  together where the constraints come closest to being met (task 5.2): each
+  as "constraint <k> (<kind>), its equation <j> of <n> (<part>), on <bodies>",
+  the constraint's index in `System::constraints`. When it says instead that
+  the linearised equations can all hold, nothing contradicts: the projection
+  ran out of iterations or started too far away.
 - **Usual causes:** contradictory constraints (two drivers asking for
-  different values of one quantity); a mechanism driven through a singular
-  position; a driver target that jumps; a step too long for the motion.
+  different values of one quantity: the message names both); a mechanism
+  driven through a singular position; a driver target that jumps; a step
+  too long for the motion; a tolerance below what rounding allows for the
+  model's size (about 1e-12 m for coordinates of tens of metres).
 - **What to do:** `Simulator::projection_failures()` counts the failures and
   `last_projection()` gives the last residual. Run `validate(system, sim.q)`
   at the state of the first failure; check the drivers' targets and their
@@ -343,12 +351,19 @@ Warning: `<n> events in one step at t = <t> s; the rest of the step ignores even
   low speed on a light wheel), whose stability limit is far shorter than the
   motion needs; a force that jumps (a sign that flips with a velocity, a
   table without interpolation) or a kink taken with very tight tolerances;
-  a state that has become NaN or infinite (the measure is then infinite).
+  a state that has become NaN or infinite (the measure is then infinite); a
+  closed mechanism passing a singular position (a parallelogram folding flat)
+  with its constraints held loosely: positions left off the constraints by
+  as little as 1e-13 make it act as a slightly wrong mechanism, which must
+  turn ever faster as the singular position nears (task 5.2).
 - **What to do:** look at the forces at that time (`dump_state`, the step
   trace); make a jump continuous (regularise it, or decide it at the end of a
   step as the drivetrain's brake does); for a stiff model use an implicit
   method (`RadauIIA` with the same step control, or `GeneralizedAlpha`);
-  loosen the tolerances if they are tighter than the model deserves.
+  loosen the tolerances if they are tighter than the model deserves. For a
+  mechanism that passes singular positions, hold the constraints near
+  rounding: `constraint_tolerance` 1e-14 for a model of metre size, 1e-12 for
+  one of tens of metres.
 
 ### MBD-K056
 
@@ -438,11 +453,17 @@ or `AssemblyOptions::hold_joint: there is no jointed body <b>; the jointed bodie
 
 ### MBD-K062
 
-Warning, in `AssemblyReport::warnings`: `Assembly: the positions were not assembled: |phi| = <r> after <n> iterations (tolerance <tol>).`, or the same for the velocities with `|J v - nu|`.
+Warning, in `AssemblyReport::warnings`: `Assembly: the positions were not assembled: |phi| = <r> after <n> iterations (tolerance <tol>). <the equations that cannot all hold together, or that the linearised equations can all hold>`, or the same for the velocities with `|J v - nu|` (without the second sentence).
 
 - **Means:** the constraints could not be met with the coordinates held. The
   assembled state is still written to the simulator, the nearest that was
-  found; the given one is in the report (`q_given`, `v_given`).
+  found; the given one is in the report (`q_given`, `v_given`). For the
+  positions the message names a smallest set of constraint equations that
+  cannot all hold together, at the positions that come closest to meeting
+  them with the held coordinates kept (task 5.2), as for MBD-K051; the
+  report has their rows in `conflicting_equations`. Empty, with the message
+  saying the linearised equations can all hold, means nothing contradicts:
+  more iterations, or a start nearer an assembled configuration, will do.
 - **Usual causes:** held coordinates that over-determine the mechanism (then
   MBD-K063 comes with it); given values too far from any assembled
   configuration, for instance a linkage on the wrong side of a dead centre;

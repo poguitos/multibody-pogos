@@ -54,6 +54,7 @@ and the journal entry of the work refers to them by number
 | D41 | The integrators verified by a program that writes the report's figures and tables | 19 Oct 2026 | In force, task 4.9 |
 | D42 | Ideas from external sources adopted into the plan | 20 Oct 2026 | In force, plan amended (5.1, 5.2, 5.5, 7.2, 7.6, 7.8, 8.2, 8.6, 9.1, 9.3, 9.5, 9.7, 10.1, 10.7, 13.2, 13.3, 13.5, 13.8, 13.9, 14.7, H.7) |
 | D43 | Analytic cases: manufactured trajectories checked by one step and over a span; the modal energy from the whole mass matrix | 20 Oct 2026 | In force, task 5.1 |
+| D44 | The IFToMM benchmarks against closed forms; singular positions passed by holding the constraints near rounding; conflicting equations named by a deletion filter | 20 Oct 2026 | In force, task 5.2 (open: A04, A05 against the library's files) |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -1338,3 +1339,91 @@ and the journal entry of the work refers to them by number
   `tests/kernel/test_kernel_linearization.cpp`,
   `tests/kernel/test_kernel_analytic.cpp`;
   `documentation/journal/data/2026-10-20_analytic-cases.md`.
+
+## D44. The IFToMM benchmarks against closed forms; singular positions passed by holding the constraints near rounding; conflicting equations named by a deletion filter
+
+- **Context.** Task 5.2 runs the IFToMM benchmark problems of group A (the
+  simple pendulum, the N-four-bar mechanism, Andrews' mechanism, Bricard's
+  mechanism, the flyball governor), "done when each meets its published
+  reference", and, from D42, names the conflicting equations when a
+  mechanism cannot be closed. The library's site and its reference files
+  could not be reached from the machine the work was done on. The problems'
+  parameters were taken from a third-party reimplementation of the library
+  for OpenSim (Tagliapietra et al., MBS-BOS, GPL; read for the problem
+  statements only) and, for Andrews' mechanism, from the Test Set for IVP
+  Solvers (through the R package deTestSet), which also publishes a
+  reference solution. On the N-four-bar the kernel failed: after a few
+  passes through the singular horizontal position Dormand-Prince stopped
+  with MBD-K055.
+- **Decision.**
+  - **References.** The pendulum and the N-four-bar against their closed
+    forms in Jacobi's functions (the four-bar of identical bars moves as one
+    parallelogram, a pendulum turning over); Andrews' mechanism against the
+    test set's values at 0.03 s; Bricard's mechanism against the closed form
+    of its path, tan(psi / 2) the small root of u w^2 + (u + 1)^2 w + u = 0
+    with u = tan(phi / 2) (derived for this task from the closure equations),
+    and against its dynamics reduced to one coordinate from the geometry
+    alone; the flyball governor against its exactly kept angular momentum
+    about the spindle, its energy balance with the dampers' work integrated
+    as a state, and three integrators. The IFToMM files themselves remain
+    to be compared with for A04 and A05, whose motions have no closed form.
+  - **Singular positions.** The solver is not changed. The failure was
+    traced to a residual of the positions of about 1e-13 m, below the
+    default `constraint_tolerance` (1e-10) and so never projected away, which
+    makes the model a slightly imperfect parallelogram: its coupler must turn
+    at a rate growing as delta theta' / (L theta^2) towards the singular
+    position. Held to 1e-14 (1e-12 for the 40 loops, whose coordinates reach
+    40 m), the N-four-bar passes its 19 singular positions in 10 s on its
+    closed form. The default stays 1e-10; the help says when to hold the
+    constraints tighter (MBD-K055, the troubleshooting guide, the kernel's
+    documentation).
+  - **Conflicting equations.** When positions cannot be assembled (MBD-K062,
+    `AssemblyReport::conflicting_equations`) or a projection fails
+    (MBD-K051), a diagnosis goes from the nearest positions found to the
+    least-squares nearest by Levenberg-Marquardt, the held coordinates kept,
+    and there runs a deletion filter (Chinneck and Dravnieks 1991) on the
+    linearised equations J dq = -phi: each equation in turn is left out for
+    good if the rest still have no solution. The equations left, a smallest
+    set that cannot all hold, are named by constraint index, kind, part and
+    bodies. An empty set is reported as such: nothing contradicts.
+  - **Messages.** MBD-K047, K051, K054 and K055 wrote small numbers with
+    `std::to_string` (six decimals: a step of 1e-13 s read "0.000000"); they
+    now use the kernel's scientific notation.
+- **Alternatives.**
+  - **A lower rank cut** in `RankRevealingLDLT` (1e-13 instead of 1e-10,
+    nearer LAPACK's n eps): it narrows the window around a singular position
+    where the accelerations are wrong (rank 4 of 8 kept: 0.75 rad/s^2 off on
+    four four-bars) from |theta| < 5e-6 to < 1e-7, and the whole kernel suite
+    passed with it; but measured on the runs it made them worse (with ctol
+    1e-14, N = 4 at tolerance 1e-10: 5e-4 rad against 2e-8; with ctol 1e-13,
+    failures at 2.6 s), the nearly dependent equations kept amplifying the
+    residual. Rejected.
+  - **A tighter default** `constraint_tolerance`: every model would pay for
+    projections it does not need, and large models cannot reach 1e-14 at
+    all (the 40 four-bars stopped near 1e-12). Rejected; a mechanism meant
+    to pass singular positions sets it.
+  - **Regularised multipliers or an augmented-Lagrangian formulation**, the
+    usual robust answer to singular positions: not tried; the measured fix
+    above suffices for the benchmark. Open.
+  - **Naming the equations with the largest residuals**: in a loop the
+    residual spreads over every equation of the loop, contradicted or not.
+    **The support of a left null vector of J**: a dependent set, not a
+    smallest one. **An exact irreducible infeasible subsystem by mixed
+    integer programming**: far more machinery than a diagnosis needs.
+    Rejected for the deletion filter.
+  - **The deletion filter at the positions the projection stopped at**,
+    without going to the least-squares point first: tried first, it found
+    nothing on the test case (Gauss-Newton had reduced |phi| only from 1.20
+    to 0.96 of a least possible 0.88, where the two contradicting equations,
+    linearised, still have a solution). Rejected.
+- **Consequences.** The benchmarks run in the suite (about 3 s; the 40
+  four-bars, 17 s, hidden). A user whose mechanism will not close is told
+  which constraints contradict. A user whose mechanism stalls at a singular
+  position is told how to hold its constraints. Task 5.2 stays open until
+  the IFToMM reference files for A04 and A05 are compared, and A05's
+  definition confirmed against the library's own (the OpenSim version's
+  parameters were used).
+- **Record.** Journal: Phase 5, the IFToMM benchmarks;
+  `tests/kernel/iftomm.hpp`, `tests/kernel/test_kernel_iftomm.cpp`,
+  `src/kernel/conflicts.cpp`;
+  `documentation/journal/data/2026-10-20_iftomm-benchmarks.md`.

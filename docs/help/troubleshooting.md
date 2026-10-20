@@ -35,8 +35,13 @@ changes. *(Phase 0.)*
 
 **A build compiles against the old version of a header.** With precompiled
 headers, a header edited while a build runs is not seen by the files that
-build still has to compile. Do not edit headers or test sources during a
-build. *(Phase 2: the simulator and the vehicles.)*
+build still has to compile. Without them (Linux, `MBD_PCH=OFF`) the harm can
+outlast the build: an object compiled against the old header but written
+after the edit looks newer than the header, so Ninja never rebuilds it, and a
+changed struct then reads as garbage (`lm.modes.size()` came out as
+6148914691236517208). Do not edit headers or test sources during a build; if
+it happened, touch the header and build again. *(Phase 2: the simulator and
+the vehicles; Phase 5: analytic cases.)*
 
 **One file takes far longer to compile than its neighbours.** Look at
 `build/.ninja_log` (columns: start ms, end ms, mtime, output), or compile the
@@ -149,9 +154,28 @@ constraints, or not in equilibrium. Run `static_equilibrium(sim)` first.
 
 **The projection fails (MBD-K051).** Contradictory constraints (see
 Models), a mechanism driven through a singular position, a driver whose
-target jumps, or a step too long for the motion. Switch on the step trace:
-the step where `projection_converged` first drops to 0, and the drift before
-it, locate the cause; `dump_state(sim)` there shows the configuration.
+target jumps, or a step too long for the motion. The warning names a
+smallest set of constraint equations that cannot all hold together, by
+constraint index, kind and bodies (`assemble()` does the same in MBD-K062,
+and lists their rows in `AssemblyReport::conflicting_equations`); if it says
+the linearised equations can all hold, nothing contradicts and the cause is
+one of the others. Switch on the step trace: the step where
+`projection_converged` first drops to 0, and the drift before it, locate
+the cause; `dump_state(sim)` there shows the configuration. *(Phase 5: the
+IFToMM benchmarks.)*
+
+**A closed mechanism stalls, reverses or switches branch at a singular
+position (MBD-K055 there, or a motion that turns back).** At a singular
+position (a parallelogram folding flat, a four-bar at a dead centre) the
+loop's equations lose rank, and positions left off the constraints by even
+1e-13 m make the model a slightly different mechanism: a parallelogram whose
+coupler must turn at a rate growing as delta theta' / (L theta^2) as theta,
+the distance from the singular position, falls. With the default
+`constraint_tolerance` (1e-10) such residuals are never projected away. Hold
+the constraints near rounding: 1e-14 for a model of metre size, 1e-12 for one
+of tens of metres (smaller fails with MBD-K051 at every step). The IFToMM
+N-four-bar, through 19 singular positions in 10 s, then follows its closed
+form to 2e-8 rad. *(Phase 5: the IFToMM benchmarks.)*
 
 **Results differ in the last digits from an earlier version, or a long run
 ends slightly elsewhere.** Since task 4.8 the mass matrix is factorized
@@ -497,6 +521,21 @@ polynomial, known from the coefficients; compare the program's state with
 it to rounding, as `tests/kernel/test_kernel_integrators.cpp` does.
 *(The Dormand-Prince pair.)*
 
+**An exact reference, and errors past any order.** A motion driven by
+forces fixed in time (a manufactured trajectory: forces from inverse
+dynamics) has nothing pulling a deviation back, so an early error grows; on a
+tree with a free body and a spherical root, a span of 1 s left the
+first-order methods with errors as large as the motion. Measure an
+integrator's order over a short span (0.5 s there), or over one step from the
+exact state, which no growth touches (the local error falls by 2^(p+1) when
+the step halves). *(Phase 5: analytic cases.)*
+
+**Mode shapes that do not match, frequencies that do.** A shape scaled to its
+largest entry is ambiguous when two entries are equally large (a symmetric
+mode of a line of masses); two correct shapes can then differ by a sign or a
+factor. Compare shapes up to a scalar: the part of one unit shape not along
+the other. *(Phase 5: analytic cases.)*
+
 ## Checking a new joint, constraint or force
 
 Before building on it (working rule 2):
@@ -544,3 +583,5 @@ Before building on it (working rule 2):
 | Phase 4: the inertia's velocity products implicit | A spinning body's wobble damped by the two Euler steps (Simulations); a matrix not positive definite (MBD-K045) |
 | Phase 4: the mass matrix along the tree | Results that differ in the last digits from before (Simulations); a machine 2.3 times slower from one day to the next (Slow runs) |
 | Phase 4: the integrators verified | The real-time step diverging, then gaining energy, on stiff bushings between turning bodies (Simulations); generalised-alpha's Newton at long steps with a tight tolerance (Simulations: MBD-K058); a chaotic model's long runs depending on rounding (Simulations: results differ) |
+| Phase 5: analytic cases and manufactured trajectories | A header edited during a build, leaving a stale object (Builds); forced motions that amplify errors past any order, and mode shapes compared by an ambiguous normalization (Numerical traps) |
+| Phase 5: the IFToMM benchmarks | A mechanism stalling at a singular position with loose constraints (Simulations); contradictory constraints named (Simulations: MBD-K051, Initial conditions: MBD-K062); messages that wrote small numbers as 0.000000 (fixed) |

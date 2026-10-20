@@ -206,6 +206,15 @@ to a validated engine.*
 - **Modal energy shares.** Each mode's kinetic energy by coordinate, with
   the whole mass matrix rather than its diagonal; the engine on its mounts.
   *D43.*
+- **The IFToMM benchmarks.** References where the published files are out
+  of reach: closed forms (the N-four-bar as one parallelogram, a pendulum
+  turning over), a reduced model from geometry (Bricard's path, derived by
+  machine algebra, and its one-coordinate dynamics), conserved quantities
+  and an energy balance (the governor). Singular positions: the confirmed
+  cause (a rank cut dropping equations) that was not the cause, and the
+  imperfect parallelogram, its coupler turning at delta theta' / (L
+  theta^2). Contradictory constraints named by a deletion filter at the
+  least-squares point. *J: Phase 5, the IFToMM benchmarks. D44.*
 
 ## Part VIII onwards: one part per phase still to come
 

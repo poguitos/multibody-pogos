@@ -501,7 +501,12 @@ drift adds up (`enforce_constraints = false`: on the four-bar of the tests,
 RK4 at 2 ms reaches 2.6e-5 in 20 s, semi-implicit Euler 0.46).
 `enforce_constraints` (on by default) removes it: every method projects the
 state after each of its steps, positions to `constraint_tolerance` (1e-10)
-and velocities exactly. A projection keeps a one-step method's order
+and velocities exactly. Near a singular position of a loop (a parallelogram
+folding flat) a residual below that tolerance, never projected away, makes
+the model a slightly different mechanism whose coupler must turn ever faster
+as the singular position nears; to pass such positions hold the constraints
+near rounding, 1e-14 for a model of metre size (task 5.2, D44: the IFToMM
+N-four-bar). A projection keeps a one-step method's order
 (Eich-Soellner and Fuhrer, section 5.3), and on the four-bar it kept or
 improved the accuracy of RK4, Dormand-Prince, SDIRK4 and Radau IIA.
 Generalised-alpha carries a history, its acceleration-like variable, which
@@ -634,9 +639,16 @@ the counts (equations, rank, degrees of freedom, and the ranks with the holds),
 each coordinate's given and assembled value, the loads, and warnings with
 their codes (MBD-K062 to K064): positions or velocities not assembled, held
 coordinates that over-determine the mechanism (holding a four-bar's crank and
-rocker), the smallest correction not found. `summary(model)` writes it all as
-text. `Simulator::initialize()` still only projects, for a state already close
-to the constraints.
+rocker), the smallest correction not found. Where the positions are not
+assembled, `conflicting_equations` holds a smallest set of constraint
+equations that cannot all hold together (task 5.2, D44): the diagnosis goes
+from the nearest positions found to the least-squares nearest by
+Levenberg-Marquardt, the held coordinates kept, and there a deletion filter
+leaves out each equation in turn while the rest still cannot hold. MBD-K062
+names them by constraint, kind and bodies, and the simulator's MBD-K051 does
+the same when a projection fails; an empty set means nothing contradicts.
+`summary(model)` writes it all as text. `Simulator::initialize()` still only
+projects, for a state already close to the constraints.
 
 ## Static equilibrium
 
@@ -859,6 +871,17 @@ the motion after 0.5 s at its order (Dormand-Prince on one tree excepted,
 where its ratio has not settled above rounding; its single step does).
 A hidden case, `[manufactured][table]`, prints the error tables the steps
 were chosen from.
+
+`tests/kernel/test_kernel_iftomm.cpp` (task 5.2, D44) runs the IFToMM
+benchmark problems of group A (`tests/kernel/iftomm.hpp`): the simple
+pendulum, on a joint and on a constraint, and the N-four-bar, through 19
+singular positions, against their closed forms; Andrews' mechanism against
+the Test Set for IVP Solvers' reference at 0.03 s; Bricard's mechanism, one
+degree of freedom with one redundant equation, against the closed form of its
+path and against its dynamics reduced to one coordinate from the geometry
+alone; the flyball governor against its angular momentum, its energy balance
+with the dampers' work and three integrators. The N-four-bar with 40 loops is
+the hidden `[long]` case.
 
 `tests/kernel/test_kernel_linearization.cpp` checks `linearize()` on a damped
 mass, a four-bar on a spring, a rigid body on three bushings against eig(K,

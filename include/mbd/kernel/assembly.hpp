@@ -88,6 +88,12 @@ struct AssemblyReport {
     int refinement_iterations{0};      ///< Second stage
     Real position_residual_given{0.0}; ///< |phi| at the given positions
     Real position_residual{0.0};       ///< |phi| at the assembled positions
+    /// When the positions were not assembled: a smallest set of the
+    /// constraint equations (rows of the constraints' equations stacked in
+    /// order) that cannot all hold together at the positions reached, the
+    /// held coordinates kept; empty when they can all hold, and the
+    /// iterations ran out instead (MBD-K062; task 5.2, D44).
+    std::vector<int> conflicting_equations;
     VecX q_given, q;
     VecX position_change;              ///< difference(q_given, q), in velocity coordinates
 

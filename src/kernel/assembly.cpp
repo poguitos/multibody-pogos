@@ -10,6 +10,7 @@
 #include "mbd/kernel/constrained_dynamics.hpp"
 
 #include "checks.hpp"
+#include "conflicts.hpp"
 #include "labels.hpp"
 #include "least_change.hpp"
 
@@ -145,10 +146,16 @@ AssemblyReport assemble(Simulator& sim, const AssemblyOptions& options)
     r.velocity_hold_rank = velocity.rank();
 
     if (!r.positions_assembled) {
+        // Which equations conflict, at the nearest positions found, with the
+        // held coordinates unable to move (D44).
+        r.conflicting_equations =
+            detail::conflicting_equations(model, solver, data, q, t, r.held_positions, tol);
+        solver.evaluate(data, q, zero, t);
         r.warnings.push_back("MBD-K062: Assembly: the positions were not assembled: |phi| = "
                              + sci(r.position_residual) + " after "
                              + std::to_string(r.projection_iterations) + " iterations (tolerance "
-                             + sci(tol) + ").");
+                             + sci(tol) + "). "
+                             + detail::conflict_text(model, sim.system.constraints, r.conflicting_equations));
     }
     if (r.position_hold_rank < r.rank) {
         r.warnings.push_back(
