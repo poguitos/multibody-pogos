@@ -24,7 +24,16 @@
 // overdamped motion, zero for a neutral one (a vehicle's position on the
 // ground: a double zero, the position and its rate). The mode shapes are the
 // position parts of the eigenvectors, mapped back by N to velocity
-// coordinates.
+// coordinates. Each mode's kinetic energy is shared out among the velocity
+// coordinates (task 5.1, D43): coordinate k holds
+//
+//   e_k = Re(conj(phi_k) (M phi)_k) / Re(phi^H M phi),
+//
+// M the mass matrix at the operating point and phi the shape; the shares
+// add up to 1. It is the modal energy distribution used to judge how pure a
+// mode is (the bounce, pitch and roll of a car on its springs, an engine on
+// its mounts). Where M couples coordinates a share can be negative: the
+// cross terms are split equally between the two coordinates.
 
 #include <complex>
 #include <string>
@@ -49,6 +58,10 @@ struct Mode {
     Real natural_frequency{0.0};   ///< |eigenvalue| [rad/s]
     Real damping_ratio{0.0};       ///< -Re / |eigenvalue|; 0 for a zero eigenvalue
     Eigen::VectorXcd shape;        ///< dq in velocity coordinates, its largest entry 1
+    /// The share of the mode's kinetic energy in each velocity coordinate,
+    /// adding up to 1 (see the top of this file). Zero for a mode whose
+    /// shape carries no kinetic energy.
+    VecX energy_fraction;
 
     bool oscillatory() const { return eigenvalue.imag() > 0.0; }
 };

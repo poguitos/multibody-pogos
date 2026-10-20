@@ -83,3 +83,4 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 20 Oct 2026 | [Phase 3's how-to guides](2026-10-20_phase-3-howto-guides.md) | H.6 for Phase 3 | `4d8d677` | At the time |
 | 20 Oct 2026 | [Ideas from external sources](2026-10-20_external-sources.md) | D42 (plan amended) | `318295c` | At the time |
 | 20 Oct 2026 | [The working rules in the repository](2026-10-20_working-rules-in-repository.md) | H.7 (D42) | see git log | At the time |
+| 20 Oct 2026 | [Phase 5: analytic cases and manufactured trajectories](2026-10-20_phase-5-analytic-cases.md) | 5.1, D43 | see git log | At the time |

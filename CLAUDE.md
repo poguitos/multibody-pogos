@@ -19,8 +19,9 @@ agent (plan task H.7, decision D42). Read them before the first change.
 
 **Where the work stands:** the plan's checkboxes and the journal index say it.
 On 20 October 2026: Phase 4 merged into `main` (tag `v0.5.0`); branch
-`phase-5` carries Phase 3's how-to guides, the D42 plan amendments and this
-file; the next task is **5.1** (analytic cases, with the D42 additions).
+`phase-5` carries Phase 3's how-to guides, the D42 plan amendments, this
+file and task 5.1 (analytic cases and manufactured trajectories, D43); the
+next task is **5.2** (the IFToMM benchmarks).
 
 **Not in the repository:** the textbooks and papers in `documentation/` (git
 ignores PDFs), and local copies of the reviewed sources (on the author's

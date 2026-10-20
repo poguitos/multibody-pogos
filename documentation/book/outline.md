@@ -189,9 +189,27 @@ to a validated engine.*
     springs between turning bodies); chaos found by the smallest
     perturbation at hand. *J: the integrators verified. D40, D41.*
 
-## Part VII onwards: one part per phase still to come
+## Part VII. Validation (Phase 5)
 
-Validation (5), Python
+- **Analytic cases.** Closed forms chosen to exercise one thing each: Jacobi's
+  elliptic functions for a body with three unequal moments, the heavy top's
+  precession and nod, the modes of a body on three mounts from eig(K, M)
+  written out, a line of masses. *J: Phase 5, analytic cases. D43.*
+- **Manufactured trajectories.** Any smooth motion is an exact solution of
+  the dynamics with the forces inverse dynamics gives it; the motion in
+  closed form (a product of exponentials for each rotation, with its rates),
+  loops driven at some joints with the constraint forces solved alongside,
+  and the two measures of order: one step (order p + 1, untouched by the
+  motion's instability) and a span (order p, only where the forced motion's
+  instability leaves the errors in range). The figure: the error tables, one
+  model per panel. *J: Phase 5, analytic cases. D42, D43.*
+- **Modal energy shares.** Each mode's kinetic energy by coordinate, with
+  the whole mass matrix rather than its diagonal; the engine on its mounts.
+  *D43.*
+
+## Part VIII onwards: one part per phase still to come
+
+Python
 (6), vehicle subsystems (7), the vehicle builder (8), vehicle analyses (9),
 lap time (10), aerodynamics and CFD, including the in-house CFD solver (11),
 real time on Windows and Linux (12), optimisation and AI (13), flexible bodies

@@ -114,8 +114,9 @@ TEST_CASE("How-to analyses: natural frequencies and damping", "[howto]")
     // [example: linearize]
     const LinearModel lm = linearize(sim);       // about the simulator's state: here the equilibrium
     const Mode& slowest = lm.modes.front();      // the modes come by natural frequency
-    // slowest.natural_frequency [rad/s], slowest.damping_ratio, slowest.shape (velocity coordinates);
-    // lm.summary(sys.model) lists every mode with its largest shape components.
+    // slowest.natural_frequency [rad/s], slowest.damping_ratio, slowest.shape (velocity coordinates),
+    // slowest.energy_fraction (its kinetic energy's share in each coordinate, adding up to 1);
+    // lm.summary(sys.model) lists every mode with its largest shape components and energy shares.
     // [end example]
     const Real w = std::sqrt(HangingBlock::k / HangingBlock::m);
     const Real zeta = 63.2 / (2.0 * std::sqrt(HangingBlock::k * HangingBlock::m));

@@ -99,8 +99,9 @@ const VecX& rates = kin.velocities();        // dq/dt: each joint's rate per uni
 ```cpp
 const LinearModel lm = linearize(sim);       // about the simulator's state: here the equilibrium
 const Mode& slowest = lm.modes.front();      // the modes come by natural frequency
-// slowest.natural_frequency [rad/s], slowest.damping_ratio, slowest.shape (velocity coordinates);
-// lm.summary(sys.model) lists every mode with its largest shape components.
+// slowest.natural_frequency [rad/s], slowest.damping_ratio, slowest.shape (velocity coordinates),
+// slowest.energy_fraction (its kinetic energy's share in each coordinate, adding up to 1);
+// lm.summary(sys.model) lists every mode with its largest shape components and energy shares.
 ```
 
 The hanging block with a damper of 63.2 N s/m has one mode: 31.6 rad/s
@@ -109,6 +110,10 @@ The hanging block with a damper of 63.2 N s/m has one mode: 31.6 rad/s
 - Linearise about an equilibrium: find it first with `static_equilibrium`.
   About a state in motion the same formulas are used, exact for joints
   whose coordinates add.
+- `energy_fraction` is the modal energy distribution, from the whole mass
+  matrix: how pure a mode is (an engine's bounce on its mounts, a car's
+  roll). Where coordinates are coupled through the mass matrix a share can
+  be negative; the shares still add up to 1.
 - `lm.A` is the state matrix in reduced coordinates on the constraints
   (`lm.basis` maps them back); a real eigenvalue appears as an overdamped
   mode, a zero one as a neutral direction.

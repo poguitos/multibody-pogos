@@ -53,6 +53,7 @@ and the journal entry of the work refers to them by number
 | D40 | The linearly implicit step with its force derivatives whole, not their symmetric parts | 19 Oct 2026 | In force, task 4.9 |
 | D41 | The integrators verified by a program that writes the report's figures and tables | 19 Oct 2026 | In force, task 4.9 |
 | D42 | Ideas from external sources adopted into the plan | 20 Oct 2026 | In force, plan amended (5.1, 5.2, 5.5, 7.2, 7.6, 7.8, 8.2, 8.6, 9.1, 9.3, 9.5, 9.7, 10.1, 10.7, 13.2, 13.3, 13.5, 13.8, 13.9, 14.7, H.7) |
+| D43 | Analytic cases: manufactured trajectories checked by one step and over a span; the modal energy from the whole mass matrix | 20 Oct 2026 | In force, task 5.1 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -1247,3 +1248,93 @@ and the journal entry of the work refers to them by number
 - **Record.** Journal: ideas from external sources;
   `documentation/review_2026-10-20/external_sources.md`;
   `documentation/Master_plan.md`.
+
+## D43. Analytic cases: manufactured trajectories checked by one step and over a span, and the modal energy from the whole mass matrix
+
+- **Context.** Task 5.1 asks for analytic cases, among them, from D42, a
+  rigid body on three bushings with the modal energy distribution added to
+  the linearisation, and manufactured trajectories: a smooth motion
+  prescribed for random trees and closed loops, its forces by inverse
+  dynamics, and every integrator required to return it at its order. Three
+  things had to be decided: how the energy shares are defined, how a
+  prescribed motion is built for joints with quaternions and for loops, and
+  what "at its order" is measured on.
+- **Decision.**
+  - **Energy shares.** `Mode::energy_fraction`: for velocity coordinate k,
+    `Re(conj(phi_k) (M phi)_k) / Re(phi^H M phi)`, M the whole mass matrix
+    at the operating point, phi the mode's shape; the shares add up to 1, a
+    cross term of M is split equally between its two coordinates (so a share
+    can be negative), and `summary()` lists the three largest.
+  - **Prescribed motion.** Scalar coordinates as `c + a sin(w t + p)`.
+    Rotations (spherical joints, the free joint's) as a product of three
+    exponentials about fixed axes, `R0 E1 E2 E3`, whose body-fixed angular
+    velocity and its rate follow in closed form from the factors (the test
+    file writes them out). The free joint's translation as sines in the
+    parent's frame, its velocity coordinate `R^T p'`. The motion's own rates
+    are checked against its differences before it is used.
+  - **Loops.** Only some joints are driven, and the drives and the
+    constraint multipliers solve `B tau_a + J^T lambda = RNEA` together, so
+    that the constraints carry part of the load (from 0.27 to 2.6 times the
+    drives' size on the two loops) and the forward dynamics must return the
+    constraint forces as well as the accelerations. The loops are built so
+    that the prescribed motion meets the constraints exactly in closed form:
+    two identical chains side by side tied at their tips by a distance
+    constraint (their tips stay a fixed vector apart), and a parallelogram
+    four-bar (the coupler's angle minus the crank's).
+  - **Orders.** Two measures. One step from the exact state at t = 0.2 s:
+    its error falls by 2^(p+1) when the step halves, for every one-step
+    method; it does not depend on how the motion amplifies errors, so it
+    settles at long steps. Over a span of 0.5 s: the error falls by 2^p,
+    for every method, with the steps of each chosen from tables of five
+    steps (kept as a hidden test that prints them) where the ratio has
+    settled and the error is far above rounding; within 0.25 of the order in
+    both.
+  - **Two cases left out, with their reasons.** Generalised-alpha has no
+    one-step check: started at the true acceleration, its first step carries
+    an O(h^2) velocity error that later steps damp (Arnold and Brüls 2007);
+    its order over the span is 2.00 on every model. Dormand-Prince on the
+    spherical-root tree has no span check: its ratio there has not settled
+    at 32 above that model's rounding floor (2^4.39, 2^4.31, 2^4.70 from 12.5
+    to 1.6 ms), though its one-step order there is 6.17 and falling towards
+    6, and every other method, Radau IIA at fifth order included, settles on
+    that model.
+  - **The mounts without gravity.** The closed-form K of three bushings is
+    the stiffness at zero load. With gravity the bushings carry the weight
+    at rest, and a preload turning with the body adds a stiffness the closed
+    form does not have; the test runs without gravity, so that K is exact.
+- **Alternatives.**
+  - Shares from the diagonal of M only, `phi_k^2 M_kk / sum`, as
+    Seddighi's slides compute them: simpler and never negative, but they
+    ignore the products of inertia and an offset centre of mass, which an
+    engine or a car body always has; the shares would no longer add up to
+    the mode's kinetic energy. Rejected.
+  - A prescribed orientation from a time-varying rotation vector,
+    `R0 exp(phi(t))`: its angular velocity needs the derivative of the
+    exponential map and its rate the derivative of that, longer formulas
+    to get right in a test. Rejected for the product of exponentials, each
+    factor about a fixed axis, whose rates are one line each.
+  - Feedback towards the prescribed motion, adding `K_p (q_ref - q) +
+    K_d (v_ref - v)` to the forces: the prescribed motion stays an exact
+    solution and errors stop growing, so long spans would be usable. But the
+    forces then depend on the state, through a callback that the implicit
+    methods' iteration matrices and the linearly implicit step's force
+    derivatives see differently, and the gains damp the integrators' own
+    errors. Not adopted; a short span and the one-step check do without it.
+  - Every closed loop from a random tree with a closure "cut" out of it (a
+    free joint plus the closure of the joint it replaces): topologically
+    still a tree, not a loop. Rejected for the two constructions above.
+- **Consequences.** The integrators are now checked against an exact
+  reference on spatial trees with every joint type and on loops, not only on
+  the oscillator and on models whose reference was itself a tight-tolerance
+  run. The span check needs short spans: forced motions are unstable (on
+  the spherical-root tree the fifth-order methods stop converging over 0.5 s
+  at about 1e5 times the state's rounding), which is worth knowing
+  for any later use of manufactured motions (the regression harness of 5.5).
+  `linearize()` gains one mass matrix per call and the shares in its
+  summary. Seddighi's decoupling target (90 % of a mode's energy in one
+  coordinate) can be written directly on `energy_fraction` in 13.3.
+- **Record.** Journal: Phase 5, analytic cases;
+  `tests/kernel/test_kernel_manufactured.cpp`,
+  `tests/kernel/test_kernel_linearization.cpp`,
+  `tests/kernel/test_kernel_analytic.cpp`;
+  `documentation/journal/data/2026-10-20_analytic-cases.md`.

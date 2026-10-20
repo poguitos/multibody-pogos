@@ -142,6 +142,7 @@ LinearModel linearize(Simulator& sim, const LinearizationOptions& options)
         const Eigen::VectorXcd lambda = eigen.eigenvalues();
         const Eigen::MatrixXcd vectors = eigen.eigenvectors();
         const Eigen::MatrixXcd Nc = N.cast<std::complex<Real>>();
+        const Eigen::MatrixXcd Mc = crba(model, data, q0).cast<std::complex<Real>>();
         for (Index i = 0; i < lambda.size(); ++i) {
             if (lambda(i).imag() < 0.0) continue;   // the twin of a listed pair
             Mode mode;
@@ -152,6 +153,15 @@ LinearModel linearize(Simulator& sim, const LinearizationOptions& options)
             Index big = 0;
             mode.shape.cwiseAbs().maxCoeff(&big);
             if (std::abs(mode.shape(big)) > 0.0) mode.shape /= mode.shape(big);
+            // The modal energy distribution: conj(phi_k) (M phi)_k over phi^H M phi.
+            const Eigen::VectorXcd Mphi = Mc * mode.shape;
+            const Real energy = mode.shape.dot(Mphi).real();   // dot conjugates the first
+            mode.energy_fraction = VecX::Zero(nv);
+            if (energy > 0.0) {
+                for (Index k = 0; k < nv; ++k) {
+                    mode.energy_fraction(k) = (std::conj(mode.shape(k)) * Mphi(k)).real() / energy;
+                }
+            }
             r.modes.push_back(std::move(mode));
         }
         std::sort(r.modes.begin(), r.modes.end(),
@@ -188,6 +198,18 @@ std::string LinearModel::summary(const Model& model) const
                 const Index k = order[static_cast<std::size_t>(i)];
                 os << " [" << k << "] " << detail::velocity_label(model, static_cast<int>(k)) << " "
                    << std::abs(shape(k));
+            }
+            if (mode.energy_fraction.size() == model.nv) {
+                // The coordinates holding most of its kinetic energy.
+                const auto& e = mode.energy_fraction;
+                std::partial_sort(order.begin(), order.begin() + std::min<Index>(3, model.nv), order.end(),
+                                  [&](Index a, Index b) { return e(a) > e(b); });
+                os << "; kinetic energy:";
+                for (Index i = 0; i < std::min<Index>(3, model.nv); ++i) {
+                    const Index k = order[static_cast<std::size_t>(i)];
+                    os << " [" << k << "] " << detail::velocity_label(model, static_cast<int>(k)) << " "
+                       << 100.0 * e(k) << " %";
+                }
             }
         }
         os << '\n';

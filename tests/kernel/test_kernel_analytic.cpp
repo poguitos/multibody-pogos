@@ -4,6 +4,11 @@
 //
 //   - a free body moves at constant velocity, falls freely, and turns as
 //     Euler's equations say, including the torque-free symmetric top;
+//   - a torque-free body with three unequal moments of inertia turns as
+//     Jacobi's elliptic functions say, and with their period (task 5.1);
+//   - a heavy symmetric top on a spherical joint precesses steadily at the
+//     rate of the closed-form condition, and, released with spin only, nods
+//     down to the root of its energy cubic (task 5.1);
 //   - a pendulum held by a distance constraint pulls with m g and
 //     m g + m v^2 / L, and swings with the period of the elliptic integral;
 //   - a bar released horizontally from a hinge loads it with
@@ -11,6 +16,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <vector>
@@ -68,6 +74,33 @@ void rk4_constrained(const Model& model, ConstraintSolver& solver, Data& data,
     v += dt / 6.0 * (k1v + 2.0 * k2v + 2.0 * k3v + k4v);
     normalize(model, q);
     solver.project(data, q, v, t + dt);
+}
+
+/// Jacobi's elliptic functions sn, cn and dn of u for the parameter m = k^2,
+/// by the descending Landen transformation (the arithmetic-geometric mean;
+/// Abramowitz and Stegun 16.4).
+void jacobi(Real u, Real m, Real& sn, Real& cn, Real& dn)
+{
+    Real a[32], c[32];
+    a[0] = 1.0;
+    Real b = std::sqrt(1.0 - m);
+    c[0] = std::sqrt(m);
+    int n = 0;
+    while (std::abs(c[n]) > 1e-16 && n < 30) {
+        a[n + 1] = 0.5 * (a[n] + b);
+        c[n + 1] = 0.5 * (a[n] - b);
+        b = std::sqrt(a[n] * b);
+        ++n;
+    }
+    Real phi = std::ldexp(a[n] * u, n);   // 2^n a_n u
+    Real phi_next = phi;
+    for (int i = n; i > 0; --i) {
+        phi_next = phi;
+        phi = 0.5 * (phi + std::asin(c[i] / a[i] * std::sin(phi)));
+    }
+    sn = std::sin(phi);
+    cn = std::cos(phi);
+    dn = n > 0 ? cn / std::cos(phi_next - phi) : 1.0;
 }
 
 /// Complete elliptic integral of the first kind, K(k), by the
@@ -266,4 +299,215 @@ TEST_CASE("Kernel analytic: a bar released from a hinge loads it with a quarter 
     CHECK((hinge.tail<3>() - Vec3(0.0, 0.0, lift)).norm() < 1e-11);
     CHECK(lift > 0.24 * m * g_accel);   // close to a quarter: the bar is thin
     CHECK(lift < 0.26 * m * g_accel);
+}
+
+// --- Plan task 5.1: more closed forms ---------------------------------------------
+
+TEST_CASE("Kernel analytic: a torque-free body with unequal inertias turns as Jacobi's functions say",
+          "[kernel][analytic]")
+{
+    // Principal moments I1 < I2 < I3, no torque, started at w = (w1, 0, w3)
+    // with L^2 > 2 E I2 (turning about the axis of the largest moment). Then
+    // (Landau and Lifshitz, Mechanics, section 37)
+    //
+    //   w1 = sqrt((2 E I3 - L^2) / (I1 (I3 - I1))) cn(tau, k)
+    //   w2 = sqrt((2 E I3 - L^2) / (I2 (I3 - I2))) sn(tau, k)
+    //   w3 = sqrt((L^2 - 2 E I1) / (I3 (I3 - I1))) dn(tau, k)
+    //
+    // with tau = t sqrt((I3 - I2)(L^2 - 2 E I1) / (I1 I2 I3)) and
+    // k^2 = (I2 - I1)(2 E I3 - L^2) / ((I3 - I2)(L^2 - 2 E I1)); w2 is positive
+    // at first because I2 w2' = (I3 - I1) w3 w1 > 0. The angular velocity
+    // repeats with the period 4 K(k) / (dtau/dt). In the world, the angular
+    // momentum R I w stays fixed.
+    //
+    // RK4 at 1 ms: the rates are below 3.2 rad/s, so its local error is about
+    // (w h)^5 / 120 = 3e-15 of the state per step, 1e-11 over the 5000 steps
+    // to 5 s (and over one period); allowed 1e-9.
+    const RigidBodyInertia body = RigidBodyInertia::from_solid_box(3.0, Vec3(0.3, 0.2, 0.1));
+    const Model model = free_body(body, Vec3::Zero());
+    Data data(model);
+    const Real I1 = body.I_com_B(0, 0), I2 = body.I_com_B(1, 1), I3 = body.I_com_B(2, 2);
+    REQUIRE(I1 < I2);
+    REQUIRE(I2 < I3);
+    const Real w10 = 1.0, w30 = 3.0;
+    const Real E2 = I1 * w10 * w10 + I3 * w30 * w30;            // 2 E
+    const Real L2 = I1 * I1 * w10 * w10 + I3 * I3 * w30 * w30;  // L^2
+    REQUIRE(L2 > E2 * I2);
+    const Real A1 = std::sqrt((E2 * I3 - L2) / (I1 * (I3 - I1)));
+    const Real A2 = std::sqrt((E2 * I3 - L2) / (I2 * (I3 - I2)));
+    const Real A3 = std::sqrt((L2 - E2 * I1) / (I3 * (I3 - I1)));
+    const Real rate = std::sqrt((I3 - I2) * (L2 - E2 * I1) / (I1 * I2 * I3));
+    const Real m = (I2 - I1) * (E2 * I3 - L2) / ((I3 - I2) * (L2 - E2 * I1));
+    auto closed = [&](Real t) {
+        Real sn = 0.0, cn = 0.0, dn = 0.0;
+        jacobi(rate * t, m, sn, cn, dn);
+        return Vec3(A1 * cn, A2 * sn, A3 * dn);
+    };
+    CHECK((closed(0.0) - Vec3(w10, 0.0, w30)).norm() < 1e-14);   // the amplitudes fit the start
+
+    const Quat R0(Eigen::AngleAxisd(0.7, Vec3(0.3, -1.0, 0.4).normalized()));
+    VecX q = free_configuration(Vec3::Zero(), R0);
+    VecX v = VecX::Zero(6);
+    v.head<3>() = Vec3(w10, 0.0, w30);
+    const Mat3 I = body.I_com_B;
+    const Vec3 L0 = R0 * (I * v.head<3>());
+
+    const Real dt = 1e-3;
+    const Real period = 4.0 * elliptic_K(std::sqrt(m)) / rate;
+    Real worst = 0.0, worst_L = 0.0;
+    for (int step = 1; step <= 5000; ++step) {
+        mbd_test::rk4_step(model, data, q, v, dt);
+        if (step % 250 == 0) {
+            worst = std::max(worst, (v.head<3>() - closed(step * dt)).norm());
+            const Quat R(q.segment<4>(3));
+            worst_L = std::max(worst_L, (R * (I * v.head<3>()) - L0).norm());
+        }
+    }
+    INFO("k^2 = " << m << ", period " << period << " s; largest error of w " << worst << " rad/s, of the world "
+                  << "angular momentum " << worst_L << " N m s (of " << L0.norm() << ")");
+    CHECK(m > 0.05);   // far from the symmetric top (k = 0): the motion is elliptic
+    CHECK(worst < 1e-9);
+    CHECK(worst_L < 1e-9 * L0.norm());
+
+    // After one period the angular velocity is back at its start.
+    VecX q1 = free_configuration(Vec3::Zero(), R0);
+    VecX v1 = VecX::Zero(6);
+    v1.head<3>() = Vec3(w10, 0.0, w30);
+    const int n = static_cast<int>(std::floor(period / dt));
+    for (int step = 0; step < n; ++step) mbd_test::rk4_step(model, data, q1, v1, dt);
+    mbd_test::rk4_step(model, data, q1, v1, period - n * dt);
+    INFO("after one period: " << v1.head<3>().transpose());
+    CHECK((v1.head<3>() - Vec3(w10, 0.0, w30)).norm() < 1e-9);
+}
+
+namespace {
+
+/// A symmetric top on a spherical joint at its tip, the ground's origin:
+/// mass m, its centre of mass l above the tip along the body's Z axis,
+/// moments A about the tip across the axis and C along it.
+struct HeavyTop {
+    Real m{1.0}, l{0.05};
+    RigidBodyInertia inertia;
+    Model model;
+    Real A{0.0}, C{0.0};
+
+    HeavyTop()
+    {
+        inertia = RigidBodyInertia::from_solid_box(m, Vec3(0.1, 0.1, 0.02));
+        inertia.com_B = Vec3(0.0, 0.0, l);
+        model.gravity = Vec3(0.0, 0.0, -g_accel);
+        model.add_body(0, std::make_shared<SphericalJointModel>(), Transform3(), Transform3(), inertia);
+        A = inertia.I_com_B(0, 0) + m * l * l;
+        C = inertia.I_com_B(2, 2);
+    }
+
+    /// The axis, tilted by theta from the vertical about world X.
+    static Quat tilted(Real theta) { return Quat(Eigen::AngleAxisd(theta, Vec3::UnitX())); }
+};
+
+/// The top's axis in the world.
+Vec3 top_axis(const VecX& q)
+{
+    return Quat(q.head<4>()) * Vec3::UnitZ();
+}
+
+} // namespace
+
+TEST_CASE("Kernel analytic: a heavy top precesses steadily at the closed-form rate", "[kernel][analytic]")
+{
+    // A top tilted by theta from the vertical, spinning with w3 about its
+    // axis, precesses steadily about the vertical at Omega when (Goldstein,
+    // Classical Mechanics, 5.7)
+    //
+    //   m g l = Omega (C w3 - A Omega cos theta),
+    //
+    // a quadratic whose smaller root is the slow precession. Started there,
+    // with body angular velocity (0, Omega sin theta, w3) (the precession
+    // Omega about world Z seen in the tilted body, plus the spin), the tilt
+    // must stay at theta and the axis turn about Z by Omega t.
+    //
+    // RK4 at 0.1 ms: the fastest rate is 50 rad/s, so its local error is about
+    // (w h)^5 / 120 = 3e-14 of the state per step, 5e-10 over the 15000 steps
+    // to 1.5 s; allowed 1e-8 rad on the tilt and on the precession angle.
+    HeavyTop top;
+    Data data(top.model);
+    const Real theta = 0.5, w3 = 50.0;
+    const Real a = top.A * std::cos(theta), b = top.C * w3, c = top.m * g_accel * top.l;
+    const Real Omega = (b - std::sqrt(b * b - 4.0 * a * c)) / (2.0 * a);
+
+    VecX q = top.tilted(theta).coeffs();
+    VecX v(3);
+    v << 0.0, Omega * std::sin(theta), w3;
+    const Vec3 axis0 = top_axis(q);
+    const Real dt = 1e-4, T = 1.5;
+    Real worst_tilt = 0.0;
+    for (int step = 0; step < 15000; ++step) {
+        mbd_test::rk4_step(top.model, data, q, v, dt);
+        worst_tilt = std::max(worst_tilt, std::abs(std::acos(top_axis(q).z()) - theta));
+    }
+    const Vec3 axis = top_axis(q);
+    const Vec2 h0(axis0.x(), axis0.y()), h(axis.x(), axis.y());
+    const Real turned = std::atan2(h0.x() * h.y() - h0.y() * h.x(), h0.dot(h));
+    INFO("Omega " << Omega << " rad/s; turned " << turned << " rad against " << Omega * T << " (by "
+                  << turned - Omega * T << "); largest change of tilt " << worst_tilt << " rad");
+    CHECK(Omega > 1.0);   // a real precession, well within half a turn over T
+    CHECK(Omega * T < 3.0);
+    CHECK(worst_tilt < 1e-8);
+    CHECK(std::abs(turned - Omega * T) < 1e-8);
+    CHECK(std::abs(v(2) - w3) < 1e-10);   // a symmetric top keeps its spin
+}
+
+TEST_CASE("Kernel analytic: a heavy top released with spin only nods to the root of its energy cubic",
+          "[kernel][analytic]")
+{
+    // Released at tilt theta0 with spin w3 and no other motion, the top's
+    // u = cos theta obeys (Goldstein, 5.7)
+    //
+    //   (du/dt)^2 = (u0 - u) [beta (1 - u^2) - a^2 (u0 - u)],
+    //   a = C w3 / A,  beta = 2 m g l / A,
+    //
+    // so it nods between u0 and the root u1 < u0 of
+    // beta u^2 - a^2 u + (a^2 u0 - beta) = 0: the smaller root, the larger
+    // lying above 1. The lowest u sampled at every step, refined by a
+    // parabola through it and its neighbours, must reach u1. The parabola's
+    // error is of order dt^3 times the third derivative of u, about
+    // (u0 - u1) a^3: 0.013 x 56^3 x 1e-12 = 2e-9 at 0.1 ms. RK4's error is
+    // below 1e-9 (as for the steady top). Allowed 1e-7, under 1e-5 of the nod
+    // (u0 - u1 = 0.013).
+    HeavyTop top;
+    Data data(top.model);
+    const Real theta0 = 0.5, w3 = 50.0;
+    const Real u0 = std::cos(theta0);
+    const Real a = top.C * w3 / top.A, beta = 2.0 * top.m * g_accel * top.l / top.A;
+    const Real root = std::sqrt(a * a * a * a - 4.0 * beta * (a * a * u0 - beta));
+    const Real u1 = (a * a - root) / (2.0 * beta);
+    const Real other = (a * a + root) / (2.0 * beta);
+    REQUIRE(u1 < u0);
+    REQUIRE(other > 1.0);   // the root beyond the physical range: u1 is the one reached
+
+    VecX q = top.tilted(theta0).coeffs();
+    VecX v(3);
+    v << 0.0, 0.0, w3;
+    const Real dt = 1e-4;
+    Real u_prev2 = u0, u_prev = u0, lowest = u0;
+    int dips = 0;
+    for (int step = 0; step < 3000; ++step) {
+        mbd_test::rk4_step(top.model, data, q, v, dt);
+        const Real u = top_axis(q).z();
+        if (step >= 1 && u_prev < u_prev2 && u_prev <= u) {   // a sampled minimum
+            const Real curvature = u - 2.0 * u_prev + u_prev2;
+            const Real refined = u_prev - (u - u_prev2) * (u - u_prev2) / (8.0 * curvature);
+            lowest = std::min(lowest, refined);
+            ++dips;
+            INFO("nod " << dips << ": lowest u " << refined << ", closed form " << u1 << " (by " << refined - u1
+                        << ")");
+            CHECK(std::abs(refined - u1) < 1e-7);
+        }
+        u_prev2 = u_prev;
+        u_prev = u;
+    }
+    INFO("u0 " << u0 << ", u1 " << u1 << " (nod " << u0 - u1 << "); lowest reached " << lowest << " in " << dips
+               << " nods");
+    CHECK(dips >= 2);
+    CHECK(std::abs(lowest - u1) < 1e-7);
 }

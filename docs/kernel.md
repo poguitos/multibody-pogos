@@ -697,8 +697,21 @@ modes: `-zeta w +- i w sqrt(1 - zeta^2)` for an oscillation, real for an
 overdamped or neutral motion; `LinearModel::modes` lists each complex pair
 once, sorted by natural frequency, with its damping ratio and its shape in
 velocity coordinates (the position part of the eigenvector, mapped by N,
-largest entry 1). A state off the constraints is first moved onto them
-(MBD-K080); a state at rest out of equilibrium is flagged (MBD-K081).
+largest entry 1). Each mode also carries its modal energy distribution
+(task 5.1, D43), `Mode::energy_fraction`: the share of its kinetic energy
+in each velocity coordinate,
+
+    e_k = Re(conj(phi_k) (M phi)_k) / Re(phi^H M phi),
+
+with M the mass matrix at the operating point. The shares add up to 1. They
+say how pure a mode is: an engine's bounce on its mounts with 90 % of its
+energy in the vertical coordinate, a car's roll with most of it in the roll
+angle. With the whole M, not only its diagonal, the products of inertia and
+an offset centre of mass are counted; the cross terms are split equally
+between the two coordinates, so a share can be negative where coordinates
+are coupled. `summary()` lists the three largest shares of each mode. A
+state off the constraints is first moved onto them (MBD-K080); a state at
+rest out of equilibrium is flagged (MBD-K081).
 
 ## Events
 
@@ -824,8 +837,34 @@ test drives 500 steps with each factorization and compares the states.
 
 `tests/kernel/test_kernel_analytic.cpp` holds closed-form cases: a free body
 at constant velocity, in free fall, Euler's equations and the torque-free
-symmetric top; a pendulum rod's force and the elliptic-integral period of a
-large swing; a hinged bar's reaction. `tests/kernel/test_kernel_simulator.cpp`
+symmetric top; a torque-free body with three unequal moments, whose angular
+velocity follows Jacobi's elliptic functions and repeats with their period;
+a heavy top's steady precession at the rate of its closed-form condition,
+and its nod, released with spin only, to the root of its energy cubic; a
+pendulum rod's force and the elliptic-integral period of a large swing; a
+hinged bar's reaction (task 5.1 added the body with unequal moments and the
+top).
+
+`tests/kernel/test_kernel_manufactured.cpp` (task 5.1, D42, D43) checks the
+dynamics and every integrator against manufactured trajectories: a smooth
+motion prescribed in closed form for two random trees that between them use
+every joint type, for two identical chains tied at their tips by a distance
+constraint, and for a parallelogram four-bar closed by a revolute; its
+driving forces from RNEA (on the loops, the drives and the constraint
+multipliers together, only some joints driven). The motion's rates are
+checked against its own differences; the forward dynamics returns its
+accelerations and constraint forces to 1e-9; one step from the exact state is
+accurate to each one-step method's order plus one, and every method returns
+the motion after 0.5 s at its order (Dormand-Prince on one tree excepted,
+where its ratio has not settled above rounding; its single step does).
+A hidden case, `[manufactured][table]`, prints the error tables the steps
+were chosen from.
+
+`tests/kernel/test_kernel_linearization.cpp` checks `linearize()` on a damped
+mass, a four-bar on a spring, a rigid body on three bushings against eig(K,
+M) with K and M in closed form, and a line of masses between springs, with
+the modal energy distribution of the last two against the closed form.
+`tests/kernel/test_kernel_simulator.cpp`
 checks the force bridge against `J^T f`, a spring-mass oscillator and the
 convergence orders of both integrators, a constrained pendulum, the callbacks,
 a driven pendulum's torque, and that a projection which cannot converge is
