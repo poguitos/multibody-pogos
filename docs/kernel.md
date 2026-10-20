@@ -879,9 +879,11 @@ singular positions, against their closed forms; Andrews' mechanism against
 the Test Set for IVP Solvers' reference at 0.03 s; Bricard's mechanism, one
 degree of freedom with one redundant equation, against the closed form of its
 path and against its dynamics reduced to one coordinate from the geometry
-alone; the flyball governor against its angular momentum, its energy balance
-with the dampers' work and three integrators. The N-four-bar with 40 loops is
-the hidden `[long]` case.
+alone, and against three results from the IFToMM library; the flyball
+governor against its angular momentum, its energy balance with the dampers'
+work, three integrators and two results from the library. The library's
+results are in `tests/kernel/data/iftomm/` (its README says whose). The
+N-four-bar with 40 loops is the hidden `[long]` case.
 
 `tests/kernel/test_kernel_linearization.cpp` checks `linearize()` on a damped
 mass, a four-bar on a spring, a rigid body on three bushings against eig(K,

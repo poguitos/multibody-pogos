@@ -206,11 +206,18 @@ to a validated engine.*
 - **Modal energy shares.** Each mode's kinetic energy by coordinate, with
   the whole mass matrix rather than its diagonal; the engine on its mounts.
   *D43.*
-- **The IFToMM benchmarks.** References where the published files are out
-  of reach: closed forms (the N-four-bar as one parallelogram, a pendulum
-  turning over), a reduced model from geometry (Bricard's path, derived by
-  machine algebra, and its one-coordinate dynamics), conserved quantities
-  and an energy balance (the governor). Singular positions: the confirmed
+- **The IFToMM benchmarks.** References of our own while the published
+  files were out of reach: closed forms (the N-four-bar as one
+  parallelogram, a pendulum turning over), a reduced model from geometry
+  (Bricard's path, derived by machine algebra, and its one-coordinate
+  dynamics), conserved quantities and an energy balance (the governor).
+  Then the library's own results, three for Bricard's mechanism and two for
+  the governor: against a model checked independently, the differences
+  measure those results' errors (an offset, a drift with the result's own
+  energy, a phase error), and each test bound follows from how that error
+  behaves. Two mistakes to show: a comparison that could not fail (a file
+  in UTF-16 read as no rows), and a swing of 1 s printed every 2 s and read
+  as one of 40 s (aliasing). Singular positions: the confirmed
   cause (a rank cut dropping equations) that was not the cause, and the
   imperfect parallelogram, its coupler turning at delta theta' / (L
   theta^2). Contradictory constraints named by a deletion filter at the

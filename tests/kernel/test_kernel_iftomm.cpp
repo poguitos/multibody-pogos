@@ -10,18 +10,19 @@
 //     Solvers publishes at t = 0.03 s;
 //   - Bricard's mechanism against the closed form of its motion (the
 //     relation between its two joint angles, derived from the closure
-//     equations) and against its dynamics reduced to one coordinate, written
-//     here from the geometry alone and integrated on its own;
+//     equations), against its dynamics reduced to one coordinate, written
+//     here from the geometry alone and integrated on its own, and against
+//     three results the IFToMM library holds;
 //   - the flyball governor, whose stiff springs and strong dampers are the
 //     point, against the angular momentum about its spindle (exactly kept),
-//     its energy balance (the energy lost equals the dampers' work) and the
-//     agreement of three integrators.
+//     its energy balance (the energy lost equals the dampers' work), the
+//     agreement of three integrators, and two results the library holds.
 //
-// The IFToMM library's own reference histories (www.iftomm-multibody.org)
-// could not be fetched from the machine this was written on; the closed
-// forms replace them for A01, A02 and A04, the test set's solution is A03's,
-// and A04's and A05's comparison with them is open (journal: Phase 5, IFToMM
-// benchmarks).
+// The library's site could not be reached from the machine this was written
+// on; the author downloaded the results for A04 and A05 from it
+// (data/iftomm/, with their contributors). For A01 and A02 the closed forms,
+// and for A03 the test set's solution, serve instead of the library's files
+// (journal: Phase 5, IFToMM benchmarks).
 //
 // The N-four-bar needs Simulator::constraint_tolerance at 1e-14 (D44): with
 // the default 1e-10 the positions keep a residual of about 1e-13 that the
@@ -34,8 +35,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "mbd/kernel/algorithms.hpp"
@@ -48,6 +54,7 @@
 using namespace mbd;
 using namespace mbd::kernel;
 using namespace mbd_test::iftomm;
+using Vec1 = Eigen::Matrix<Real, 1, 1>;
 
 namespace {
 
@@ -199,6 +206,54 @@ Real momentum_z(const Model& model, Data& data, const VecX& q, const VecX& v)
 {
     forward_kinematics(model, data, q, v);
     return momentum_world(model, data)(2);
+}
+
+// --- The IFToMM library's results --------------------------------------------------------
+
+/// A table of numbers from tests/kernel/data/iftomm/ (README.md there says
+/// what each file is): one row per line, columns split on white space, lines
+/// that do not start with a number (a header) left out, '\r' ignored.
+std::vector<std::vector<Real>> library_result(const std::string& file)
+{
+    const std::filesystem::path path =
+        std::filesystem::path(__FILE__).parent_path() / "data" / "iftomm" / file;   // tests/kernel/<this file>
+    std::ifstream in(path);
+    REQUIRE(in.good());
+    std::vector<std::vector<Real>> rows;
+    std::string line;
+    while (std::getline(in, line)) {
+        std::replace(line.begin(), line.end(), '\r', ' ');
+        std::istringstream fields(line);
+        std::vector<Real> row;
+        Real x = 0.0;
+        while (fields >> x) row.push_back(x);
+        if (!row.empty()) rows.push_back(std::move(row));
+    }
+    return rows;
+}
+
+/// The largest |a(t) - b(t)| over a library result's rows, a sampled every
+/// `dt` from 0 (its row k at k dt), the result's time in column 0. The result
+/// must have `expected_rows` rows, from 0 to our last time, and at least
+/// `columns` numbers in each: a file that is empty, cut short or re-encoded
+/// (one in UTF-16 reads as no rows) fails here instead of passing with
+/// nothing compared.
+template <typename Value, typename Read>
+Real largest_difference(const std::vector<Value>& a, Real dt, const std::vector<std::vector<Real>>& rows,
+                        std::size_t expected_rows, std::size_t columns, Read value_of_row)
+{
+    REQUIRE(rows.size() == expected_rows);
+    REQUIRE(std::abs(rows.front()[0]) < 1e-9);
+    REQUIRE(std::abs(rows.back()[0] - static_cast<Real>(a.size() - 1) * dt) < 1e-9);
+    Real worst = 0.0;
+    for (const auto& row : rows) {
+        REQUIRE(row.size() >= columns);
+        const auto k = static_cast<std::size_t>(std::lround(row[0] / dt));
+        REQUIRE(k < a.size());
+        REQUIRE(std::abs(row[0] - static_cast<Real>(k) * dt) < 1e-9);   // the result's times are ours
+        worst = std::max(worst, Real((a[k] - value_of_row(row)).norm()));
+    }
+    return worst;
 }
 
 } // namespace
@@ -423,8 +478,6 @@ TEST_CASE("IFToMM A05: the flyball governor keeps its angular momentum and its e
     // E(0); allowed 1e-6 of L(0), and 1e-7 of E(0), 24 uJ, well below the
     // dampers' work (3.1 mJ), so that the balance fails if that work is left
     // out.
-    // Generalised-alpha at 1 ms and Dormand-Prince at 1e-8 must reach the
-    // same state after 10 s: within 1e-5 of Radau IIA's in every coordinate.
     Flyball f;
     DampersWork work(f);
     Simulator sim(f.sys);
@@ -469,4 +522,101 @@ TEST_CASE("IFToMM A05: the flyball governor keeps its angular momentum and its e
     CHECK(dp < 1e-6);
     CHECK(ga1 / ga2 > 3.5);
     CHECK(ga1 / ga2 < 4.5);
+}
+
+// --- A04 and A05 against the IFToMM library's results ----------------------------------------
+
+TEST_CASE("IFToMM A04: Bricard's mechanism against three results in the library", "[kernel][iftomm]")
+{
+    // Point P2, the corner (1, -1, 0) where bars 2 and 3 meet, over 10 s,
+    // against three results the library holds (tests/kernel/data/iftomm/).
+    // This motion keeps to the closed form of its path to 9e-15 rad and to
+    // its reduced dynamics to 2e-9 rad (the A04 case above), which on bars
+    // of 1 m is about 2e-9 m at P2: the differences measured here are the
+    // results' own errors, and each bound is set from how that error behaves
+    // (sampled every 0.5 s in the data file of the record):
+    //
+    //   - Tagliapietra (109): a constant offset of about 4e-6 m that does
+    //     not grow, with 8.7e-6 at the turning points (t = 2.5, 5, 7.5 s) and
+    //     2.5e-5 once, at 0.05 s; 3.7e-8 at 10 s. Allowed 5e-5 m.
+    //   - Gonzalez (72): growing with time, to 3.5e-4 m at 9.4 s, as the
+    //     energy change in its own fifth column grows (not steadily: to
+    //     -8.2e-4 J at 8.84 s, -7.9e-4 J at 10 s). Allowed 1e-3 m.
+    //   - Pankiewicz (160): a phase error, small at the turning points,
+    //     where P2 stops (2.6e-5 to 2.2e-4 m); between them the distance's
+    //     peaks grow in proportion to time, 8.1e-4 to 8.5e-4 m per second of
+    //     it, to 7.7e-3 m at 9.25 s. Allowed 2e-2 m.
+    //
+    // All three start at our P2 to the digits they print. Among themselves
+    // they differ by 3.5e-4 (Tagliapietra and Gonzalez), 7.7e-3 (Tagliapietra
+    // and Pankiewicz) and 8.1e-3 m (Gonzalez and Pankiewicz): ours lies 2.5e-5
+    // m from the one that does not drift, and the other two drift from both.
+    Bricard b;
+    Simulator sim(b.sys);
+    configure(sim, Integrator::DormandPrince, 1e-10);
+    sim.q.setZero();
+    sim.v.setZero();
+    sim.initialize();
+    Data data(b.sys.model);
+    const Vec3 corner(1.0, -1.0, 0.0);   // in bar 2's frame, the world's at the start
+    auto P2 = [&] {
+        forward_kinematics(b.sys.model, data, sim.q);
+        return Vec3(data.oMi[static_cast<std::size_t>(b.bars[1])] * corner);
+    };
+    std::vector<Vec3> p{P2()};
+    for (int k = 1; k <= 1000; ++k) {
+        sim.step(0.01);
+        p.push_back(P2());
+    }
+    auto position = [](const std::vector<Real>& row) { return Vec3(row[1], row[2], row[3]); };
+    const Real tagliapietra =
+        largest_difference(p, 0.01, library_result("bricard_tagliapietra_109.txt"), 1001, 4, position);
+    const Real gonzalez = largest_difference(p, 0.01, library_result("bricard_gonzalez_72.txt"), 1001, 4, position);
+    const Real pankiewicz = largest_difference(p, 0.01, library_result("bricard_pankiewicz_160.txt"), 201, 4, position);
+    INFO("largest distance of P2 from the results: Tagliapietra " << tagliapietra << " m, Gonzalez " << gonzalez
+                                                                  << " m, Pankiewicz " << pankiewicz << " m");
+    CHECK(tagliapietra < 5e-5);
+    CHECK(gonzalez < 1e-3);
+    CHECK(pankiewicz < 2e-2);
+}
+
+TEST_CASE("IFToMM A05: the flyball governor against two results in the library", "[kernel][iftomm]")
+{
+    // The sleeve's height on the spindle, s(t), every 0.1 s for 10 s,
+    // against Gonzalez's two results. Ours, from Radau IIA at 1e-8, is within
+    // 8.2e-10 m of the same at 1e-10, and keeps the angular momentum and the
+    // energy balance to about 1e-10 of L(0) and E(0) (the case above): the
+    // differences measured here are the results' own errors, and each bound
+    // is set from how that error behaves (each second's largest in the data
+    // file of the record):
+    //
+    //   - 116, six digits (rounding of up to 5e-7 m at s = 0.5 to 0.75 m):
+    //     already 9.2e-7 m off at 1 s, each second's largest from 7.7e-7 to
+    //     2.0e-6 m (at 9.5 s), rising slowly. Allowed 5e-6 m.
+    //   - 117, nine digits: 1.3e-7 m off at 1 s, then drifting at about 7e-7
+    //     m per second, to 6.8e-6 m at 10 s; it moves away from 116 in the
+    //     same way (1.05e-6 m at 1 s, 5.7e-6 m at 10 s). Allowed 2e-5 m,
+    //     room for that drift to grow threefold.
+    //
+    // The swing is the same in all three: between 0.500 and 0.744 m, period
+    // 1.025 s. The bounds are tight against a fault of the model: a period
+    // longer or shorter by a fraction e moves s at 10 s by up to 0.122 m
+    // (half the swing) x 2 pi x 9.76 swings x e = 7.5 e m, so a period off by
+    // about 7e-7 of itself fails against 116 and one off by 3e-6 against 117.
+    Flyball f;
+    Simulator sim(f.sys);
+    configure(sim, Integrator::RadauIIA, 1e-8);
+    f.release(sim);
+    sim.initialize();
+    std::vector<Vec1> s{Vec1(sim.q(1))};
+    for (int k = 1; k <= 100; ++k) {
+        sim.step(0.1);
+        s.push_back(Vec1(sim.q(1)));
+    }
+    auto height = [](const std::vector<Real>& row) { return Vec1(row[1]); };
+    const Real six_digits = largest_difference(s, 0.1, library_result("flyball_gonzalez_116.txt"), 101, 2, height);
+    const Real nine_digits = largest_difference(s, 0.1, library_result("flyball_gonzalez_117.txt"), 101, 2, height);
+    INFO("largest difference of s from the results: 116 " << six_digits << " m, 117 " << nine_digits << " m");
+    CHECK(six_digits < 5e-6);
+    CHECK(nine_digits < 2e-5);
 }

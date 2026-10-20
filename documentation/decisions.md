@@ -54,7 +54,7 @@ and the journal entry of the work refers to them by number
 | D41 | The integrators verified by a program that writes the report's figures and tables | 19 Oct 2026 | In force, task 4.9 |
 | D42 | Ideas from external sources adopted into the plan | 20 Oct 2026 | In force, plan amended (5.1, 5.2, 5.5, 7.2, 7.6, 7.8, 8.2, 8.6, 9.1, 9.3, 9.5, 9.7, 10.1, 10.7, 13.2, 13.3, 13.5, 13.8, 13.9, 14.7, H.7) |
 | D43 | Analytic cases: manufactured trajectories checked by one step and over a span; the modal energy from the whole mass matrix | 20 Oct 2026 | In force, task 5.1 |
-| D44 | The IFToMM benchmarks against closed forms; singular positions passed by holding the constraints near rounding; conflicting equations named by a deletion filter | 20 Oct 2026 | In force, task 5.2 (open: A04, A05 against the library's files) |
+| D44 | The IFToMM benchmarks against closed forms; singular positions passed by holding the constraints near rounding; conflicting equations named by a deletion filter | 20 Oct 2026 | In force, task 5.2 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -1423,7 +1423,18 @@ and the journal entry of the work refers to them by number
   the IFToMM reference files for A04 and A05 are compared, and A05's
   definition confirmed against the library's own (the OpenSim version's
   parameters were used).
+- **Follow-up, 20 October 2026.** The author downloaded the library's
+  results for A04 (three) and A05 (two) and gave them to the project
+  (`tests/kernel/data/iftomm/`, with their contributors). They confirm the two
+  definitions taken from the OpenSim version, and the tests now compare with
+  each: Bricard's point P2 within 2.5e-5 m of the most accurate result
+  (Tagliapietra's; the other two drift, by 3.5e-4 and 7.7e-3 m, as their own
+  energy columns or phase show), the governor's sleeve within 2.0e-6 m and
+  6.8e-6 m of González's two. Each bound comes from how that result's error
+  behaves, the model being checked independently to about 1e-9. Task 5.2 is
+  done. The comparison also corrected a claim of this work (the governor's
+  "slow swing near 40 s" was a swing of about 1 s sampled every 2 s).
 - **Record.** Journal: Phase 5, the IFToMM benchmarks;
   `tests/kernel/iftomm.hpp`, `tests/kernel/test_kernel_iftomm.cpp`,
-  `src/kernel/conflicts.cpp`;
+  `tests/kernel/data/iftomm/`, `src/kernel/conflicts.cpp`;
   `documentation/journal/data/2026-10-20_iftomm-benchmarks.md`.

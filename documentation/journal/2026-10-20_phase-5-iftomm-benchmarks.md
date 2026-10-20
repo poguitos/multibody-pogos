@@ -5,7 +5,10 @@
   equations named); decisions D42, D44
 - **Commits:** see the index
 - **Written:** at the time, by a cloud agent (Claude) working from the
-  repository alone, on a Linux machine; the Windows build was left to CI
+  repository alone, on a Linux machine; the Windows build was left to CI.
+  First committed with 5.2 open (`cc76a14`); completed the same day when the
+  author supplied the library's results for A04 and A05 (the section
+  "Closing the task" and the corrections marked there)
 
 ## Goal
 
@@ -59,12 +62,15 @@ only its residual (MBD-K051), and so did a failed assembly (MBD-K062).
    within 2e-9 rad while swinging from 0 to pi and back.
 7. **The flyball governor** (A05): spindle, sliding collar, two rods with 5
    kg balls, spring-dampers of 8e5 N/m and 4e4 N s/m. Its motion has no
-   closed form and, it turned out, does not settle within a test's span (a
-   slow swing near 40 s that the dampers hardly touch). Checked against what
-   physics keeps: the angular momentum about the spindle (to 1.1e-10
-   relative) and the energy balance with the dampers' work, integrated as a
-   state element (1e-10 of the energy); Dormand-Prince within 1.4e-9 of
-   Radau IIA after 10 s; generalised-alpha converging to it at second order.
+   closed form and does not settle within a test's span: the collar swings
+   between 0.50 and 0.744 m about once a second, and the dampers, which act
+   on the springs' length alone, take only 3 mJ in 10 s. (This entry first
+   said "a slow swing near 40 s": wrong, see "What went wrong".) Checked
+   against what physics keeps: the angular momentum about the spindle (to
+   1.1e-10 relative) and the energy balance with the dampers' work,
+   integrated as a state element (1e-10 of the energy); Dormand-Prince within
+   1.4e-9 of Radau IIA after 10 s; generalised-alpha converging to it at
+   second order.
 8. **Contradictory constraints named** (D44): `src/kernel/conflicts.cpp`, a
    deletion filter on the linearised constraints at the least-squares
    nearest positions; in MBD-K062 (and `AssemblyReport::conflicting_equations`)
@@ -147,8 +153,22 @@ messages in scientific notation.
   decimals. Four messages fixed.
 - **The library's own references could not be fetched.** WebFetch could
   not resolve the IFToMM hosts, the shell's proxy refused them, and the web
-  archive was not reachable; GitHub was. So A04 and A05 are checked against
-  derived references, not against the library's files.
+  archive was not reachable; GitHub was. So A04 and A05 were first checked
+  against derived references only; the author then downloaded the library's
+  results (see "Closing the task").
+- **A motion of about 1 s read as one of 40 s.** The governor's first long
+  run was printed every 2 s, and its collar seemed to rise over 20 s and
+  fall back: this entry and the model's comment called it a slow swing with
+  a period near 40 s, which the dampers hardly touch. The library's result
+  showed the collar swinging about once a second (period 1.0247 s, measured
+  afterwards on our own run sampled every 1 ms). 2 s is 1.952 such swings,
+  so each sample falls 0.0482 of a swing earlier in it than the one before,
+  and the samples trace one swing every 2 / 0.0482 = 41.5 s (aliasing). The
+  collar's velocity printed in the same run, -0.748 m/s at 10 s, falling
+  while the samples rose, did not fit a slow swing of 0.12 m, and was not
+  read. The committed tests did not depend on it (they sample every 0.1 s);
+  the claim was corrected in the model's comment, this entry and the data
+  file.
 
 ## Verification
 
@@ -172,12 +192,25 @@ Tests added (506 registered with ctest on Linux, all passing; 499 before):
   iterations but not contradicted, reported as such.
 - `test_kernel_debugging.cpp`: the two drivers fighting over a slider, whose
   MBD-K051 now names both.
+- Added when closing the task: A04 against three results from the library
+  (P2 within 2.5e-5, 3.5e-4 and 7.7e-3 m of Tagliapietra's, González's and
+  Pankiewicz's; allowed 5e-5, 1e-3 and 2e-2, from how each result's error
+  behaves) and A05 against two (the sleeve within 2.0e-6 and 6.8e-6 m;
+  allowed 5e-6 and 2e-5, the reasoning for each bound in the test). Each
+  comparison first checks that the file has the rows, the times and the
+  columns it should, so that an empty, cut or re-encoded file fails instead
+  of passing with nothing compared (a review found that a file in UTF-16
+  read as no rows and passed; copies in UTF-16 and cut to six lines now
+  fail at the row count). After that, 508 tests registered with ctest on
+  Linux, all passing, and CI's sanitizer configuration (`test_core`,
+  `test_model`, `test_kernel`) run again on this machine: 175 of 175 passed
+  with no sanitizer report, in 556 s (the two new cases 4.4 and 6.7 s).
 
-CI's sanitizer configuration was also run on this machine before the push:
-173 of 173 tests passed with no sanitizer report, in 535 s, of which the five
-benchmarks took 195 s (A05 80 s, A04 63 s; 3 s in a normal build). Not run
-here: the Windows build (no MSVC on this machine) and the Doxygen reference
-(Doxygen not installed); CI runs both.
+Before the first push (`cc76a14`), CI's sanitizer configuration was also run
+on this machine: 173 of 173 tests passed with no sanitizer report, in 535 s,
+of which the five benchmarks took 195 s (A05 80 s, A04 63 s; 3 s in a normal
+build). Not run here: the Windows build (no MSVC on this machine) and the
+Doxygen reference (Doxygen not installed); CI runs both.
 
 ## Measurements
 
@@ -199,12 +232,47 @@ was produced.
 - A diagnosis must look at the point the theory is about (the least-squares
   minimum), not where an iteration happened to stop.
 
+## Closing the task
+
+On the same day the author downloaded from the library and gave the project
+five results (`tests/kernel/data/iftomm/`, with a README naming their
+contributors): three for Bricard's mechanism (point P2's position every 0.01
+or 0.05 s for 10 s; E. L. Pankiewicz, Luca Tagliapietra and Francisco
+González) and two for the flyball governor (the sleeve's height every 0.1 s;
+González, at six and at nine digits).
+
+- **The definitions are confirmed.** Pankiewicz's start energy, -29.43 J, is
+  this model's (the bars' centres at heights summing to -3 m, times 9.81);
+  every result starts at P2 = (1, -1, 0); and the governor built to the
+  OpenSim version's description follows González's results within 7e-6 m.
+- **Bricard's mechanism.** Ours, on the closed form of its path to 9e-15 rad
+  and within 2e-9 rad of its reduced dynamics, is within 2.5e-5 m of
+  Tagliapietra's result (a constant offset of
+  about 4e-6 m in that result, with peaks at the turning points and one at
+  0.05 s; 3.7e-8 m at 10 s), 3.5e-4 m of González's (an error growing with
+  the energy drift that result itself reports) and 7.7e-3 m of Pankiewicz's
+  (a phase error: small where P2 stops at the turning points, and between
+  them peaks growing 8.1e-4 to 8.5e-4 m per second). The three differ among
+  themselves by up to 8.1e-3 m. So the differences measure the results, and
+  each test bound follows from how that result's error behaves.
+- **The flyball governor.** Within 2.0e-6 m of the six-digit result and
+  6.8e-6 m of the nine-digit one; the two differ from each other by 5.7e-6 m
+  at 10 s; the nine-digit one drifts from ours at about 7e-7 m per second.
+  Ours changes by at most 8.2e-10 m between tolerances 1e-8 and 1e-10. The
+  bounds would catch a fault of the model: a period off by a fraction e
+  moves the sleeve at 10 s by up to 7.5 e m (half the swing, 0.122 m, times
+  2 pi times 9.76 swings), so e = 7e-7 already fails against the six-digit
+  result.
+- **The mistake it exposed**: the 40 s "slow swing" (in "What went wrong").
+
+With that, every problem meets a published reference (A03, A04, A05) or a
+closed form that the library's references only approximate (A01, A02), and
+5.2 is done.
+
 ## Open ends
 
-- A04 and A05 against the IFToMM library's reference files, and A05's
-  definition against the library's own statement (the OpenSim version's
-  parameters were used): the author is asked for the files. Until then 5.2
-  stays open.
+- Closed: A04 and A05 against the library's results (see "Closing the
+  task").
 - Regularised multipliers or an augmented-Lagrangian formulation, the usual
   robust answer to singular positions, which would not need the constraints
   held near rounding.
@@ -219,7 +287,13 @@ was produced.
   as a figure. Bricard's mechanism: Grubler's count against the geometry, the
   closed form of its path derived by machine algebra and checked by Newton,
   and a reference for its whole motion from that form alone.
-- Part X (testing a numerical code): references when the published files are
-  out of reach (closed forms, a reduced model from geometry, conserved
-  quantities, convergence between methods); a balance check made tight
-  enough to fail.
+- Part X (testing a numerical code): references of our own while the
+  published files were out of reach (closed forms, a reduced model from
+  geometry, conserved quantities, convergence between methods); a balance
+  check made tight enough to fail. Then published results judged by a model
+  checked independently: the differences measure the results' errors (an
+  offset, a drift with the result's own energy, a phase error), and each
+  bound follows from how that error behaves. A test that could not fail: a
+  file read as no rows compared nothing and passed. And aliasing: a swing of
+  1 s printed every 2 s and read as one of 40 s, with the velocity in the
+  same output that did not fit.

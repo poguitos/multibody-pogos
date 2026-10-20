@@ -8,7 +8,10 @@
 // (Tagliapietra et al. 2015, MBS-BOS) and, for Andrews' mechanism, from the
 // Test Set for IVP Solvers (Mazzia and Magherini), which also publishes its
 // reference solution. No code is taken from either: each mechanism is
-// built here from its geometry.
+// built here from its geometry. Results the library holds for Bricard's
+// mechanism and the flyball governor are in data/iftomm/ (its README says
+// whose); Bricard's start energy and the governor's motion agree with them,
+// which confirms these two definitions.
 
 #include <algorithm>
 #include <cmath>
@@ -379,9 +382,9 @@ struct Bricard {
 /// on fixed joints; the springs from points 0.05 m either side of the
 /// collar's centre, at their free length at the start. Nothing drives the
 /// spindle, so the angular momentum about Z is kept exactly; the dampers only
-/// take energy out. They act on the springs' length alone, and the slow
-/// motion (collar and rods together, a period near 40 s) hardly changes it,
-/// so the governor does not settle within tens of seconds.
+/// take energy out. They act on the springs' length alone, which the motion
+/// hardly changes: the collar swings between 0.50 and 0.744 m about once a
+/// second with the rods, and the dampers take 3 mJ of 239 J in 10 s.
 struct Flyball {
     static constexpr Real g = 9.81, density = 3000.0, ball = 5.0, k = 8e5, c = 4e4, free_length = 0.5;
     static constexpr Real spin0 = 2.0 * mbd::pi, hinge_offset = 0.05, rod_length = 1.0;
