@@ -293,3 +293,21 @@ comparisons ran. `environment.yml` pins `libblas=*=*openblas`; a dry run of
 `scripts\build.ps1 -Test` after the changes: 508 of 508 passed (29.5 s), the
 build without a warning (the MSVC warning C4458 in `tests/kernel/iftomm.hpp`
 fixed, see the entry).
+
+## 9. CI
+
+Run 42365611807 on `643b5e6`, read from the public API
+(`/repos/poguitos/multibody-pogos/actions/runs/42365611807/jobs`): windows,
+linux-sanitizers, kernel-no-malloc, docs and crosscheck all `success`. The
+crosscheck job's steps (UTC, 7 November 2026):
+
+```
+Install Pinocchio and PyChrono   10:50:28 to 10:50:54
+Configure                        10:50:54 to 10:51:07
+Build the exporter               10:51:07 to 10:53:04
+Compare with Pinocchio           10:53:04 to 10:53:05
+Compare with Project Chrono      10:53:05 to 10:54:27
+```
+
+The scripts' output on Linux was not read (the log download needs
+authentication).

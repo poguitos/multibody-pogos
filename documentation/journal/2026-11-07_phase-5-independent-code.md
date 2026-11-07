@@ -184,6 +184,12 @@ OpenBLAS.
 - Both scripts were shown to fail: the CRBA before the depth-first order,
   and the perturbed inertia (data, section 6).
 - `scripts\build.ps1 -Test`: 508 of 508 pass; no warning.
+- CI run 42365611807 on `643b5e6`: all five jobs passed (Windows, Linux with
+  sanitizers, no-allocation, docs, crosscheck). The `crosscheck` job took
+  4 min 18 s on GitHub's Linux runner: the environment 26 s, the build 1 min
+  57 s, the Pinocchio comparison 1 s, the Chrono comparison 82 s, both
+  exiting with success. Its printed differences were not read: the job's
+  log needs an authenticated download, and the API was queried without one.
 
 ## Measurements
 
@@ -212,8 +218,8 @@ the perturbed inertia, and the BLAS failure. `compare_chrono.py` takes
   them (Chrono has springs and bushings).
 - Pinocchio's depth-first assumption is stated nowhere we found; it may be
   worth reporting upstream, which is the author's call.
-- CI's result on Linux is recorded when the run is seen (the index row's
-  commits).
+- The Linux numbers of CI's run (GCC, OpenBLAS) are in its log, not here;
+  read them from the Actions page when they are wanted.
 
 ## For the book
 
