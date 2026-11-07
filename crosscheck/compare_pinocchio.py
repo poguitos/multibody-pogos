@@ -35,9 +35,10 @@ Conventions, ours against Pinocchio's:
   parent), so they compose the same way.
 - Numbering. Pinocchio's CRBA assumes the joints are numbered depth first,
   each joint's subtree taking the ids just after it (it writes each row of
-  the mass matrix as one block over the subtree's velocities); addJoint does
-  not check it, and on other numberings the matrix comes out wrong while ABA
-  and RNEA stay right. Our trees are numbered in the order the bodies were
+  the mass matrix as one block over the subtree's velocities). addJoint's C++
+  documentation says so, its Python docstring does not, and a release build
+  does not check it: on other numberings the matrix comes out wrong while ABA
+  and RNEA stay right (documentation/upstream/pinocchio_depth_first.md). Our trees are numbered in the order the bodies were
   added, so the script adds the joints to Pinocchio depth first and maps the
   coordinates between the two orders.
 """

@@ -1516,10 +1516,12 @@ and the journal entry of the work refers to them by number
   come in Phase 6. Measured on the way (journal and data of 7 November
   2026):
   - Pinocchio 4.1.0's CRBA assumes the joints are numbered depth first, each
-    joint's subtree taking the ids just after it; `addJoint` does not check
-    it. On 37 random trees of 40 not so numbered, its mass matrix differed
-    from the one its own RNEA gives by up to 7.7, while its ABA and RNEA
-    agreed with ours to rounding.
+    joint's subtree taking the ids just after it, as the C++ documentation
+    of `addJoint` says; the Python docstrings do not, and a release build
+    checks it nowhere (`model.check(data)` would return false; the CRBA's
+    assert is compiled out). On 37 random trees of 40 not so numbered, its
+    mass matrix differed from the one its own RNEA gives by up to 7.7, while
+    its ABA and RNEA agreed with ours to rounding.
   - Chrono 10.0's assembly at the acceleration level (the only way it
     offers accelerations at a given state) differentiates the velocities of
     a step of 1e-6 s. It leaves out the velocity products (a pendulum at 3

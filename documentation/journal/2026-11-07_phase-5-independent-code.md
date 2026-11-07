@@ -121,7 +121,14 @@ OpenBLAS.
   subtree's velocities, which assumes each joint's subtree takes the ids
   just after it. Our generator hangs each new body from any earlier one.
   All 37 trees not numbered depth first differed, all 3 that were agreed.
-  `addJoint` does not check it. The script now adds the joints depth first
+  `addJoint` does not check it. (This entry first said the assumption was
+  stated nowhere. Reading Pinocchio's headers afterwards, while preparing a
+  note for its developers, showed it is: the C++ documentation of
+  `addJoint` says "Joints need to be added to the tree in a depth-first
+  order", `model.check(data)` returns false on such a tree, and the CRBA
+  asserts it, in debug builds only. The Python docstrings do not mention it,
+  and the release build we used computes the wrong matrix without a word.)
+  The script now adds the joints depth first
   and maps the coordinates; our own CRBA works for any parents-first
   numbering, as it should.
 - **Chrono's integrators at first order.** HHT, the trapezoidal rule and
@@ -210,14 +217,19 @@ the perturbed inertia, and the BLAS failure. `compare_chrono.py` takes
 - A comparison checked by convergence needs no guessed tolerance: the other
   code's own error, measured by halving its step, sets the scale.
 - Copy values out of a wrapped object before changing the object.
+- Read the other code's source and headers before saying it does not
+  document something: "stated nowhere we found" had been written without
+  searching its headers.
 
 ## Open ends
 
 - The comparison covers gravity and constraints only: no force elements, no
   driven joints, no contact. Force elements could follow when a task needs
   them (Chrono has springs and bushings).
-- Pinocchio's depth-first assumption is stated nowhere we found; it may be
-  worth reporting upstream, which is the author's call.
+- A note for Pinocchio's developers, asking for the order to be stated in
+  the Python docstrings and checked in release builds (a cheap test in
+  `addJoint`), is in `documentation/upstream/pinocchio_depth_first.md` with
+  a reproduction of three joints; the author sends it.
 - The Linux numbers of CI's run (GCC, OpenBLAS) are in its log, not here;
   read them from the Actions page when they are wanted.
 
