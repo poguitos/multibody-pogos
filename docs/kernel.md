@@ -885,6 +885,14 @@ work, three integrators and two results from the library. The library's
 results are in `tests/kernel/data/iftomm/` (its README says whose). The
 N-four-bar with 40 loops is the hidden `[long]` case.
 
+Outside the test suite, `crosscheck/` (task 5.3, D46) compares the kernel
+with two independent codes, in CI's `crosscheck` job: random trees of every
+joint type with Pinocchio (ABA, RNEA, CRBA and placements, within 2.1e-13
+relative), and random closed mechanisms with Project Chrono (accelerations,
+the closures' loads and the joint reactions at rest within 1.4e-12, and a
+motion from rest to which Chrono's own integrator converges at its second
+order). Its README says how to run it.
+
 `tests/kernel/test_kernel_linearization.cpp` checks `linearize()` on a damped
 mass, a four-bar on a spring, a rigid body on three bushings against eig(K,
 M) with K and M in closed form, and a line of masses between springs, with

@@ -1,0 +1,16 @@
+# The independent codes of plan task 5.3, pinned to the versions the
+# comparison was written against (resolved by conda on 7 November 2026).
+#   conda env create -f crosscheck/environment.yml
+# PyPI's "pychrono" is an unrelated package: PyChrono comes from conda-forge.
+# NumPy's BLAS is OpenBLAS: on Windows conda chose MKL 2026.1.0, whose first
+# matrix product stopped the interpreter (exception 0xc06d007f, a function
+# missing from a delay-loaded DLL). Linux gets OpenBLAS by default.
+name: mbd-crosscheck
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12.16
+  - pinocchio=4.1.0
+  - pychrono=10.0.0
+  - numpy=2.5.4
+  - libblas=*=*openblas

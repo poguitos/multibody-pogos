@@ -56,6 +56,7 @@ and the journal entry of the work refers to them by number
 | D43 | Analytic cases: manufactured trajectories checked by one step and over a span; the modal energy from the whole mass matrix | 20 Oct 2026 | In force, task 5.1 |
 | D44 | The IFToMM benchmarks against closed forms; singular positions passed by holding the constraints near rounding; conflicting equations named by a deletion filter | 20 Oct 2026 | In force, task 5.2 |
 | D45 | A sanitizer report fails its test; an Eigen factorization sized by computing it, never by moving an empty one | 20 Oct 2026 | In force, task 5.2's close |
+| D46 | Comparison with independent codes: Pinocchio's joints added depth first; Chrono's equations at rest solved from its own matrices, its motion checked by convergence | 7 Nov 2026 | In force, task 5.3 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -1506,3 +1507,92 @@ and the journal entry of the work refers to them by number
 - **Record.** Journal: Phase 5, the IFToMM benchmarks ("What went wrong");
   `.github/workflows/ci.yml`, `src/kernel/simulator_linear.cpp`,
   `src/kernel/simulator_implicit.cpp`; `CLAUDE.md` (pitfalls).
+
+## D46. Comparison with independent codes: Pinocchio's joints added depth first; Chrono's equations at rest solved from its own matrices, its motion checked by convergence
+
+- **Context.** Task 5.3 compares the library with Pinocchio (tree dynamics,
+  to 1e-8) and Project Chrono (constrained mechanisms), the scripts to run
+  in CI. Both codes have Python packages; this library's Python bindings
+  come in Phase 6. Measured on the way (journal and data of 7 November
+  2026):
+  - Pinocchio 4.1.0's CRBA assumes the joints are numbered depth first, each
+    joint's subtree taking the ids just after it; `addJoint` does not check
+    it. On 37 random trees of 40 not so numbered, its mass matrix differed
+    from the one its own RNEA gives by up to 7.7, while its ABA and RNEA
+    agreed with ours to rounding.
+  - Chrono 10.0's assembly at the acceleration level (the only way it
+    offers accelerations at a given state) differentiates the velocities of
+    a step of 1e-6 s. It leaves out the velocity products (a pendulum at 3
+    rad/s lacked omega^2 r), and it carries the constraints' residual over
+    the step squared into the accelerations: one rounding error, 1e-16 m,
+    becomes about 1e-4. It also leaves the velocities advanced by its step.
+    Its integrators start from the accelerations stored in the bodies (zero
+    unless assembled, which makes them first order), and their
+    accelerations and reaction forces oscillate (HHT with alpha = 0) or
+    converge at first order to about 1e-4 (alpha = -0.2). Its positions
+    converge cleanly: HHT with alpha = 0 at second order.
+  - On Windows, conda gave NumPy MKL 2026.1.0 as its BLAS, and NumPy's
+    first matrix product stopped Python.
+- **Decision.**
+  - **Exported models, compared in each code's language.** A program built
+    on request, `mbd_crosscheck`, writes random models and this library's
+    answers as JSON with 17 significant digits; a Python script per code
+    rebuilds the models there and compares. Each script's header states the
+    conventions it maps.
+  - **Pinocchio:** 40 random trees of every joint type, numbered as our
+    generator numbers them (any parent before its child), three states
+    each; ABA, RNEA, CRBA and placements, relative difference (over 1 + the
+    largest entry of Pinocchio's value) within 1e-8. The joints are added to
+    Pinocchio depth first and the coordinates mapped between the two orders.
+  - **Chrono at rest:** 12 random trees closed by one to three
+    independent constraints of six kinds. The script lets Chrono assemble at
+    rest, reads the system descriptor's matrix blocks (mass matrix,
+    constraint Jacobian, forces; 13 significant digits), sets the
+    constraints' right-hand side to its exact value at rest, zero, and
+    solves those equations; each link's rows give its wrench on its bodies.
+    Accelerations, the closures' loads on each body and the joints'
+    reactions within 1e-10 (the files' floor is near 1e-12).
+  - **Chrono's motion:** from rest, assembled and the velocities put back,
+    HHT with alpha = 0 at two steps, h and h/2. It passes when Chrono's
+    difference from our motion falls by between 3 and 5 as the step halves
+    and the Richardson extrapolation of its two runs is within a tenth of
+    its difference at h/2 (or below a floor set by our own error estimate
+    and Chrono's Newton tolerance): Chrono converges to our motion at its
+    order, so no tolerance is guessed.
+  - **The environment from conda-forge, pinned** (`crosscheck/environment.yml`:
+    Python 3.12.16, Pinocchio 4.1.0, PyChrono 10.0.0, NumPy 2.5.4, BLAS
+    OpenBLAS); a Linux CI job, `crosscheck`, installs it with micromamba and
+    runs both scripts.
+- **Alternatives.**
+  - **Compare against the mass matrix of Pinocchio's RNEA**: it agrees, but
+    it compares RNEA twice and CRBA not at all. **Generate only depth-first
+    trees**: Pinocchio would then pass, but the comparison would stop
+    covering our numbering, which the library allows and uses. Rejected.
+  - **Through this library's Python bindings**: they do not exist yet
+    (Phase 6), and JSON keeps the answers readable and the C++ side free of
+    any Python. Rejected for now.
+  - **Chrono's assembled accelerations and its links' reactions**: limited
+    to about 1e-4 by the residual over the step squared, and only at rest.
+    **Accelerations and reactions from its integrators**: worse. **Its
+    sparse matrices through the API**: PyChrono does not wrap
+    `ChSparseMatrix`. Rejected; the matrix blocks give the same equations.
+  - **One Chrono run with a fixed tolerance on the motion**: the tolerance
+    would be guessed, and too loose or too tight depending on the mechanism.
+    Rejected for the convergence test.
+  - **Starting the motion with velocities**: the assembly would give
+    accelerations without their velocity products, and the integrator would
+    start from them. Rejected; the velocity products are exercised by the
+    motion that gravity starts.
+  - **PyPI instead of conda**: Pinocchio's `pin` has no Windows wheels, and
+    PyPI's `pychrono` is a different program. Rejected.
+- **Consequences.** The library agrees with two independent codes: with
+  Pinocchio to 2.1e-13 on 563 bodies of every joint type, with Chrono to
+  1.4e-12 at rest and in a motion to which Chrono converges at second
+  order. The comparison covers gravity and constraints, not force elements,
+  drivers or contact. A perturbation of one part in a million in one
+  inertia makes it fail. CI runs it on every push (about two minutes for
+  Chrono).
+- **Record.** Journal: Phase 5, comparison with independent codes;
+  `documentation/journal/data/2026-11-07_independent-code.md`; `crosscheck/`
+  (README, `environment.yml`, the scripts, the exporter);
+  `.github/workflows/ci.yml`; `CLAUDE.md`.

@@ -222,6 +222,19 @@ to a validated engine.*
   imperfect parallelogram, its coupler turning at delta theta' / (L
   theta^2). Contradictory constraints named by a deletion filter at the
   least-squares point. *J: Phase 5, the IFToMM benchmarks. D44.*
+- **Comparison with independent codes.** Pinocchio for tree dynamics,
+  Project Chrono for closed mechanisms: mapping conventions between codes
+  (frames, joint coordinates, the order of velocities); a numbering
+  assumption in the other code (Pinocchio's mass matrix, depth first),
+  found by comparing that code with itself; measuring the other code on a
+  closed form before trusting it (Chrono's assembly without velocity
+  products, its residual over the step squared, its integrators started
+  from zero accelerations); solving the other code's own equations from its
+  matrices; Richardson's extrapolation as the test that a second code
+  converges to the first, so that no tolerance is guessed. The figure:
+  Chrono's difference from ours against its step, falling as h^2, and the
+  extrapolated difference far below. *J: Phase 5, comparison with
+  independent codes. D46.*
 
 ## Part VIII onwards: one part per phase still to come
 

@@ -18,11 +18,13 @@ agent (plan task H.7, decision D42). Read them before the first change.
 | Sources reviewed for ideas, and what was taken | `documentation/review_2026-10-20/external_sources.md` |
 
 **Where the work stands:** the plan's checkboxes and the journal index say it.
-On 20 October 2026: Phase 4 merged into `main` (tag `v0.5.0`); branch
+On 7 November 2026: Phase 4 merged into `main` (tag `v0.5.0`); branch
 `phase-5` carries Phase 3's how-to guides, the D42 plan amendments, this
-file, task 5.1 (analytic cases and manufactured trajectories, D43) and task
-5.2 (the IFToMM benchmarks, D44, with the library's results for A04 and A05
-in `tests/kernel/data/iftomm/`); the next task is **5.3** (independent code).
+file, task 5.1 (analytic cases and manufactured trajectories, D43), task 5.2
+(the IFToMM benchmarks, D44, with the library's results for A04 and A05 in
+`tests/kernel/data/iftomm/`) and task 5.3 (the comparison with Pinocchio and
+Project Chrono, D46, in `crosscheck/`); the next task is **5.4** (the HMMWV
+benchmark).
 
 **Not in the repository:** the textbooks and papers in `documentation/` (git
 ignores PDFs), and local copies of the reviewed sources (on the author's
@@ -80,11 +82,19 @@ be in `docs/help/messages.md` and every catalogued code used
 (`test_message_catalogue`); every example in `docs/help/howto/` must be quoted
 exactly from `tests/howto/` (`test_howto_pages`).
 
+**The comparison with independent codes** (`crosscheck/`, D46) needs the conda
+environment in `crosscheck/environment.yml` (Pinocchio and PyChrono from
+conda-forge; never PyPI's `pychrono`, an unrelated package). On the author's
+laptop it is `C:\Users\margk\miniforge3\envs\mbd-crosscheck` (Miniforge, not
+on the PATH). Build `mbd_crosscheck`, then run the two scripts as
+`crosscheck/README.md` says; the Chrono one takes about two minutes.
+
 **CI** (GitHub Actions, every push to any branch): Windows through the build
 script; Linux with GCC and the address and undefined-behaviour sanitizers,
 any report failing its test (D45); Linux Debug checking that nothing
-allocates; the Doxygen reference with every warning an error. A task is
-finished when CI is green on its commit.
+allocates; the Doxygen reference with every warning an error; the comparison
+with Pinocchio and Project Chrono (D46). A task is finished when CI is green
+on its commit.
 
 **Timings** compare only on one machine in one session: the laptop's speed
 varies by a factor of two between days. Its benchmarks run pinned to one
@@ -153,3 +163,10 @@ not there. Use British spelling, as the existing text does.
 - An `Eigen::LLT` (or `LDLT`) built with its size only leaves its status
   unset; moving one copies that unset value (undefined behaviour). Size a
   factorization by computing it, on the identity if need be.
+- MSVC warns where GCC does not: a parameter with a member's name (C4458)
+  passed on Linux and warned on Windows, with CI green (a warning does not
+  fail the Windows job). Read the Windows build's warnings (CI's log or the
+  laptop's build) for code written on Linux.
+- PyChrono's getters (`GetLinVel()`, `GetPos()`) return references to the
+  body's own vectors: copy the numbers out before changing the body, or the
+  saved value changes with it.

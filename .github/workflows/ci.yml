@@ -117,3 +117,45 @@ jobs:
           test -s build-docs/docs/html/annotated.html
           grep -q "ConstraintSolver" build-docs/docs/html/annotated.html
           echo "HTML pages: $(ls build-docs/docs/html/*.html | wc -l)"
+
+  # Comparison with independent codes (plan task 5.3): random trees against
+  # Pinocchio, closed mechanisms against Project Chrono. Both come from conda
+  # (crosscheck/environment.yml pins the versions); micromamba installs them.
+  crosscheck:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install Pinocchio and PyChrono
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: crosscheck/environment.yml
+          cache-environment: true
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-crosscheck -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DMBD_COMPILE_JOBS=3
+          -DMBD_BUILD_PYTHON=OFF
+          -DBUILD_TESTING=OFF
+
+      - name: Build the exporter
+        run: cmake --build build-crosscheck --target mbd_crosscheck
+
+      - name: Compare with Pinocchio
+        shell: bash -el {0}
+        run: |
+          ./build-crosscheck/crosscheck/mbd_crosscheck trees trees.json 40 1
+          python crosscheck/compare_pinocchio.py trees.json
+
+      - name: Compare with Project Chrono
+        shell: bash -el {0}
+        run: |
+          ./build-crosscheck/crosscheck/mbd_crosscheck mechanisms mechanisms.json 12 1
+          python crosscheck/compare_chrono.py mechanisms.json

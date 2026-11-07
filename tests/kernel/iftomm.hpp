@@ -426,11 +426,11 @@ struct Flyball {
         }
     }
 
-    /// A slender rod of 1 x 0.01 x 0.01 m along Z, its centre of mass at c.
-    static RigidBodyInertia slender(Real m, const Vec3& c)
+    /// A slender rod of 1 x 0.01 x 0.01 m along Z, its centre of mass at com.
+    static RigidBodyInertia slender(Real m, const Vec3& com)
     {
         RigidBodyInertia I = RigidBodyInertia::from_solid_box(m, Vec3(0.005, 0.005, 0.5));
-        I.com_B = c;
+        I.com_B = com;
         return I;
     }
 
