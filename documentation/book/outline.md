@@ -235,6 +235,18 @@ to a validated engine.*
   Chrono's difference from ours against its step, falling as h^2, and the
   extrapolated difference far below. *J: Phase 5, comparison with
   independent codes. D46.*
+- **The HMMWV benchmark.** A benchmark rebuilt from a paper that gives no
+  data, with a data set from a descendant code checked before use (inertias
+  no body can have, springs that lifted the vehicle onto its stops). A
+  stiffness ratio of a million: what it does to an explicit method (the
+  step set by a bushing's damping on an arm of 1 kg) and to a static solver
+  (the normal equations square the ratio and lose the soft directions; the
+  singular values measured to set the new cut). A road whose bump makes the
+  tyre forces jump: fixed steps that converge irregularly, an error
+  estimate (SDIRK4's) that misses it, and what events can and cannot do.
+  Figures: the chassis height through both bumps; cost against accuracy
+  for every method, with joints and with bushings. *J: Phase 5, the HMMWV
+  benchmark. D47, D48.*
 
 ## Part VIII onwards: one part per phase still to come
 

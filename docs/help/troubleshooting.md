@@ -92,6 +92,13 @@ message to a file and use `git commit -F <file>`.
 codes in the catalogue say why it matters and what to do. Fix errors before
 simulating; read warnings and notes.
 
+**A model built from published data misbehaves.** Check the data before
+building on it: `validate()` rejects inertias no body can have (Chrono's
+HMMWV control arms, 0.4 + 0.4 < 0.8938 kg m^2: MBD-M014), and a static
+equilibrium shows whether the springs hold the vehicle where the data puts
+it (Chrono's HMMWV rested 0.085 m high, on its rebound stops). *(The HMMWV
+benchmark.)*
+
 **The counts from `validate()` or `describe()` look wrong.** By default they
 are taken at the neutral configuration, which may be neither assembled nor
 regular (a four-bar with every link along X has rank 1, not 2). Pass an
@@ -136,6 +143,23 @@ the upright turns, and its "contact point" leaves the ground. Start with
 every tyre loaded (from `set_vehicle_equilibrium`, or within a centimetre of
 it) until the builders gain rebound stops (task 7.x). *(Static
 equilibrium.)*
+
+**Statics on a model with stiff and soft parts stalls, or reports fewer
+directions with stiffness than it should.** Before task 5.4 the Newton step
+squared the ratio of the softest stiffness to the stiffest, and on the
+HMMWV with bushings of 2e7 N/m it lost the chassis on its tyres (a ratio of
+4.8e-6) and stopped with the chassis in the air. The step now keeps
+directions down to 1e-7 of the stiffest (D47). If `report.supported` is
+still below what you expect, compare the stiffest and softest motions of
+your model: a ratio below 1e-7 is taken as no stiffness. *(The HMMWV
+benchmark.)*
+
+**MBD-K073 says a relaxation was undone.** Relaxation is explicit: beside a
+stiff element (2e7 N/m on a few kg) its default step of 1 ms makes the
+motion grow without bound. The run is undone and the positions go back to
+where it started. Shorten `StaticOptions::relaxation_step` below 2 / (the
+highest natural frequency in rad/s; `linearize()` lists them), or start
+nearer the equilibrium. *(The HMMWV benchmark, D47.)*
 
 **Statics reports neutral directions (MBD-K072).** Directions with neither
 force nor stiffness keep their given values: a vehicle on tyres at rest has
@@ -268,6 +292,18 @@ smooth. *(Events; the Dormand-Prince pair.)*
 **MBD-K052: too many events in one step.** An action that sends its function
 back across zero while both directions are watched makes an endless chain.
 Watch one direction. *(Events.)*
+
+**Events where a force jumps help some methods and not others.** On the
+HMMWV, with events where the tyres' forces jump at the bump, Radau IIA and
+SDIRK4 became far more accurate at loose tolerances (SDIRK4 needs them
+there), RK4 a little, while generalised-alpha failed with MBD-K058 on the
+remainder of a cut step (0.36 ms, at 0.606 s), and Dormand-Prince became
+less accurate at loose tolerances: it locates an event on its step's
+continuous extension, which assumes the dynamics are smooth across the
+crossing. Use events with Radau IIA, SDIRK4 or RK4 where forces jump; with
+generalised-alpha or Dormand-Prince, run without them and let the steps or
+the error control resolve the jump ([the HMMWV benchmark](../hmmwv.md)).
+*(The HMMWV benchmark.)*
 
 **Braking results differ from a hand calculation by about 0.2 %.** Since task
 4.1 the wheel spins are integrated with the bodies and the result no longer
@@ -585,3 +621,5 @@ Before building on it (working rule 2):
 | Phase 4: the integrators verified | The real-time step diverging, then gaining energy, on stiff bushings between turning bodies (Simulations); generalised-alpha's Newton at long steps with a tight tolerance (Simulations: MBD-K058); a chaotic model's long runs depending on rounding (Simulations: results differ) |
 | Phase 5: analytic cases and manufactured trajectories | A header edited during a build, leaving a stale object (Builds); forced motions that amplify errors past any order, and mode shapes compared by an ambiguous normalization (Numerical traps) |
 | Phase 5: the IFToMM benchmarks | A mechanism stalling at a singular position with loose constraints (Simulations); contradictory constraints named (Simulations: MBD-K051, Initial conditions: MBD-K062); messages that wrote small numbers as 0.000000 (fixed) |
+| Phase 5: comparison with independent codes | Pinocchio's mass matrix needing joints numbered depth first, and Chrono's accelerations (`crosscheck/README.md`); NumPy with MKL stopping Python (`crosscheck/environment.yml`) |
+| Phase 5: the HMMWV benchmark | Statics losing soft directions beside stiff ones, and relaxation blowing up (Initial conditions, statics: fixed, D47); events where forces jump (Simulations); a published data set with impossible inertias and springs that did not hold the vehicle (found by `validate()` and statics; Models) |

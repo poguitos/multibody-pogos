@@ -57,6 +57,8 @@ and the journal entry of the work refers to them by number
 | D44 | The IFToMM benchmarks against closed forms; singular positions passed by holding the constraints near rounding; conflicting equations named by a deletion filter | 20 Oct 2026 | In force, task 5.2 |
 | D45 | A sanitizer report fails its test; an Eigen factorization sized by computing it, never by moving an empty one | 20 Oct 2026 | In force, task 5.2's close |
 | D46 | Comparison with independent codes: Pinocchio's joints added depth first; Chrono's equations at rest solved from its own matrices, its motion checked by convergence | 7 Nov 2026 | In force, task 5.3 |
+| D47 | Statics: the Newton step by a rank-revealing QR, not the normal equations; a relaxation that ends worse is undone | 7 Nov 2026 | In force, task 5.4 |
+| D48 | The HMMWV benchmark: Chrono's HMMWV data where the paper gives none, corrected; one tyre spring to the nearest surface; runs without events, as the paper, and a second table with them | 7 Nov 2026 | In force, task 5.4 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -1598,3 +1600,131 @@ and the journal entry of the work refers to them by number
   `documentation/journal/data/2026-11-07_independent-code.md`; `crosscheck/`
   (README, `environment.yml`, the scripts, the exporter);
   `.github/workflows/ci.yml`; `CLAUDE.md`.
+
+## D47. Statics: the Newton step by a rank-revealing QR, not the normal equations; a relaxation that ends worse is undone
+
+- **Context.** `static_equilibrium` (task 3.5, D26) takes Newton steps of
+  least change in the weights of the mass matrix's diagonal: with `Gs = S G
+  S^-1`, the step solved `(Gs Gs^T) y = -S a` by `RankRevealingLDLT`, whose
+  rank cut is 1e-10 of the largest pivot. Directions below the cut count as
+  neutral and are left alone. On the HMMWV with the paper's bushings (task
+  5.4: 2e7 N/m on upper arms of 5.8 kg), started from its design position,
+  Newton went from 1.7e3 to 2.37 m/s^2 in two iterations and stopped there,
+  the chassis still 0.02 m above where its tyres hold it. The singular values
+  of `Gs`, printed by a temporary probe, run from 1 to 4.8e-6 for the
+  directions with stiffness (the three softest: the chassis's heave, pitch
+  and roll on its tyres), then drop to the differences' noise, at most
+  9e-12 (at most 2e-10 on the HMMWV with joints, and once 7e-8 at a
+  design position where the tyres had no load). Squared, 4.8e-6 is
+  2.3e-11: below the cut, so 12 of the 15 directions were seen, and the
+  chassis's three never moved. Dynamic relaxation then took over with its
+  explicit step of 1 ms, beside modes of 1,860 rad/s, and blew up: the
+  chassis ended 17 m in the air, and on a two-block test model the positions
+  came back as NaN.
+- **Decision.**
+  - **The step from a QR factorization of `Gs^T` with column pivoting**
+    (Eigen's `ColPivHouseholderQR`): `Gs^T P = Q R`, so `Gs = P R^T Q^T`;
+    the least `x` with `Gs x = b` has `Q^T x = (w, 0)` with `R_r^T w =
+    (P^T b)_r` over the rank `r`. No product squares the stiffness ratio.
+  - **A direction has stiffness when its pivot is above 1e-7 of the
+    largest** (`kStiffnessCut`): 50 times below the softest real direction
+    measured (4.8e-6), and 500 times above the noise (2e-10); the transient
+    7e-8 falls below it.
+  - **A relaxation that ends with larger accelerations than it began with,
+    or with none, is undone**: the positions go back to where it started,
+    `StaticReport::relaxation_undone` counts it, and MBD-K073 says so and
+    suggests a shorter `relaxation_step`.
+- **Alternatives.**
+  - **A lower cut on the normal equations** (1e-14 on `Gs Gs^T`): the
+    squared values sit within two orders of rounding (1e-16), so the rank
+    would depend on rounding. Rejected.
+  - **A singular value decomposition**: the most reliable rank, but a
+    heavier factorization to compile (the pitfalls note that Eigen's
+    complete orthogonal decomposition costs 30 s per file), and the pivoted
+    QR separates these spectra by orders of magnitude. Rejected for now.
+  - **Starting the bushed model from the joint model's equilibrium**: it
+    would hide the defect for this model and leave it for the next.
+    Rejected.
+  - **Detecting a blow-up during relaxation and stopping it**: the end
+    comparison is simpler and catches the same, NaN included. Rejected.
+- **Consequences.** The bushed HMMWV settles in 4 iterations (15 directions
+  with stiffness, 3 neutral) to the joint model's chassis height within
+  5 digits. Two tests: a soft spring below a stiff one (stiffness ratio
+  1e-6) settles in one Newton step, where the old step failed and its
+  relaxation returned NaN; a relaxation too long for a stiff element is
+  undone, and a shorter one succeeds. Every earlier statics test passes
+  unchanged. A direction whose stiffness lies between 1e-7 and 1e-5 of the
+  largest, neutral before, now has stiffness.
+- **Record.** Journal: Phase 5, the HMMWV benchmark; `src/kernel/statics.cpp`,
+  `include/mbd/kernel/statics.hpp`, `tests/kernel/test_kernel_statics.cpp`,
+  `docs/kernel.md` (static equilibrium), `docs/help/messages.md` (MBD-K073).
+
+## D48. The HMMWV benchmark: Chrono's HMMWV data where the paper gives none, corrected; one tyre spring to the nearest surface; runs without events, as the paper, and a second table with them
+
+- **Context.** Task 5.4 rebuilds the fourteen-body HMMWV of Haug, Negrut,
+  Serban and Solis (1999): its bodies and joints, tyres of 296,325 N/m and
+  3,502 N s/m, 10 mph over a half cylinder 0.1 m across, and the variant
+  with bushings of 2e7 N/m and 2e6 N s/m at the upper arms. The paper gives
+  no geometry, masses or suspension laws. Project Chrono's HMMWV comes from
+  the same research group; its chassis rests 0.709 m up at the design
+  position, the paper's 0.71 m. Read as data, it had two faults: control arm
+  inertias that break the triangle inequality, and springs whose free
+  lengths lift the chassis 0.085 m onto their rebound stops. The road's
+  bump makes the tyre forces jump, which fixed-step methods straddle.
+- **Decision.**
+  - **Chrono's HMMWV data** (hardpoints, masses, inertias, the progressive
+    spring table, the JSON files' linear shock dampers, the rack) where the
+    paper is silent; the paper's own figures where it gives them.
+  - **Two corrections, stated in the model:** the arms as flat bodies (Izz
+    = Ixx + Iyy: 0.8 and 0.06 kg m^2 for Chrono's 0.8938 and 0.06276), and
+    the springs' free lengths those that rest the arms at their design
+    angles (0.294734288 and 0.332951200 m, found by `mbd_hmmwv calibrate`;
+    Chrono's 0.339 and 0.382), the table's shape kept.
+  - **Fourteen bodies, as the paper:** each spindle body is Chrono's
+    upright, spindle, wheel and tyre together (no wheel spin, as the
+    paper's ten degrees of freedom imply); the tie rods massless distance
+    constraints; the steering rack held by a driver.
+  - **The bushings:** each upper arm on a spherical joint at its front
+    point, and at its back point two spring-dampers across its axis,
+    perpendicular to each other, 0.1 m long and free at the design
+    position. Their fastest mode is -2.06e6 s^-1, eight times the paper's
+    -2.6e5, whose geometry is not given.
+  - **The tyre:** one spring-damper from the wheel centre to the nearest
+    point of the road, along its normal there, pushing only, without
+    friction. The vehicle starts at 10 mph from rest on its tyres and
+    coasts; only the bump's slope takes speed from it. The bump is placed
+    where the front tyres' force turns to it at 0.5 s.
+  - **The benchmark:** 5 s, every body's position every 10 ms against Radau
+    IIA at a tolerance of 1e-10; every method at several fixed steps or at
+    tolerances from 1e-2 to 1e-8 (the paper's 1e-2 to 1e-5, and two
+    tighter); on the bushed model the explicit methods only near their
+    stability limit. Costs: wall-clock time of the stepping, pinned to a
+    performance core at high priority, from one run; steps, evaluations,
+    Newton iterations, Jacobians. Without events, as the paper ran it; a
+    second table with the tyres' events (`Hmmwv::add_events`) on the joint
+    model.
+- **Alternatives.**
+  - **Chrono's data as it stands**: the vehicle would rest on its spring
+    stops, 0.085 m above the paper's height. Rejected.
+  - **A wheel body on a spin joint, tyres with friction, a driving torque**:
+    a different model from the paper's, with more states and its own
+    stiffness. Rejected for this benchmark (Phase 7 builds such tyres).
+  - **A tyre that sums its contacts with both surfaces, or follows the
+    bump's envelope**: smoother at the switch but not the paper's single
+    spring-damper; the damper's jump on meeting a step-like bump remains
+    either way. Rejected.
+  - **Events by default**: they make fixed-step methods accurate at the
+    jumps, but generalised-alpha fails with them on this model and they
+    cost the implicit methods' tight runs many times more. Kept as the
+    second table.
+  - **Bushings placed to match the paper's eigenvalue**: its geometry is
+    unknown; matching one number by tuning would not make the model the
+    paper's. Rejected; the difference is stated.
+- **Consequences.** A reproducible HMMWV-14 in `tests/kernel/hmmwv.hpp`,
+  whose numbers come with their sources; the chassis rests at 0.6875 m
+  (paper: about 0.71 m) and settles after the bumps within about 3.5 s
+  (paper: about 4 s). The costs of all methods on both variants in
+  `docs/hmmwv.md`. The model becomes a reference car file in task 8.6.
+- **Record.** Journal: Phase 5, the HMMWV benchmark; `tests/kernel/hmmwv.hpp`,
+  `tests/kernel/test_kernel_hmmwv.cpp`, `bench/hmmwv.cpp`, `docs/hmmwv.md`,
+  `documentation/journal/data/2026-11-07_hmmwv-benchmark.md`.

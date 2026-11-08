@@ -10,3 +10,11 @@ target_link_libraries(mbd_bench PRIVATE multibody_core mbd_warnings)
 add_executable(mbd_verify EXCLUDE_FROM_ALL verify_integrators.cpp)
 target_link_libraries(mbd_verify PRIVATE multibody_core mbd_warnings)
 target_include_directories(mbd_verify PRIVATE ${PROJECT_SOURCE_DIR}/tests)
+
+# The HMMWV benchmark (plan task 5.4): explicit and implicit methods on the
+# fourteen-body HMMWV and its bushed variant, their agreement and costs, for
+# docs/hmmwv.md. Not built by default:
+#   scripts\build.ps1 -Target mbd_hmmwv
+add_executable(mbd_hmmwv EXCLUDE_FROM_ALL hmmwv.cpp)
+target_link_libraries(mbd_hmmwv PRIVATE multibody_core mbd_warnings)
+target_include_directories(mbd_hmmwv PRIVATE ${PROJECT_SOURCE_DIR}/tests)

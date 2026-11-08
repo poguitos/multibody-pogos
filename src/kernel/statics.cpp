@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include <Eigen/QR>
+
 #include "mbd/kernel/algorithms.hpp"
 #include "mbd/kernel/constrained_dynamics.hpp"
 
@@ -25,6 +27,12 @@ constexpr int kProjectionIterations = 50;
 // The given positions must reach the constraints to this before statics
 // starts (the tolerance of assemble() and of the simulator's projection).
 constexpr Real kAssembledTolerance = 1e-10;
+// A direction has stiffness when its pivot in the QR factorization of the
+// scaled G is above this fraction of the largest (task 5.4). On the bushed
+// HMMWV the scaled G's singular values run from 1 down to 4.8e-6 (the chassis
+// on its tyres, below bushings of 2e7 N/m), and the differences' noise stays
+// under 2e-10 (projections to 1e-13 over steps of 1e-6, with some rounding).
+constexpr Real kStiffnessCut = 1e-7;
 
 Real largest(const VecX& a)
 {
@@ -134,17 +142,30 @@ public:
     }
 
     /// The least step, in the weights, with G step = -a; `rank` is the rank
-    /// of G: the directions with stiffness.
+    /// of G: the directions with stiffness. In the weights the step x =
+    /// S step solves Gs x = b, Gs = S G S^-1 and b = -S a, with the least
+    /// |x|. From a rank-revealing QR factorization of Gs^T, Gs^T P = Q R:
+    /// then Gs = P R^T Q^T, and with Q^T x = (w, 0), R_r^T w = (P^T b)_r over
+    /// the rank r. The normal equations (Gs Gs^T y = b, x = Gs^T y), used
+    /// before, square the ratio of the softest stiffness to the stiffest, and
+    /// on the bushed HMMWV that pushed the chassis on its tyres (4.8e-6,
+    /// squared 2.3e-11) below their rank cut (task 5.4).
     VecX newton_step(const MatX& G, const VecX& a, int& rank)
     {
-        const MatX Gs = s_.asDiagonal() * G * s_.cwiseInverse().asDiagonal();
-        const MatX A = Gs * Gs.transpose();
-        RankRevealingLDLT ldlt(A.rows());
-        ldlt.compute(A);
-        rank = ldlt.rank();
-        VecX y;
-        ldlt.solve(-s_.cwiseProduct(a), y);
-        return s_.cwiseInverse().cwiseProduct(Gs.transpose() * y);
+        const MatX GsT = (s_.asDiagonal() * G * s_.cwiseInverse().asDiagonal()).transpose();
+        Eigen::ColPivHouseholderQR<MatX> qr(GsT.rows(), GsT.cols());
+        qr.setThreshold(kStiffnessCut);
+        qr.compute(GsT);
+        rank = static_cast<int>(qr.rank());
+        const VecX Ptb = qr.colsPermutation().transpose() * (-s_.cwiseProduct(a));
+        VecX u = VecX::Zero(GsT.rows());
+        u.head(rank) = qr.matrixR()
+                           .topLeftCorner(rank, rank)
+                           .template triangularView<Eigen::Upper>()
+                           .transpose()
+                           .solve(Ptb.head(rank));
+        const VecX x = qr.householderQ() * u;
+        return s_.cwiseInverse().cwiseProduct(x);
     }
 
     /// Dynamic relaxation from q: a motion driven by the accelerations at
@@ -154,13 +175,19 @@ public:
     /// and tyre slip forces play no part in the equilibrium, and at low speed
     /// they are too stiff for an explicit step (a tyre's lateral force below
     /// its V_low acts as a damper of tens of kN s/m on an upright of a few
-    /// tens of kg).
+    /// tens of kg). The step is explicit: beside a stiffness k on a mass m it
+    /// must stay below about 2 sqrt(m / k), or the motion grows without bound
+    /// (task 5.4: NaN within 20000 steps of 1 ms beside 1e8 N/m on 1 kg). A
+    /// relaxation that ends with larger accelerations than it began with, or
+    /// with none at all, is undone.
     void relax(VecX& q, StaticReport& r)
     {
         ++r.relaxation_runs;
         const Real dt = options_.relaxation_step;
+        const VecX q_start = q;
         VecX v = VecX::Zero(model_.nv);
         VecX a = rest(q);
+        const Real a_start = largest(a);
         Real kinetic_last = 0.0;
         while (r.relaxation_steps < options_.max_relaxation_steps) {
             v += dt * a;
@@ -174,6 +201,10 @@ public:
             const bool peak = kinetic < kinetic_last;
             if (peak) v.setZero();
             kinetic_last = peak ? 0.0 : kinetic;
+        }
+        if (!(largest(a) <= a_start)) {   // NaN included
+            q = q_start;
+            ++r.relaxation_undone;
         }
     }
 
@@ -279,7 +310,12 @@ StaticReport static_equilibrium(Simulator& sim, const StaticOptions& options)
     if (r.relaxation_steps > 0) {
         r.notes.push_back("MBD-K073: Dynamic relaxation took " + std::to_string(r.relaxation_steps)
                           + " steps in " + std::to_string(r.relaxation_runs)
-                          + " runs, where Newton's method could not reduce the accelerations.");
+                          + " runs, where Newton's method could not reduce the accelerations"
+                          + (r.relaxation_undone > 0
+                                 ? "; " + std::to_string(r.relaxation_undone)
+                                       + " of them ended with larger accelerations than they began with and were "
+                                         "undone (relaxation_step too long for the stiffest element?)."
+                                 : std::string(".")));
     }
     return r;
 }

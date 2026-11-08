@@ -543,11 +543,19 @@ Note, in `StaticReport::notes`: `<n> of the <d> degrees of freedom have no stiff
 ### MBD-K073
 
 Note, in `StaticReport::notes`: `Dynamic relaxation took <m> steps in <r> runs, where Newton's method could not reduce the accelerations.`
+With `; <u> of them ended with larger accelerations than they began with and were undone (relaxation_step too long for the stiffest element?).` when some runs were undone.
 
 - **Means:** at some point no Newton step reduced the accelerations, usually
   because a force had no stiffness against it (a wheel above the ground), and
   the motion under the forces, with kinetic damping, was used to find the
-  support before Newton resumed.
+  support before Newton resumed. Relaxation is explicit: a run that ends
+  worse than it began, usually because `relaxation_step` is longer than about
+  2 sqrt(m / k) for the stiffest element, is undone
+  (`StaticReport::relaxation_undone`), and the positions go back to where it
+  started.
+- **What to do:** if runs were undone, shorten `StaticOptions::relaxation_step`
+  below 2 / (the highest natural frequency in rad/s), or start nearer the
+  equilibrium.
 
 ### MBD-K080
 

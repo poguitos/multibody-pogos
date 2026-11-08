@@ -13,7 +13,7 @@ agent (plan task H.7, decision D42). Read them before the first change.
 | Design decisions D1 onwards, with context and alternatives | `documentation/decisions.md` |
 | The journal: an entry per task, its index, the template | `documentation/journal/` (`README.md`, `TEMPLATE.md`), raw measurements in `journal/data/` |
 | The book's outline and bibliography | `documentation/book/` |
-| How the program works | `docs/conventions.md`, `docs/kernel.md`, `docs/integrators.md`, `docs/performance.md` |
+| How the program works | `docs/conventions.md`, `docs/kernel.md`, `docs/integrators.md`, `docs/performance.md`, `docs/hmmwv.md` |
 | Help: how-to guides, troubleshooting, the message catalogue | `docs/help/` |
 | Sources reviewed for ideas, and what was taken | `documentation/review_2026-10-20/external_sources.md` |
 
@@ -22,9 +22,10 @@ On 7 November 2026: Phase 4 merged into `main` (tag `v0.5.0`); branch
 `phase-5` carries Phase 3's how-to guides, the D42 plan amendments, this
 file, task 5.1 (analytic cases and manufactured trajectories, D43), task 5.2
 (the IFToMM benchmarks, D44, with the library's results for A04 and A05 in
-`tests/kernel/data/iftomm/`) and task 5.3 (the comparison with Pinocchio and
-Project Chrono, D46, in `crosscheck/`); the next task is **5.4** (the HMMWV
-benchmark).
+`tests/kernel/data/iftomm/`), task 5.3 (the comparison with Pinocchio and
+Project Chrono, D46, in `crosscheck/`) and task 5.4 (the HMMWV benchmark,
+D47 and D48, `docs/hmmwv.md`); the next task is **5.5** (the regression
+harness).
 
 **Not in the repository:** the textbooks and papers in `documentation/` (git
 ignores PDFs), and local copies of the reviewed sources (on the author's
@@ -74,8 +75,8 @@ portability fix to make (and record), not a sign that the build is broken.
 allocation in a step), `test_howto` (the how-to guides' examples). Run one
 case by name with `-s` to read the values behind each check; a comma in a
 test's name must be written `\,`. Hidden tests (`[.]`, such as `[alloc]` and
-`[long]`) are not registered with ctest. `mbd_bench` and `mbd_verify`
-(`bench/`) are built only on request (`--target`).
+`[long]`) are not registered with ctest. `mbd_bench`, `mbd_verify` and
+`mbd_hmmwv` (`bench/`) are built only on request (`--target`).
 
 **Checks that run in the suite:** every message code used in the sources must
 be in `docs/help/messages.md` and every catalogued code used

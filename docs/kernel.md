@@ -667,8 +667,15 @@ It is Newton's method in the tangent space of the constraints. The Jacobian
 projected back onto the constraints (the same Gauss-Newton projection as
 assembly), so that `G` vanishes across them. The step is the least, in the
 weights of the diagonal of the mass matrix, that zeroes `G step + a`: with
-`S = W^1/2` and `Gs = S G S^-1`, `step = S^-1 Gs^T y` and `(Gs Gs^T) y = -S a`,
-solved by `RankRevealingLDLT`. Directions with neither stiffness nor force
+`S = W^1/2` and `Gs = S G S^-1`, `step = S^-1 x` with the least `x` solving
+`Gs x = -S a`, from a rank-revealing QR factorization of `Gs^T` (Eigen's
+`ColPivHouseholderQR`). A direction counts as stiff when its pivot is above
+1e-7 of the largest. Until task 5.4 the step came from the normal equations,
+`(Gs Gs^T) y = -S a` with `RankRevealingLDLT`, which square the ratio of the
+softest stiffness to the stiffest: on the HMMWV with bushings of 2e7 N/m the
+chassis on its tyres sits at 4.8e-6 of the largest, 2.3e-11 squared, below
+that solver's cut, and Newton stalled with the chassis in the air. The
+differences' own noise stays below 2e-10 of the largest. Directions with neither stiffness nor force
 are therefore not moved (to first order: they shift by products of the other
 changes), and the report counts them: a vehicle on tyres at rest has three,
 its position on the ground and its heading, because a tyre gives no
@@ -680,7 +687,11 @@ time the kinetic energy has passed a maximum), until those accelerations fall
 below `relaxation_tolerance`; then Newton resumes. The forces are taken at
 rest because damping and tyre slip forces play no part in the equilibrium and
 are too stiff at low speed for an explicit step: a tyre's lateral force below
-its `V_low` of 1 m/s acts as a damper of about 45 kN s/m.
+its `V_low` of 1 m/s acts as a damper of about 45 kN s/m. The relaxation step
+is explicit, so beside a stiff element it must be short (below about
+2 sqrt(m / k)); a run that ends with larger accelerations than it began with
+is undone and counted (`relaxation_undone`, in MBD-K073): before task 5.4 a
+run beside 1e8 N/m on 1 kg went on to NaN and handed that to Newton.
 
 The `StaticReport` gives the largest acceleration before and after and after
 each iteration, the relaxation used, the degrees of freedom split into those
@@ -884,6 +895,14 @@ governor against its angular momentum, its energy balance with the dampers'
 work, three integrators and two results from the library. The library's
 results are in `tests/kernel/data/iftomm/` (its README says whose). The
 N-four-bar with 40 loops is the hidden `[long]` case.
+
+`tests/kernel/test_kernel_hmmwv.cpp` (task 5.4, D48) runs the fourteen-body
+HMMWV of Haug et al. (1999) (`tests/kernel/hmmwv.hpp`), with joints and with
+the paper's bushings: its counts, its rest (the tyres carrying the weight,
+the arms at their design angles), the time the tyres meet the bump, an
+explicit and an implicit method agreeing over both bumps, and on the bushed
+model RK4 failing above its stability limit (1.35e-6 s) and agreeing below
+it. The costs of every method are in [the HMMWV benchmark](hmmwv.md).
 
 Outside the test suite, `crosscheck/` (task 5.3, D46) compares the kernel
 with two independent codes, in CI's `crosscheck` job: random trees of every

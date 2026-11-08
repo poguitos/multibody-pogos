@@ -70,6 +70,9 @@ struct StaticReport {
     int iterations{0};                ///< Newton iterations
     int relaxation_runs{0};
     int relaxation_steps{0};
+    /// Relaxation runs that ended with larger accelerations than they began
+    /// with (a step too long for the stiffest element), and were undone.
+    int relaxation_undone{0};
     Real residual_given{0.0};         ///< Largest acceleration at rest at the given positions, on the constraints
     Real residual{0.0};               ///< At the end
     std::vector<Real> history;        ///< Largest acceleration after each Newton iteration

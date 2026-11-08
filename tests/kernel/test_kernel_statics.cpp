@@ -16,6 +16,7 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <Eigen/Dense>
@@ -93,6 +94,47 @@ TEST_CASE("Statics: a mass on a spring settles at m g / k in one Newton step", "
     CHECK(r.warnings.empty());
     CHECK(r.notes.empty());
     CHECK(sim.v.norm() == 0.0);
+}
+
+TEST_CASE("Statics: a soft spring below a stiff one settles in one Newton step", "[kernel][statics]")
+{
+    // Two 1 kg blocks on vertical sliders in series (gravity along -Z): the
+    // first on a slider from the ground with a spring of k1 = 1e8 N/m on its
+    // coordinate, the second on a slider from the first with k2 = 100 N/m.
+    // The problem is linear: at rest k1 q1 = -(m1 + m2) g and k2 q2 = -m2 g,
+    // so q1 = -2 g / k1 = -1.962e-7 m and q2 = -g / k2 = -0.0981 m, which one
+    // Newton step reaches when it sees both directions. Their stiffnesses
+    // per unit mass, 1e8 and about 100 s^-2, differ by 1e-6: a step through
+    // the normal equations G G^T squares that to 1e-12, below a rank cut of
+    // 1e-10, and loses the soft direction, as it lost the bushed HMMWV's
+    // chassis on its tyres (task 5.4; the scaled G there ranges over 4.8e-6).
+    // Rounding: the perturbed states accelerate at up to k1 h / m1 = 100
+    // m/s^2, so G's differences carry about 1e-15 * 100 / 2e-6 = 5e-8, which
+    // against the soft entries (about 100 s^-2) is 5e-10 relative: q2 within
+    // about 5e-11 m (seen 2.3e-13), q1 far closer.
+    System sys;
+    const int b1 = sys.model.add_body(0, std::make_shared<PrismaticJointModel>(), Transform3(), Transform3(),
+                                      block(1.0), "stiff");
+    const int b2 = sys.model.add_body(b1, std::make_shared<PrismaticJointModel>(), Transform3(), Transform3(),
+                                      block(1.0), "soft");
+    for (const auto& [body, k] : {std::pair{b1, 1e8}, std::pair{b2, 100.0}}) {
+        JointCoordinateForceParams spring;
+        spring.spring = Curve::linear(k);
+        sys.joint_forces.push_back(std::make_shared<JointCoordinateForce>(sys.model, body, spring));
+    }
+
+    Simulator sim(sys);
+    StaticOptions options;
+    options.max_translation = 1.0;
+    const StaticReport r = static_equilibrium(sim, options);
+    INFO(r.summary(sys.model));
+    CHECK(r.converged);
+    CHECK(r.iterations == 1);
+    CHECK(r.relaxation_runs == 0);
+    CHECK(std::abs(sim.q(0) + 2.0 * g_accel / 1e8) < 1e-15);
+    CHECK(std::abs(sim.q(1) + g_accel / 100.0) < 1e-11);
+    CHECK(r.supported == 2);
+    CHECK(r.neutral == 0);
 }
 
 TEST_CASE("Statics: a pendulum with a torsion spring settles where the moments balance",
@@ -251,6 +293,56 @@ TEST_CASE("Statics: a block above its support finds it by relaxation, then Newto
     CHECK(r.relaxation_steps > 0);
     CHECK(has_message(r.notes, "MBD-K073"));
     CHECK(std::abs(sim.q(0) + m * g_accel / k_stop) < 1e-12);
+}
+
+TEST_CASE("Statics: a relaxation too long for a stiff element is undone", "[kernel][statics]")
+{
+    // A 1 kg block on a slider from the ground with a spring of 1e8 N/m, and
+    // on it a 2 kg block on a slider of its own, 0.1 m above a one-sided stop
+    // of 2e4 N/m. Newton settles the stiff spring under the first block
+    // (q1 = -g / k1: the second is falling and weighs nothing on it), then
+    // cannot move the falling block, and relaxation starts. When the block
+    // lands, its weight sets the stiff spring moving at sqrt(1e8 / 1 kg) =
+    // 1e4 rad/s, and the explicit step of 1 ms (w dt = 10, where stability
+    // needs below 2) makes that motion grow without bound: the run is undone
+    // and the positions are those before it (task 5.4: they used to come
+    // back as NaN). With a step of 0.1 ms (w dt = 1) relaxation lands the
+    // block and Newton finishes: q1 = -(m1 + m2) g / k1, q2 = -m2 g / k_stop.
+    const Real m1 = 1.0, m2 = 2.0, k1 = 1e8, k_stop = 2e4;
+    System sys;
+    const int stiff = sys.model.add_body(0, std::make_shared<PrismaticJointModel>(), Transform3(), Transform3(),
+                                         block(m1), "stiff");
+    const int falling = sys.model.add_body(stiff, std::make_shared<PrismaticJointModel>(), Transform3(),
+                                           Transform3(), block(m2), "falling");
+    JointCoordinateForceParams spring;
+    spring.spring = Curve::linear(k1);
+    sys.joint_forces.push_back(std::make_shared<JointCoordinateForce>(sys.model, stiff, spring));
+    JointCoordinateForceParams stop;
+    stop.lower_limit = 0.0;
+    stop.limit_stiffness = k_stop;
+    sys.joint_forces.push_back(std::make_shared<JointCoordinateForce>(sys.model, falling, stop));
+
+    Simulator sim(sys);
+    sim.q(1) = 0.1;
+    const StaticReport r = static_equilibrium(sim);
+    INFO(r.summary(sys.model));
+    CHECK_FALSE(r.converged);
+    CHECK(r.relaxation_runs == 1);
+    CHECK(r.relaxation_undone == 1);
+    CHECK(has_message(r.notes, "undone"));
+    CHECK(sim.q(1) == 0.1);
+    CHECK(std::abs(sim.q(0) + m1 * g_accel / k1) < 1e-15);
+
+    Simulator again(sys);
+    again.q(1) = 0.1;
+    StaticOptions options;
+    options.relaxation_step = 1e-4;
+    const StaticReport s = static_equilibrium(again, options);
+    INFO(s.summary(sys.model));
+    CHECK(s.converged);
+    CHECK(s.relaxation_undone == 0);
+    CHECK(std::abs(again.q(0) + (m1 + m2) * g_accel / k1) < 1e-15);
+    CHECK(std::abs(again.q(1) + m2 * g_accel / k_stop) < 1e-12);
 }
 
 TEST_CASE("Statics: a body with nothing to hold it is reported", "[kernel][statics]")
