@@ -163,6 +163,17 @@ decision log).
   bushed model instead of two (their cost is set by stability, not by the
   step or tolerance). The joint model's tables of the first run, finished
   before the sleep, were superseded by the second run's.
+- **CI's sanitizer job failed on the task's commit** (`7e0c2a7`, run
+  42480914001: ctest exit code 8; the job's log cannot be read without
+  logging in, so which test failed was not seen). The new test that drives
+  RK4 past its stability limit on purpose feeds NaN states to the springs'
+  tabulated curves, and `Curve` evaluated at NaN read one past its table:
+  NaN fails every comparison, so both end tests passed, `upper_bound`
+  returned `end()`, and the interval was the one after the last point.
+  Undefined behaviour the address sanitizer stops on; MSVC's release build
+  read whatever was there and returned NaN anyway, so no Windows run could
+  show it. Fixed (`7e5e89c`: NaN in, NaN out), and CI run 42483169381 passed
+  every job: the fix was the only change between the two runs.
 - **Shell quoting.** Three scripted edits wrote `\n` inside C strings as real
   line breaks (Python under a quoted heredoc in Git Bash); fixed with the
   editor.
@@ -187,6 +198,11 @@ decision log).
   IIA and SDIRK4 at 1e-6 agree with Radau IIA at 1e-8 (6.7e-8 and 4.3e-6
   m), and the bushings move the chassis's height by 3.4e-5 m in motion.
 - `scripts\build.ps1 -Test`: 516 of 516 pass; no compiler warning.
+- `test_force_library.cpp`: a tabulated curve gives NaN for NaN (value,
+  slope, integral), without reading past its table.
+- CI: run 42480914001 on `7e0c2a7` failed in the sanitizer job (above); run
+  42483169381 on `7e5e89c` passed all five jobs (Windows, Linux with
+  sanitizers, no-allocation, docs, crosscheck).
 
 ## Measurements
 

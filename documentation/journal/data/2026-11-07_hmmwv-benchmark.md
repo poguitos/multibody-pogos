@@ -283,3 +283,22 @@ Reference: Radau IIA at tol 1e-10, 4.24 s, 2936 steps; z1 from 0.679123 to 0.706
 | linearly implicit Euler | h 0.5 ms | 1.93e-02 | 2.43e-04 | 3.94 | 10000 (0) | 10000 | 0 | 10000 |
 | linearly implicit Euler | h 0.25 ms | 1.02e-02 | 1.23e-04 | 7.74 | 20000 (0) | 20000 | 0 | 20000 |
 | linearly implicit Euler | h 0.125 ms | 5.72e-03 | 6.79e-05 | 14.9 | 40000 (0) | 40000 | 0 | 40000 |
+
+## 8. CI
+
+Read from the public API (`/repos/poguitos/multibody-pogos/actions/runs`,
+the jobs, and the check run's annotations; the logs need a login):
+
+```
+42480914001 7e0c2a7 completed failure
+  docs               success
+  linux-sanitizers   failure   (step "Run tests": "Process completed with exit code 8.")
+  kernel-no-malloc   success
+  windows            success
+  crosscheck         success
+42483169381 7e5e89c completed success
+  windows, linux-sanitizers, docs, crosscheck, kernel-no-malloc: success
+```
+
+The only change from `7e0c2a7` to `7e5e89c` is the guard in `Curve`
+(`src/forces/curve.cpp`) and its check in `test_force_library.cpp`.
