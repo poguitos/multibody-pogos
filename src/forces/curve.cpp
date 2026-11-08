@@ -88,6 +88,7 @@ Curve Curve::table(std::vector<Real> x, std::vector<Real> y)
 Real Curve::primitive(Real x) const
 {
     if (xs_.empty()) return offset_ * x + 0.5 * slope_ * x * x;
+    if (std::isnan(x)) return x;   // no interval to look up (see value())
     if (x <= xs_.front()) {
         const Real d = x - xs_.front();
         return ys_.front() * d + 0.5 * ms_.front() * d * d;
@@ -117,6 +118,11 @@ Real Curve::integral(Real a, Real b) const
 Real Curve::value(Real x) const
 {
     if (xs_.empty()) return offset_ + slope_ * x;
+    // NaN fails every comparison: past both ends' tests, upper_bound would
+    // return end() and the interval would be the one past the last point,
+    // read out of bounds (task 5.4: a deliberately unstable run fed its NaN
+    // states to a spring's table, which the address sanitizer stopped).
+    if (std::isnan(x)) return x;
     if (x <= xs_.front()) return ys_.front() + ms_.front() * (x - xs_.front());
     if (x >= xs_.back()) return ys_.back() + ms_.back() * (x - xs_.back());
 
@@ -135,6 +141,7 @@ Real Curve::value(Real x) const
 Real Curve::slope(Real x) const
 {
     if (xs_.empty()) return slope_;
+    if (std::isnan(x)) return x;   // no interval to look up (see value())
     if (x <= xs_.front()) return ms_.front();
     if (x >= xs_.back()) return ms_.back();
 

@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -102,6 +103,15 @@ TEST_CASE("Force library: tabulated curves pass through their points, monotone, 
 
     CHECK_THROWS_WITH(Curve::table({0.0, 0.0}, {1.0, 2.0}), ContainsSubstring("MBD-F002"));
     CHECK_THROWS_WITH(Curve::table({0.0}, {1.0}), ContainsSubstring("MBD-F002"));
+
+    // NaN in, NaN out, without looking up an interval: a NaN fails every
+    // comparison, and the search used to land one past the last point (an
+    // out-of-bounds read the address sanitizer stops; task 5.4).
+    const Real nan = std::numeric_limits<Real>::quiet_NaN();
+    CHECK(std::isnan(c.value(nan)));
+    CHECK(std::isnan(c.slope(nan)));
+    CHECK(std::isnan(c.integral(0.0, nan)));
+    CHECK(std::isnan(line.value(nan)));
 }
 
 // --- The spring-damper -----------------------------------------------------------------
