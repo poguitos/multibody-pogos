@@ -191,6 +191,11 @@ to a validated engine.*
 
 ## Part VII. Validation (Phase 5)
 
+- **What "validated" means here.** The evidence sorted by its reference's
+  independence: another code by other authors, mathematics, published
+  results, the code's own past; what each covers and what nothing covers
+  yet. The validation report's summary table opens the part. *J: Phase 5,
+  the validation report; `docs/validation.md`.*
 - **Analytic cases.** Closed forms chosen to exercise one thing each: Jacobi's
   elliptic functions for a body with three unequal moments, the heavy top's
   precession and nod, the modes of a body on three mounts from eig(K, M)

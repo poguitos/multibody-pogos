@@ -88,3 +88,4 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 7 Nov 2026 | [Phase 5: comparison with independent codes (Pinocchio and Project Chrono)](2026-11-07_phase-5-independent-code.md) | 5.3, D46 | see git log | At the time |
 | 7 Nov 2026 | [Phase 5: the HMMWV benchmark, and a static solver that lost soft directions](2026-11-07_phase-5-hmmwv-benchmark.md) | 5.4, D47, D48 | see git log | At the time |
 | 9 Nov 2026 | [Phase 5: the regression harness, its tolerance measured, and mutation tests](2026-11-09_phase-5-regression-harness.md) | 5.5, D49 | see git log | At the time |
+| 9 Nov 2026 | [Phase 5: the validation report, version 1](2026-11-09_phase-5-validation-report.md) | 5.6 | see git log | At the time |

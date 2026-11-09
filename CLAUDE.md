@@ -14,6 +14,7 @@ agent (plan task H.7, decision D42). Read them before the first change.
 | The journal: an entry per task, its index, the template | `documentation/journal/` (`README.md`, `TEMPLATE.md`), raw measurements in `journal/data/` |
 | The book's outline and bibliography | `documentation/book/` |
 | How the program works | `docs/conventions.md`, `docs/kernel.md`, `docs/integrators.md`, `docs/performance.md`, `docs/hmmwv.md` |
+| What is validated, against what, and what is not | `docs/validation.md` |
 | Help: how-to guides, troubleshooting, the message catalogue | `docs/help/` |
 | Sources reviewed for ideas, and what was taken | `documentation/review_2026-10-20/external_sources.md` |
 
@@ -24,8 +25,10 @@ file, task 5.1 (analytic cases and manufactured trajectories, D43), task 5.2
 (the IFToMM benchmarks, D44, with the library's results for A04 and A05 in
 `tests/kernel/data/iftomm/`), task 5.3 (the comparison with Pinocchio and
 Project Chrono, D46, in `crosscheck/`), task 5.4 (the HMMWV benchmark, D47
-and D48, `docs/hmmwv.md`) and task 5.5 (the regression harness, D49,
-`tests/regression/`); the next task is **5.6** (the validation report).
+and D48, `docs/hmmwv.md`), task 5.5 (the regression harness, D49,
+`tests/regression/`) and task 5.6 (the validation report,
+`docs/validation.md`); Phase 5's tasks are done, and its gate (retrospective,
+how-to guides, CI green, then the author's go-ahead to merge) is next.
 
 **Not in the repository:** the textbooks and papers in `documentation/` (git
 ignores PDFs), and local copies of the reviewed sources (on the author's
