@@ -11,6 +11,7 @@ on:
     paths:
       - '.github/workflows/nightly.yml'
       - 'scripts/mutation_test.py'
+      - 'scripts/ci_run_tests.sh'
 
 jobs:
   # The hidden long tests ([long]: the drift over 1000 s, the N-four-bar with
@@ -52,7 +53,8 @@ jobs:
         run: ./build-nightly/tests/test_regression "[sensitivity]" -s
 
       - name: Long kernel tests
-        run: ./build-nightly/tests/test_kernel "[long]"
+        shell: bash
+        run: scripts/ci_run_tests.sh "Long kernel tests" ./build-nightly/tests/test_kernel "[long]"
 
       - name: Regression differences
         if: always()
@@ -85,10 +87,11 @@ jobs:
           -DMBD_BUILD_PYTHON=OFF
 
       - name: Build and run the unmutated tests
+        shell: bash
         run: |
           cmake --build build-mutation --target test_kernel test_regression
-          ./build-mutation/tests/test_regression
-          ./build-mutation/tests/test_kernel
+          scripts/ci_run_tests.sh "Unmutated regression tests" ./build-mutation/tests/test_regression
+          scripts/ci_run_tests.sh "Unmutated kernel tests" ./build-mutation/tests/test_kernel
 
       - name: Mutations
         run: >
