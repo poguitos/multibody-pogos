@@ -135,6 +135,7 @@ mbd_add_test_exe(test_howto
     howto/test_howto_forces.cpp
     howto/test_howto_analyses.cpp
     howto/test_howto_outputs.cpp
+    howto/test_howto_checking.cpp
     howto/test_howto_pages.cpp
 )
 

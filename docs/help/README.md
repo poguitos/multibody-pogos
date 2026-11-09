@@ -41,6 +41,10 @@ that code exactly:
 - [Time integration](howto/time-integration.md) (Phase 4): run with a fixed
   step or to a tolerance, a stiff model, real time, states of your own
   (actuators, lags) and multirate, a closed mechanism and its drift channel.
+- [Checking a model](howto/checking-a-model.md) (Phase 5): the constraints
+  that contradict each other, named; where a mode's energy is; static
+  equilibrium of parts that differ greatly in stiffness. What the program's
+  results have been checked against: [the validation report](../validation.md).
 
 By task, with the tests as further worked examples:
 
@@ -54,6 +58,9 @@ By task, with the tests as further worked examples:
 | Stop at the moment something happens (an impact, a threshold) and act on it | [Guide](howto/outputs-contact-events.md#act-when-something-happens); [The kernel, events](../kernel.md#events); `Simulator::events`; `tests/kernel/test_kernel_events.cpp` |
 | Natural frequencies, damping and mode shapes about an equilibrium | [Guide](howto/analyses.md#natural-frequencies-damping-and-mode-shapes); [The kernel, linearisation](../kernel.md#linearisation); `linearize(sim)`; `tests/kernel/test_kernel_linearization.cpp`, `tests/test_quarter_car.cpp` |
 | Find the static equilibrium (a vehicle settled on its tyres), with its loads | [Guide](howto/analyses.md#find-the-static-equilibrium); [The kernel, static equilibrium](../kernel.md#static-equilibrium); `static_equilibrium(sim)`; `tests/kernel/test_kernel_statics.cpp`, `tests/vehicle/test_vehicle_statics.cpp` |
+| Find which constraints contradict each other when a mechanism will not close | [Guide](howto/checking-a-model.md#find-the-constraints-that-contradict-each-other); `AssemblyReport::conflicting_equations`, MBD-K062, MBD-K051; `tests/kernel/test_kernel_assembly.cpp` |
+| See which parts carry a mode's energy | [Guide](howto/checking-a-model.md#see-where-a-modes-energy-is); `Mode::energy_fraction`; `tests/kernel/test_kernel_linearization.cpp` |
+| Settle a model with very stiff and very soft parts (bushings and tyres) | [Guide](howto/checking-a-model.md#settle-a-model-whose-parts-differ-greatly-in-stiffness); `StaticOptions`, MBD-K072, MBD-K073; `tests/kernel/test_kernel_statics.cpp`, `tests/kernel/test_kernel_hmmwv.cpp` |
 | Make initial positions and velocities satisfy the constraints, holding some coordinates | [Guide](howto/analyses.md#make-the-initial-conditions-consistent); [The kernel, initial conditions](../kernel.md#initial-conditions); `assemble(sim, options)`; `tests/kernel/test_kernel_assembly.cpp`, `tests/vehicle/test_vehicle_assembly.cpp` |
 | Drive a joint along a prescribed motion | [Guide](howto/forces-and-drives.md#drive-a-joint-along-a-prescribed-motion); `tests/kernel/test_kernel_simulator.cpp` (driven pendulum) |
 | Drive a point along a path | [Guide](howto/forces-and-drives.md#drive-a-joint-along-a-prescribed-motion); `tests/kernel/test_kernel_simulator.cpp` (point driven along a circle) |

@@ -96,7 +96,7 @@ problems:
 | Problem | Reference | Agreement |
 |---|---|---|
 | A01 simple pendulum | Closed form (Jacobi) | 1.1e-9 m over 10 s on a joint, 1.4e-8 m on a constraint |
-| A02 N-four-bar | Closed form, one parallelogram | 2e-8 rad over 10 s and 19 singular positions; 40 loops 3.4e-7 rad |
+| A02 N-four-bar | Closed form, one parallelogram | 2e-8 rad over 10 s and 19 singular positions; 40 loops 1.7e-7 to 1.6e-6 rad, the constraints' rounding amplified near the separatrix |
 | A03 Andrews' mechanism | The Test Set for IVP Solvers at 0.03 s | 1.4e-9 rad, a time shift of 1e-12 s |
 | A04 Bricard's mechanism (a redundant equation) | Its path in closed form (derived here); its dynamics reduced to one coordinate; three results from the library | 9e-15 rad; 2e-9 rad; 2.5e-5 m from the one that does not drift |
 | A05 flyball governor (stiff) | Angular momentum and energy balance; three integrators; two results from the library | 1e-10; 1.4e-9; 2.0e-6 and 6.8e-6 m |
@@ -131,7 +131,8 @@ Tasks 3.4 to 3.7 and 5.1:
 
 - Assembly: a four-bar given a loop open by 3.6 cm comes to the closed-form
   configuration and loop velocities to 1e-16; the least correction meets
-  its optimality condition to 8e-14.
+  its optimality condition to 8e-14. Constraints that contradict each other
+  are named, and only they, from each of 48 starting positions (D50).
 - Statics: a pendulum, a spring, a four-bar against its energy minimum, a
   driven slider and a block landing on a stop give their closed-form
   equilibria; the sedan settles in 4 iterations to 3e-12; two springs a
@@ -192,7 +193,8 @@ undefined-behaviour sanitizers, any report failing its test (D45); a Debug
 build checks that a step allocates nothing (Eigen's run-time check and an
 allocation counter); the API reference is built with every Doxygen warning
 an error. The regression scenarios' differences between the two platforms
-are reported on every run.
+are reported on every run. Nightly, the tests also run in GCC's Release
+build (-O3), which found D50.
 
 ## What is not validated yet
 
@@ -220,7 +222,7 @@ are reported on every run.
 ## Repeating it
 
 ```powershell
-scripts\build.ps1 -Test                                  # every test (526), about a minute
+scripts\build.ps1 -Test                                  # every test (530), about a minute
 build\tests\test_kernel.exe "[long]"                     # the long kernel tests (the drift over 1000 s), minutes
 build\tests\test_regression.exe "[long]"                 # the long regression scenarios
 build\tests\test_regression.exe "[sensitivity]" -s       # the regression tolerance's evidence
@@ -235,3 +237,4 @@ python scripts\mutation_test.py --build "..." --test ... # the mutations (see th
 | Version | Date | What |
 |---|---|---|
 | 1 | 9 November 2026 | The end of Phase 5 (milestone M1): sections 1 to 12 |
+| 1.1 | 9 November 2026 | The nightly's first runs: A02's 40 loops measured on both platforms; contradicting constraints named from 48 starts (D50) |
