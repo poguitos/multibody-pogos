@@ -27,8 +27,9 @@ file, task 5.1 (analytic cases and manufactured trajectories, D43), task 5.2
 Project Chrono, D46, in `crosscheck/`), task 5.4 (the HMMWV benchmark, D47
 and D48, `docs/hmmwv.md`), task 5.5 (the regression harness, D49,
 `tests/regression/`) and task 5.6 (the validation report,
-`docs/validation.md`); Phase 5's tasks are done, and its gate (retrospective,
-how-to guides, CI green, then the author's go-ahead to merge) is next.
+`docs/validation.md`), and the nightly's first runs (D50). Phase 5's gate is
+passed (retrospective, how-to guide, CI and the nightly green on `28ac8af`);
+the merge into `main` and the tag `v0.6.0` wait for the author's go-ahead.
 
 **Not in the repository:** the textbooks and papers in `documentation/` (git
 ignores PDFs), and local copies of the reviewed sources (on the author's

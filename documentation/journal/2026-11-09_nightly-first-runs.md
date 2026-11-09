@@ -134,7 +134,9 @@ both dampings, the 40-four-bar's spread, and the suites.
 
 ## Open ends
 
-- Whether D50 holds in GCC's -O3 build: the nightly after this entry.
+- Whether D50 holds in GCC's -O3 build: it does. The nightly on `28ac8af`
+  (run 42590299594) passed both jobs, the unmutated tests at -O3 among
+  them, and caught all nine mutations.
 - The filter's verdict between about 7.5e-6 and 1e-3 m of such a point
   turns on rounding. Levenberg's damping keeps the search far inside that,
   but a search stopped by its 200 tries could still land there.

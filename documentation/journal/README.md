@@ -90,3 +90,4 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 9 Nov 2026 | [Phase 5: the regression harness, its tolerance measured, and mutation tests](2026-11-09_phase-5-regression-harness.md) | 5.5, D49 | see git log | At the time |
 | 9 Nov 2026 | [Phase 5: the validation report, version 1](2026-11-09_phase-5-validation-report.md) | 5.6 | see git log | At the time |
 | 9 Nov 2026 | [The nightly's first runs: a search that stopped short by chance, and a bound set from one sample](2026-11-09_nightly-first-runs.md) | Phase 5 gate, D50 | `93464db`, then see git log | At the time |
+| 9 Nov 2026 | [Phase 5 retrospective](2026-11-09_phase-5-retrospective.md) | Phase 5 gate; H.6 for Phase 5 | see git log | At the time |
