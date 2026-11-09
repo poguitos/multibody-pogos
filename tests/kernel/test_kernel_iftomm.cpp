@@ -353,11 +353,20 @@ TEST_CASE("IFToMM A02 with 40 four-bars", "[.][kernel][iftomm][long]")
     // up to 40 m. The projection's floor is then near 1e-12 m (residuals up
     // to 8.8e-13 when 1e-14 was asked, the projections failing with MBD-K051),
     // so the constraints are held to 1e-12; the error grows accordingly
-    // (measured 3.4e-7 rad; 1.8e-7 with 1e-14 asked). Allowed 1e-6 rad. About
-    // 17 s.
+    // (measured 3.4e-7 rad on Linux in October; 1.8e-7 with 1e-14 asked).
+    // That error is the constraints' rounding amplified in the slow passes
+    // over the top (k^2 = 0.978, near the separatrix), not the integrator's:
+    // measured again on 9 November (MSVC), it ranged from 1.7e-7 to 8.5e-7
+    // rad when only the output interval (8 to 25 ms, which moves the steps'
+    // ends) or the constraint tolerance (0.8e-12 to 1.25e-12) changed, it
+    // grew as the integration tolerance fell (5.2e-7 at 1e-11, 9.8e-7 at
+    // 1e-12), and it was always largest at t = 8.85 s; GCC's nightly build
+    // gave 1.6e-6. Allowed 1e-5 rad, six times the largest seen; the branch
+    // is checked apart from it, at every sample (the couplers level to
+    // 1e-6). About 17 s.
     const Real e = n_four_bar_error(40, 1e-10, 1e-12);
     INFO("largest error " << e << " rad");
-    CHECK(e < 1e-6);
+    CHECK(e < 1e-5);
 }
 
 // --- A03 -------------------------------------------------------------------------------

@@ -44,13 +44,17 @@ jobs:
           MBD_REGRESSION_REPORT: ${{ github.workspace }}/regression-report.csv
         run: ctest --test-dir build-nightly --output-on-failure -E "_NOT_BUILT"
 
+      # Each Catch2 run through ci_run_tests.sh, which turns a failure's
+      # lines into annotations (the log needs a login to read).
       - name: Long regression scenarios
+        shell: bash
         env:
           MBD_REGRESSION_REPORT: ${{ github.workspace }}/regression-report.csv
-        run: ./build-nightly/tests/test_regression "[long]"
+        run: scripts/ci_run_tests.sh "Long regression scenarios" ./build-nightly/tests/test_regression "[long]"
 
       - name: Regression sensitivity
-        run: ./build-nightly/tests/test_regression "[sensitivity]" -s
+        shell: bash
+        run: scripts/ci_run_tests.sh "Regression sensitivity" ./build-nightly/tests/test_regression "[sensitivity]" -s
 
       - name: Long kernel tests
         shell: bash
@@ -86,6 +90,7 @@ jobs:
           -DMBD_PCH=OFF
           -DMBD_BUILD_PYTHON=OFF
 
+      # Also the only run of the tests built by GCC at -O3 (D50 was found here).
       - name: Build and run the unmutated tests
         shell: bash
         run: |

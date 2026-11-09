@@ -183,10 +183,12 @@ smallest set of constraint equations that cannot all hold together, by
 constraint index, kind and bodies (`assemble()` does the same in MBD-K062,
 and lists their rows in `AssemblyReport::conflicting_equations`); if it says
 the linearised equations can all hold, nothing contradicts and the cause is
-one of the others. Switch on the step trace: the step where
-`projection_converged` first drops to 0, and the drift before it, locate
-the cause; `dump_state(sim)` there shows the configuration. *(Phase 5: the
-IFToMM benchmarks.)*
+one of the others (since D50; before it, the search for the least-squares
+point behind this verdict could stop short of it and name nothing). Switch
+on the step trace: the step where `projection_converged` first drops to 0,
+and the drift before it, locate the cause; `dump_state(sim)` there shows
+the configuration. *(Phase 5: the IFToMM benchmarks; the nightly's first
+runs.)*
 
 **A closed mechanism stalls, reverses or switches branch at a singular
 position (MBD-K055 there, or a motion that turns back).** At a singular
@@ -510,6 +512,16 @@ arithmetic (`0.35 - 0.30` is not `0.05`), and a state placed exactly at a
 crossing can round to a value with no sign. *(Phase 3: the force library;
 events.)*
 
+**A test passes on one platform and fails on another.** Two causes met so
+far. A search that may stop anywhere, tested from one start, passes where
+rounding happens to stop it near enough: test it from many starts. A bound
+on a quantity that rounding moves, set from one run, fails on the next
+platform's draw: before setting it, measure how far the quantity moves
+under changes that leave the mathematics alone (the output interval, a
+tolerance a few percent apart, another start), and bound a multiple of the
+largest. A compiler's optimisation level counts as a platform. *(The
+nightly's first runs; D50.)*
+
 **A test that cannot fail.** A check that compares a quantity with itself
 passes whatever the code does. Make every check able to fail; Phase 1's
 invariant tests failed on the old code exactly where its defects were.
@@ -623,3 +635,6 @@ Before building on it (working rule 2):
 | Phase 5: the IFToMM benchmarks | A mechanism stalling at a singular position with loose constraints (Simulations); contradictory constraints named (Simulations: MBD-K051, Initial conditions: MBD-K062); messages that wrote small numbers as 0.000000 (fixed) |
 | Phase 5: comparison with independent codes | Pinocchio's mass matrix needing joints numbered depth first, and Chrono's accelerations (`crosscheck/README.md`); NumPy with MKL stopping Python (`crosscheck/environment.yml`) |
 | Phase 5: the HMMWV benchmark | Statics losing soft directions beside stiff ones, and relaxation blowing up (Initial conditions, statics: fixed, D47); events where forces jump (Simulations); a published data set with impossible inertias and springs that did not hold the vehicle (found by `validate()` and statics; Models) |
+| Phase 5: the regression harness | A reference that fails after a planned change of the physics (`tests/regression/README.md`: writing the references again, with the reason); differences between the platforms (reported by CI as annotations) |
+| Phase 5: the validation report | (no problems for a user; three numbers of its draft corrected before the commit) |
+| The nightly's first runs | Contradicting constraints not named (Simulations: MBD-K051; fixed, D50); a test that passes on one platform and fails on another (Numerical traps) |

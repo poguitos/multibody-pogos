@@ -226,7 +226,12 @@ to a validated engine.*
   cause (a rank cut dropping equations) that was not the cause, and the
   imperfect parallelogram, its coupler turning at delta theta' / (L
   theta^2). Contradictory constraints named by a deletion filter at the
-  least-squares point. *J: Phase 5, the IFToMM benchmarks. D44.*
+  least-squares point, and the search for that point which had reached it
+  only by chance: Marquardt's scaling, each direction damped by its own
+  diagonal entry, stalls where the columns across the contradiction
+  vanish; Levenberg's damping, the same in every direction, does not. The
+  figure: the distance from the point against the tries, for both. *J:
+  Phase 5, the IFToMM benchmarks; the nightly's first runs. D44, D50.*
 - **Comparison with independent codes.** Pinocchio for tree dynamics,
   Project Chrono for closed mechanisms: mapping conventions between codes
   (frames, joint coordinates, the order of velocities); a numbering
@@ -272,7 +277,11 @@ journal entries and retrospective.
   catching does), and against what a mutation breaks (nine changes to the
   physics, and which tests notice each; two algorithms the simulator never
   uses). The sensitivity table as a figure. *J: Phase 5, the regression
-  harness. D49.*
+  harness. D49.* Two ways a test passes by luck: a search tested from one
+  start (one start tests one path), and a bound set from one sample of a
+  quantity that rounding moves (a tolerance is a claim about a spread);
+  an optimisation level as one more platform. *J: the nightly's first
+  runs. D50.*
 - **Measuring performance.** *D21; `docs/performance.md`.* Compile time as
   well as run time: the decomposition that cost 31 s per file (journal:
   initial-condition assembly).

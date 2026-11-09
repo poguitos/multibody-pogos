@@ -643,7 +643,9 @@ rocker), the smallest correction not found. Where the positions are not
 assembled, `conflicting_equations` holds a smallest set of constraint
 equations that cannot all hold together (task 5.2, D44): the diagnosis goes
 from the nearest positions found to the least-squares nearest by
-Levenberg-Marquardt, the held coordinates kept, and there a deletion filter
+Levenberg-Marquardt, its steps damped alike in every direction (D50: damped
+each by its own diagonal entry, it stalls where the columns that move across
+the contradiction vanish), the held coordinates kept, and there a deletion filter
 leaves out each equation in turn while the rest still cannot hold. MBD-K062
 names them by constraint, kind and bodies, and the simulator's MBD-K051 does
 the same when a projection fails; an empty set means nothing contradicts.

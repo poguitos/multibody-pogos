@@ -59,11 +59,18 @@ std::vector<int> conflicting_equations(const MatX& J, const VecX& phi, Real tole
 std::vector<int> conflicting_equations(const Model& model, ConstraintSolver& solver, Data& data, const VecX& q_from,
                                        Real t, const std::vector<int>& held, Real tolerance)
 {
-    // Levenberg-Marquardt on |phi|^2 / 2: (J^T J + lambda D) dq = -J^T phi,
-    // D the diagonal of J^T J (Marquardt's scaling) plus a floor, lambda
-    // lowered after a step that reduces |phi| and raised after one that does
-    // not. It stops where the gradient J^T phi has vanished against
-    // |J| |phi|, or after 200 tries.
+    // Levenberg-Marquardt on |phi|^2 / 2: (J^T J + lambda m I) dq = -J^T phi,
+    // m the largest diagonal entry of J^T J, lambda lowered after a step that
+    // reduces |phi| and raised after one that does not. The damping is the
+    // same in every direction (Levenberg's), not each direction's own
+    // diagonal entry (Marquardt's scaling), which stalls here (D50): at the
+    // point sought the columns of J that move across the contradiction
+    // vanish (the bob of two distances, on the anchors' axis), so those
+    // directions lose their damping but not the curvature phi's second
+    // derivatives give them, and their steps overshoot unless lambda is so
+    // large that every other direction stops too. It stops where the
+    // gradient J^T phi has vanished against |J| |phi|, or where no step
+    // reduces |phi| any more, or after 200 tries.
     const VecX zero = VecX::Zero(model.nv);
     VecX q = q_from, trial, dq;
     auto evaluate = [&](const VecX& at, MatX& J, VecX& phi) {
@@ -79,9 +86,8 @@ std::vector<int> conflicting_equations(const Model& model, ConstraintSolver& sol
     for (int iteration = 0; iteration < 200; ++iteration) {
         const VecX g = J.transpose() * phi;
         if (g.norm() <= 1e-14 * (1.0 + J.norm() * phi.norm())) break;
-        MatX H = J.transpose() * J;
-        const VecX d = H.diagonal().cwiseMax(1e-12 * (1.0 + H.diagonal().maxCoeff()));
-        H.diagonal() += lambda * d;
+        MatX H = J.transpose() * J;   // J is not zero: the gradient is not
+        H.diagonal().array() += lambda * H.diagonal().maxCoeff();
         dq = H.ldlt().solve(-g);
         integrate(model, q, dq, 1.0, trial);
         evaluate(trial, J_trial, phi_trial);

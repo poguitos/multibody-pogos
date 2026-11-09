@@ -60,6 +60,7 @@ and the journal entry of the work refers to them by number
 | D47 | Statics: the Newton step by a rank-revealing QR, not the normal equations; a relaxation that ends worse is undone | 7 Nov 2026 | In force, task 5.4 |
 | D48 | The HMMWV benchmark: Chrono's HMMWV data where the paper gives none, corrected; one tyre spring to the nearest surface; runs without events, as the paper, and a second table with them | 7 Nov 2026 | In force, task 5.4 |
 | D49 | The regression harness: deterministic scenarios against stored references at 1e-8 of each channel, a nightly long suite, and mutation tests | 9 Nov 2026 | In force, task 5.5 |
+| D50 | The diagnosis of contradicting constraints damps its steps alike in every direction | 9 Nov 2026 | In force, Phase 5 gate |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -1804,3 +1805,75 @@ and the journal entry of the work refers to them by number
   `tests/regression/` (README, scenarios, references), `tests/CMakeLists.txt`,
   `scripts/mutation_test.py`, `.github/workflows/ci.yml`,
   `.github/workflows/nightly.yml`, `CLAUDE.md`.
+
+## D50. The diagnosis of contradicting constraints damps its steps alike in every direction
+
+- **Context.** The nightly workflow's first runs (D49), on 9 November 2026,
+  on branch `phase-5`. In GCC's Release build (-O3), run only by the
+  nightly's mutation job, "Assembly: constraints that contradict each other
+  are named, and only they" named nothing: MBD-K062 said the linearised
+  equations could all hold. Every other build (MSVC, GCC at -O2, the
+  sanitizers) passed. The diagnosis (D44) goes from where the projection
+  stopped to the least-squares point of |phi|^2 / 2 by Levenberg-Marquardt,
+  then runs a deletion filter on the linearised equations. A probe in that
+  loop on the laptop showed that, from the test's one starting position,
+  the search used all 200 tries and stopped with the gradient still 0.90,
+  |phi| 0.960 (the least possible is 0.884), lambda 3.7e10, and the bob
+  2.1e-6 m from the anchors' axis. The filter's rank test (pivots below
+  1e-10 of the first dropped) drops one of the two distances' rows within
+  about 7.5e-6 m of the axis (for those rows, A = B B^T has pivots 2.25 and
+  about 4 rho^2), and then the contradiction is certain to be seen: that
+  stop was inside it by chance. Farther out both rows are kept and have a
+  solution, mu = A^-1 r of size 0.88 / (2 rho^2), and the conflict is named
+  only if the solve's rounding leaves more than the filter's tolerance
+  (1e-10) of r unexplained; that rounding, about 1e-16 |A| |mu| = 2e-16 /
+  rho^2, falls below 1e-10 near rho = 1e-3. Started from 48 positions (a
+  new test), the same code on the laptop named nothing from 40 of them:
+  20 places of the bob, each with both crank angles (the crank changes
+  nothing of the bob's path). The 16 of those places whose stop was printed
+  ended 1.0e-3 to 0.11 m from the axis; the 4 places that named the
+  distances ended 2.8e-9, 2.1e-6, 6.4e-4 and 7.8e-4 m from it.
+- **Cause.** The damping was Marquardt's: each direction damped by its own
+  diagonal entry of J^T J (with a floor of 1e-12 of the largest). At the
+  least-squares point of a contradiction, the columns of J that move across
+  it vanish: here the bob's offset rho from the axis, whose diagonal entry
+  is 2 rho^2. |phi|^2 / 2 keeps a curvature there that Gauss-Newton's J^T J
+  leaves out, sum phi_i grad^2 phi_i = 1.25 in every direction of the bob
+  (each distance's phi = (d^2 - 1) / 2 is 0.625 there). A step across the
+  axis overshoots unless its damping is about that curvature, which makes
+  lambda so large that the steps along the axis, damped by lambda times
+  4.5, stop. Why GCC's -O3 build stopped elsewhere than its -O2 build was
+  not found (no FMA or fast-math flag is set); the outcome did not need a
+  compiler difference to go wrong.
+- **Decision.** Levenberg's damping: (J^T J + lambda m I) dq = -J^T phi, m
+  the largest diagonal entry of J^T J, lambda's schedule and the stops as
+  before (divided by 3 after a step that lowers |phi|, multiplied by 4
+  after one that does not, given up above 1e12). From all 48 starts the
+  search reaches the least-squares point, |phi| = 0.625 sqrt(2) =
+  0.883883476483184 to every digit printed, in 39 to 51 tries, and stops
+  where no step lowers |phi| any more, 0.4e-9 to 1.7e-8 m from the axis:
+  more than 400 times nearer than the rank test needs to drop a row.
+- **Alternatives.**
+  - **Moré's scaling** (MINPACK's: each direction damped by the largest
+    diagonal entry it has had so far): it keeps the damping a direction had
+    at the start, but the start is where the projection stopped, which may
+    already be near the point. Not measured. Rejected.
+  - **A looser rank cut in the filter** (1e-6 instead of 1e-10): it would
+    see the contradiction from farther away, but the search would still
+    stop short of the point, and nearly dependent equations that do have a
+    solution would be called contradictory. Rejected.
+  - **More tries**: the stalled search's steps along the axis were divided
+    by lambda, 3.7e10 when it stopped. Rejected.
+  - **Newton's method with phi's second derivatives**: the constraints do
+    not provide them. Rejected.
+- **Consequences.** The diagnosis runs only after a failure (MBD-K062,
+  MBD-K051), so no simulation's results or cost change. Coordinates of
+  different kinds (lengths, and angles of long levers) are now damped
+  alike: the steps of those with small diagonal entries are shortened
+  more, which slows the search but does not stop it. The 5.2 entry's
+  account, that going "first to the least-squares point by
+  Levenberg-Marquardt made the filter return exactly the two distances",
+  went further than its evidence: the search had stopped short of that
+  point, near enough to the axis for the filter.
+- **Record.** Journal: the nightly's first runs; `src/kernel/conflicts.cpp`,
+  `tests/kernel/test_kernel_assembly.cpp`, `docs/kernel.md`.

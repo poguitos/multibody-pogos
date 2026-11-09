@@ -369,6 +369,49 @@ TEST_CASE("Assembly: constraints that contradict each other are named, and only 
     }
 }
 
+TEST_CASE("Assembly: contradicting constraints are named from any starting position", "[kernel][assembly]")
+{
+    // The model above, the bob started at 24 places around and beyond the
+    // anchors and the crank at two angles. A distance's equation is
+    // phi = (d^2 - 1) / 2, d the bob's distance from its anchor. The least
+    // squares of |phi| end with the four-bar closed and the bob on the
+    // anchors' axis at x = 1.5 m: along the axis (u = x, v = 3 - x) the
+    // gradient of (phi_1^2 + phi_2^2) / 2 is u (u^2 - 1) - v (v^2 - 1) =
+    // (u - v)(u^2 + u v + v^2 - 1) = (u - v)(8 - u v), and u v <= 2.25, so it
+    // vanishes only at u = v; off the axis at x = 1.5, d^2 = 2.25 + rho^2 and
+    // both phi = (1.25 + rho^2) / 2 grow with rho. There the distances' rows
+    // of J are (1.5, 0, 0) and (-1.5, 0, 0) with phi = 0.625 each: one asks
+    // dx = -0.417 m, the other +0.417 m, so the same two equations are named
+    // from every start. The diagonal of J^T J across the axis vanishes there
+    // as rho^2, the case in which a search damped by each diagonal entry
+    // stalls short of the point (D50): before D50, 40 of these 48 starts
+    // named nothing, their searches ended up to 0.11 m from the axis.
+    for (const Real crank : {0.7, 2.0}) {
+        for (const Real x : {-0.4, 0.5, 1.2, 1.5, 2.3, 3.5}) {
+            for (const Real y : {0.3, -1.1}) {
+                for (const Real z : {2.1, 1.2}) {
+                    FourBar fb;
+                    const int bob = fb.sys.model.add_body(0, std::make_shared<FreeJointModel>(), Transform3(), Transform3(),
+                                                          RigidBodyInertia::from_solid_box(1.0, Vec3(0.05, 0.05, 0.05)),
+                                                          "bob");
+                    fb.sys.constraints.push_back(std::make_shared<Distance>(
+                        Marker{0, Transform3::FromTranslation(Vec3(0.0, 0.0, 2.0))}, Marker{bob, Transform3()}, 1.0));
+                    fb.sys.constraints.push_back(std::make_shared<Distance>(
+                        Marker{0, Transform3::FromTranslation(Vec3(3.0, 0.0, 2.0))}, Marker{bob, Transform3()}, 1.0));
+                    Simulator sim(fb.sys);
+                    sim.q.head(3) = FourBar::configuration(crank);
+                    sim.q.segment<3>(3) = Vec3(x, y, z);
+                    const AssemblyReport r = assemble(sim);
+                    INFO("crank " << crank << " rad, bob started at " << x << ", " << y << ", " << z << " m");
+                    REQUIRE_FALSE(r.positions_assembled);
+                    const int first = fb.sys.constraints[0]->size();
+                    CHECK(r.conflicting_equations == std::vector<int>{first, first + 1});
+                }
+            }
+        }
+    }
+}
+
 TEST_CASE("Assembly: a loop far from closing but not contradicted says so", "[kernel][assembly]")
 {
     // The four-bar alone, given positions that need more Gauss-Newton steps
