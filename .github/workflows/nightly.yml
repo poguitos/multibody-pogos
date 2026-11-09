@@ -1,13 +1,15 @@
 name: Nightly
 
 # The long suite and the mutation tests (plan task 5.5, D49). GitHub runs a
-# schedule only from the default branch (main); on other branches the
-# workflow runs when it or the mutation script changes, and by hand.
+# schedule only from the default branch (main); on any branch the workflow
+# also runs when it or the scripts it runs change, and by hand. Branches
+# only: a tag's push would repeat a run on a commit already tested.
 on:
   schedule:
     - cron: '17 3 * * *'      # 03:17 UTC
   workflow_dispatch:
   push:
+    branches: [ '**' ]
     paths:
       - '.github/workflows/nightly.yml'
       - 'scripts/mutation_test.py'
@@ -23,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Ninja
         run: sudo apt-get update && sudo apt-get install -y ninja-build
@@ -77,7 +79,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Ninja
         run: sudo apt-get update && sudo apt-get install -y ninja-build
