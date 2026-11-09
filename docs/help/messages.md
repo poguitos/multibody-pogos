@@ -915,3 +915,14 @@ take without question.
 - **Means:** a `UserForce`'s function added a load to a body index the model
   does not have.
 - **What to do:** use the indices `add_body` returned; 0 is the ground.
+
+### MBD-P007
+
+`a StateElement written in Python must define <method>()`
+
+- **Means:** a Python subclass of `StateElement` lacks one of the methods the
+  integrator calls: `name()`, `size()`, `initial_states(x)` or
+  `rates(sim, t, x, x_dot)`. (`begin_evaluation` and `end_step` are
+  optional.)
+- **What to do:** define it; and call `super().__init__()` in the subclass's
+  `__init__`, or pybind11 refuses the object.

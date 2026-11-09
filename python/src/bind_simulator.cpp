@@ -172,6 +172,7 @@ void bind_simulator(py::module_& m)
             },
             "t"_a, "DormandPrince: the state (q, v, x) at time t within its last step.");
     bind_simulator_callbacks(sim);
+    bind_state_elements(m, sim);
 }
 
 } // namespace mbd::python

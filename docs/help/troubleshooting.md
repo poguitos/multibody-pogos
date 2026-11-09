@@ -86,6 +86,26 @@ constraints.)*
 ("did not match any file(s)"): the message is passed as a path. Write the
 message to a file and use `git commit -F <file>`.
 
+**The build script stops at the configuration with a `NativeCommandError`.**
+Run under a PowerShell redirection (`*> log`), Windows PowerShell turns
+every line a native command writes to stderr into an error, and the
+script's `$ErrorActionPreference = "Stop"` ends it at the first one: a
+configuration that downloads a dependency prints such lines. Redirect from
+outside instead: `powershell -File scripts\build.ps1 ... > log 2>&1`.
+*(Phase 6: the bindings.)*
+
+**A dependency stays at its old version after its pin changed.** The dev
+preset sets `FETCHCONTENT_UPDATES_DISCONNECTED`, so CMake never updates
+sources it has already fetched. Remove the dependency's `<name>-src`,
+`-build` and `-subbuild` folders in `build/_deps/` and configure again.
+*(Phase 6: the bindings.)*
+
+**`import multibody` fails with "No module named 'multibody._mbd'".** The
+module was built for another Python: its file name says which (`cp312` is
+3.12). Configure with `scripts\build.ps1 -Python <the interpreter>`, which
+also drops the upper-case `PYTHON_*` entries an older pybind11 cached (one
+of them had kept the suffix at `cp313`). *(Phase 6: the bindings.)*
+
 ## Models
 
 **`validate()` reports errors.** Each message names what is wrong; the M
@@ -175,6 +195,14 @@ constraints, or not in equilibrium. Run `static_equilibrium(sim)` first.
 *(Linearisation.)*
 
 ## Simulations
+
+**A force written in Python acts as if the state never changed within a
+step.** A force callback (`sim.force_callback`) that reads `sim.q` or
+`sim.v` sees the start of the step, not the state the integrator is
+evaluating at its intermediate stages: a spring read that way gave a
+constant force. Read the evaluated state from `sim.states()` (the bodies'
+world states), as a `UserForce`'s `states` argument gives it. *(Phase 6: the
+bindings; `docs/python.md`.)*
 
 **The projection fails (MBD-K051).** Contradictory constraints (see
 Models), a mechanism driven through a singular position, a driver whose
@@ -638,3 +666,5 @@ Before building on it (working rule 2):
 | Phase 5: the regression harness | A reference that fails after a planned change of the physics (`tests/regression/README.md`: writing the references again, with the reason); differences between the platforms (reported by CI as annotations) |
 | Phase 5: the validation report | (no problems for a user; three numbers of its draft corrected before the commit) |
 | The nightly's first runs | Contradicting constraints not named (Simulations: MBD-K051; fixed, D50); a test that passes on one platform and fails on another (Numerical traps) |
+| Ideas from external sources, second review | (no problems for a user) |
+| Phase 6: the bindings | The build script stopped by PowerShell, a dependency kept at its old version, a module built for another Python (Builds); a Python force reading the step's start (Simulations) |

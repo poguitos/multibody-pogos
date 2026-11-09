@@ -267,6 +267,12 @@ real time on Windows and Linux (12), optimisation and AI (13), flexible bodies
 and FMI (14), documentation and release (15). Each part follows its phase's
 journal entries and retrospective.
 
+Already marked for the Python interface (6): the copy trap at a language
+boundary (every list or array that crosses is a copy unless made a view)
+and how each case was designed out, with views, handles that close after
+their call, and tuples that refuse a write; the stage against the step in a
+callback; lifetimes decided at the binding. *J: Phase 6, the bindings. D52.*
+
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,
 with the axodes as the figure; points with distance residuals against joint
@@ -301,6 +307,9 @@ sources, second review. D51.*
   debugging aids.* Report, don't guess: contradictions named instead of a
   residual (D44, D50), and sensitivities reported as unavailable where they
   are not unique instead of returned at least norm (D51).
+- **A number in a comment comes from a measurement.** Five test comments in
+  task 6.1 stated errors written before they were measured; all five were
+  off, one by a factor of 160,000. *J: Phase 6, the bindings.*
 - **Working with an AI assistant.** The March 2026 rewrite from an AI proposal,
   the review, and the collaboration since: what worked, what had to be
   checked, and why every claim was tied to a measurement. With it, the

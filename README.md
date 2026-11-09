@@ -33,7 +33,7 @@ The engine is one compiled library, `multibody_core`. Each folder under `include
 
 - Windows with Visual Studio 2022 or later, "Desktop development with C++" workload. That provides the compiler, CMake and Ninja.
 - CMake 3.25 or later.
-- Python 3.11 for the Python bindings. Configure with `-DMBD_BUILD_PYTHON=OFF` to leave them out.
+- Python 3.11 or later, with its development files, for the Python interface (`docs/python.md`); NumPy and pytest for its tests (`python/environment.yml` creates such an environment). Pass the interpreter with `scripts\build.ps1 -Python <path>`, or configure with `-DMBD_BUILD_PYTHON=OFF` to leave the interface out.
 
 Eigen 3.4.0, Catch2 3.6.0, spdlog 1.13.0 and pybind11 3.1.0 (only with the Python interface) are downloaded by CMake when it configures. Each is pinned to an exact hash.
 

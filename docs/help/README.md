@@ -21,6 +21,9 @@ task that adds or changes a message, an option or a behaviour updates it.
 - [The integrators, verified](../integrators.md): each integrator's order,
   energy over long runs and cost for a given accuracy, measured on six
   models from an oscillator to the sedan, and what each is cheapest for.
+- [The Python interface](../python.md): building it, its conventions (the
+  C++ names, the state as views, errors and warnings with their codes),
+  what is bound, and Python code the engine calls back.
 
 ## How-to guides
 

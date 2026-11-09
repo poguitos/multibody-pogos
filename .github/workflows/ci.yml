@@ -33,6 +33,16 @@ jobs:
           MBD_REGRESSION_REPORT: ${{ github.workspace }}/regression-report.csv
         run: ./scripts/build.ps1 -Preset ci -Python "$env:pythonLocation\python.exe" -Test
 
+      # How many Python test files CTest ran, and with which Python: CMake
+      # leaves them out, with only a line in the log, when NumPy or pytest is
+      # missing.
+      - name: Python tests counted
+        if: always()
+        shell: bash
+        run: |
+          count=$(ctest --test-dir build-ci -N -R "^Python: " | grep -c "Test *#" || true)
+          echo "::notice title=Python tests ($(python --version 2>&1))::${count} test files registered"
+
       # The regression harness's worst difference per scenario, as annotations
       # (readable without logging in; plan task 5.5, D49).
       - name: Regression differences

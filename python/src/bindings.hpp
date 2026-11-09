@@ -31,6 +31,8 @@ void bind_simulator(py::module_& m);
 void bind_analysis(py::module_& m);
 /// Events and the force callback, on the Simulator class (bind_analysis.cpp).
 void bind_simulator_callbacks(py::class_<kernel::Simulator>& sim);
+/// State elements written in Python, attach() and the step trace (bind_state.cpp).
+void bind_state_elements(py::module_& m, py::class_<kernel::Simulator>& sim);
 
 /// A quaternion as NumPy sees it: [w, x, y, z].
 using QuatArray = Eigen::Vector4d;

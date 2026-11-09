@@ -14,6 +14,7 @@ pybind11_add_module(_mbd MODULE
     src/bind_forces.cpp
     src/bind_simulator.cpp
     src/bind_analysis.cpp
+    src/bind_state.cpp
 )
 target_link_libraries(_mbd PRIVATE multibody_core mbd_warnings)
 # The release this build follows: the last tag, raised at each phase gate.

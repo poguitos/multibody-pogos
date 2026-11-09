@@ -13,7 +13,8 @@ agent (plan task H.7, decision D42). Read them before the first change.
 | Design decisions D1 onwards, with context and alternatives | `documentation/decisions.md` |
 | The journal: an entry per task, its index, the template | `documentation/journal/` (`README.md`, `TEMPLATE.md`), raw measurements in `journal/data/` |
 | The book's outline and bibliography | `documentation/book/` |
-| How the program works | `docs/conventions.md`, `docs/kernel.md`, `docs/integrators.md`, `docs/performance.md`, `docs/hmmwv.md` |
+| How the program works | `docs/conventions.md`, `docs/kernel.md`, `docs/integrators.md`, `docs/performance.md`, `docs/hmmwv.md`, `docs/python.md` |
+| The Python interface: the package, its bindings, its tests | `python/multibody/`, `python/src/`, `python/tests/` (D52) |
 | What is validated, against what, and what is not | `docs/validation.md` |
 | Help: how-to guides, troubleshooting, the message catalogue | `docs/help/` |
 | Sources reviewed for ideas, and what was taken | `documentation/review_2026-10-20/external_sources.md` |
@@ -30,8 +31,9 @@ and D48, `docs/hmmwv.md`), task 5.5 (the regression harness, D49,
 `docs/validation.md`), and the nightly's first runs (D50). Branch
 `phase-6` starts from `v0.6.0` with D51 (a second review of external
 sources: suspension kinematics, validation, target cascading; plan amended
-in 8.1, 8.4, 9.1, 9.3 to 9.7 and 13.3); Phase 6 (the Python interface) is
-next. The nightly workflow now runs on schedule from `main`.
+in 8.1, 8.4, 9.1, 9.3 to 9.7 and 13.3), then Phase 6 (the Python
+interface): task 6.1, the bindings, is done (D52, `docs/python.md`); 6.2,
+packaging, is next. The nightly workflow runs on schedule from `main`.
 
 **Not in the repository:** the textbooks and papers in `documentation/` (git
 ignores PDFs), and local copies of the reviewed sources (on the author's
@@ -59,6 +61,13 @@ It loads the MSVC environment and pins the console code page (MSVC's
 localized include notes otherwise stop Ninja tracking header changes). Never
 start a build while another runs, and do not edit headers or test sources
 during a build.
+
+The Python interface is built for the interpreter given once with `-Python`
+(kept in the build folder's cache). On the laptop that is the conda
+environment `mbd-python` (`python/environment.yml`):
+`scripts\build.ps1 -Python C:\Users\margk\miniforge3\envs\mbd-python\python.exe`.
+Its tests run in the suite as `Python: <file>`; run one by hand from
+`build\python` with `PYTHONPATH` set there and `python -m pytest`.
 
 **On Linux (a cloud machine, CI):** as the CI's Linux jobs do
 (`.github/workflows/ci.yml`); three compile jobs are fine there:

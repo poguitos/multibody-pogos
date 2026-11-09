@@ -2030,5 +2030,7 @@ and the journal entry of the work refers to them by number
   `src/core.cpp`, their three tests, `pycore`). Building the interface needs
   a Python with its development files. Each later phase binds what it adds
   (the plan's Phase 6 goal: extended in every later phase).
-- **Record.** Journal: Phase 6, the bindings; `python/`, `CMakeLists.txt`,
-  `scripts/build.ps1`, `docs/help/messages.md` (area P).
+- **Record.** Journal: Phase 6, the bindings; `python/` (the package, the
+  bindings in `python/src/`, the tests in `python/tests/`, the environment
+  file), `docs/python.md`, `CMakeLists.txt`, `scripts/build.ps1`,
+  `.github/workflows/ci.yml`, `docs/help/messages.md` (area P).
