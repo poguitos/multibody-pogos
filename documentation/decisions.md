@@ -62,6 +62,7 @@ and the journal entry of the work refers to them by number
 | D49 | The regression harness: deterministic scenarios against stored references at 1e-8 of each channel, a nightly long suite, and mutation tests | 9 Nov 2026 | In force, task 5.5 |
 | D50 | The diagnosis of contradicting constraints damps its steps alike in every direction | 9 Nov 2026 | In force, Phase 5 gate |
 | D51 | Ideas from a second review of external sources adopted into the plan: suspension kinematics, validation and target cascading | 9 Nov 2026 | In force, plan amended (8.1, 8.4, 9.1, 9.3, 9.4, 9.5, 9.6, 9.7, 13.3) |
+| D52 | The Python interface: pybind11 3, one extension module inside a package, the C++ names, the state as views, errors and warnings with their codes | 9 Nov 2026 | In force, task 6.1 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -1940,3 +1941,83 @@ and the journal entry of the work refers to them by number
 - **Record.** Journal: ideas from external sources, second review;
   `documentation/review_2026-11-09/external_sources.md`;
   `documentation/Master_plan.md`; local copies in `C:\dev\references\`.
+
+## D52. The Python interface: pybind11 3, one extension module inside a package, the C++ names, the state as views, errors and warnings with their codes
+
+- **Context.** Phase 6, task 6.1: "Model building, data, all analyses,
+  recorder output as NumPy arrays, errors as Python exceptions." What
+  existed was the project template's stub: a module `pycore` with two
+  functions of no use (`compute_mean`, `make_greeting`), on pybind11 2.12.0,
+  built for whatever Python the Windows Store alias gave, with no Python
+  test.
+- **Decision.**
+  - **pybind11, raised to 3.1.0.** It supports Python 3.14 (Miniforge's
+    base here). It finds Python through CMake's FindPython. Its
+    `py::smart_holder` passes the `shared_ptr<const T>` the kernel keeps for
+    joints, constraints and forces, and will let Python subclass C++
+    classes later. Its `py::native_enum` makes C++ enums Python `enum.Enum`
+    types. It is fetched only when `MBD_BUILD_PYTHON` is on.
+  - **A package around one extension module.** `import multibody as mbd`.
+    `python/multibody/` holds the Python files (the error classes now; plots
+    and file helpers later, 6.4 and 6.5). The compiled module
+    `multibody._mbd` is built from `python/src/`, one file per part of the
+    engine. The two are laid out together in `<build>/python/multibody/`.
+  - **The C++ names.** Classes, functions and members keep their C++ names
+    (`RevoluteJointModel`, `add_body`, `step_control.relative_tolerance`), so
+    the C++ documentation and the help apply as written. Only what Python
+    needs and C++ lacks is added: `Transform3.from_axis_angle`, and
+    `Simulator.run_recorded`, which runs as `run()` does and returns the
+    states as arrays without a Python call per step.
+  - **Arrays.**
+    - Vectors and matrices are NumPy arrays, and quaternions are
+      [w, x, y, z].
+    - The simulator's state (`q`, `v`, `x`, `tau`) reads as a view of its own
+      memory, so `sim.q[0] = 0.3` writes the state. It can be assigned only
+      whole and at its size (MBD-P001), because assigning an Eigen vector of
+      another size would resize the state.
+    - Rotation matrices and quaternions typed in Python are checked (MBD-P002
+      to P004), since the C++ constructors trust their callers.
+  - **Errors and warnings.**
+    - `mbd::MbdError` becomes `multibody.MbdError`, a `RuntimeError` with the
+      message unchanged and its code in `.code`.
+    - The diagnostic sink sends warnings to Python's `warnings` module as
+      `multibody.MbdWarning`, so Python's filters apply. The previous sink is
+      restored when the interpreter exits.
+    - A new area P in the catalogue holds the interface's own codes, and the
+      catalogue test now scans `python/`.
+  - **Lifetimes.** A simulator keeps its system alive. A system's model is a
+    reference into it. The model's per-body tables come back as copies, so
+    the tree changes only through `add_body`.
+  - **The interpreter and the tests.**
+    - The interpreter is chosen by CMake's `Python_EXECUTABLE`
+      (`scripts\build.ps1 -Python <path>`).
+    - On the laptop it is a pinned conda environment,
+      `python/environment.yml` (mbd-python: Python 3.12.16, NumPy 2.5.4 on
+      OpenBLAS, pytest 9.2.0). CI's Windows job uses Python 3.11.
+    - Each file in `python/tests/` is one CTest test, run by pytest under that
+      interpreter. Without NumPy or pytest the tests are left out, with a
+      note.
+  - **The version.** The CMake project's version follows the tags (0.6.0
+    now, raised at each gate) and is the module's `__version__`.
+  - **Scope of 6.1:** the kernel, its analyses, the force library and the
+    recorder. The vehicle layer is bound when Phases 7 and 8 rebuild it.
+  - **The interpreter lock** is held through calls into C++ for now, which
+    keeps Python callbacks simple. Releasing it for long runs is left for
+    later.
+- **Alternatives.**
+  - nanobind: smaller modules and faster builds, but a second binding
+    library to learn, with stricter ownership rules. Rejected for now.
+  - Staying on pybind11 2.12: no Python 3.14, and the legacy finder.
+    Rejected.
+  - PEP 8 renames: two vocabularies to document and keep in step. Rejected.
+  - The state as copies: `sim.q[0] = 0.3` would change a copy and be lost
+    without a word, the best-known trap of Eigen bindings. Rejected.
+  - Views with resizing assignment: arrays held by the user would dangle.
+    Rejected.
+  - The Store's Python: unpinned, with no NumPy. Rejected.
+- **Consequences.** The template's stub is gone (`include/core.hpp`,
+  `src/core.cpp`, their three tests, `pycore`). Building the interface needs
+  a Python with its development files. Each later phase binds what it adds
+  (the plan's Phase 6 goal: extended in every later phase).
+- **Record.** Journal: Phase 6, the bindings; `python/`, `CMakeLists.txt`,
+  `scripts/build.ps1`, `docs/help/messages.md` (area P).

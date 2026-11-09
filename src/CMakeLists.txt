@@ -3,7 +3,6 @@
 # compiled here once (plan task 2.8).
 
 add_library(multibody_core
-    core.cpp
     kernel/joint_models.cpp
     kernel/model.cpp
     kernel/algorithms.cpp

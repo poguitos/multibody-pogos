@@ -35,7 +35,7 @@ std::string read_file(const fs::path& path)
 std::vector<fs::path> source_files(const fs::path& root)
 {
     std::vector<fs::path> files;
-    for (const char* dir : {"include", "src"}) {
+    for (const char* dir : {"include", "src", "python"}) {
         for (const auto& entry : fs::recursive_directory_iterator(root / dir)) {
             const auto ext = entry.path().extension();
             if (entry.is_regular_file() && (ext == ".hpp" || ext == ".cpp")) {

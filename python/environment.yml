@@ -1,0 +1,20 @@
+# The Python environment for building and testing the Python interface
+# (plan Phase 6, D52), pinned to the versions conda resolved on 9 November
+# 2026. Create it once with Miniforge:
+#
+#   mamba env create -f python/environment.yml
+#
+# then configure the build with that environment's interpreter, for example
+# scripts\build.ps1 -Python <env>\python.exe (the build script passes it on as
+# Python_EXECUTABLE). CI's Windows job tests Python 3.11 instead, installed by
+# setup-python, so that two versions are covered.
+name: mbd-python
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12.16
+  - numpy=2.5.4
+  - pytest=9.2.0
+  # NumPy with OpenBLAS, not MKL: the MKL build stopped Python with
+  # 0xc06d007f in crosscheck/'s environment on this machine.
+  - libblas=*=*openblas

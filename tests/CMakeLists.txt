@@ -39,7 +39,6 @@ function(mbd_add_test_exe name)
 endfunction()
 
 mbd_add_test_exe(test_core
-    test_core.cpp
     test_core_types.cpp
     core/test_math.cpp
     core/test_transform3.cpp

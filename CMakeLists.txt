@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(MultibodyCore
-    VERSION 0.1.0
+    VERSION 0.6.0
     LANGUAGES CXX)
 
 # --- C++ standard ---
@@ -61,14 +61,20 @@ target_include_directories(Eigen3::Eigen INTERFACE
     "${eigen_SOURCE_DIR}"
 )
 
-#  pybind11 (v2.12.0)
-FetchContent_Declare(
-    pybind11
-    GIT_REPOSITORY https://github.com/pybind/pybind11.git
-    GIT_TAG 3e9dfa2866941655c56877882565e7577de6fc7b
-    SYSTEM
-)
-FetchContent_MakeAvailable(pybind11)
+#  pybind11 (v3.1.0), for the Python interface only (Phase 6, D52). The
+#  interpreter is found by CMake's FindPython: set Python_EXECUTABLE to choose
+#  one (scripts\build.ps1 -Python <path> does).
+if (MBD_BUILD_PYTHON)
+    find_package(Python 3.11 REQUIRED COMPONENTS Interpreter Development.Module)
+    set(PYBIND11_FINDPYTHON ON)
+    FetchContent_Declare(
+        pybind11
+        GIT_REPOSITORY https://github.com/pybind/pybind11.git
+        GIT_TAG 97bf890db679505a14dfe547a5e77bb2bd05dc90
+        SYSTEM
+    )
+    FetchContent_MakeAvailable(pybind11)
+endif()
 
 #  Catch2 (v3.6.0, our test framework)
 set(CATCH_BUILD_TESTING OFF CACHE BOOL "" FORCE)
@@ -100,19 +106,21 @@ if (MBD_WARNINGS)
     endif()
 endif()
 
-#  Library + Python bindings
+#  Library
 add_subdirectory(src)
 add_subdirectory(bench)
 add_subdirectory(crosscheck)
-if (MBD_BUILD_PYTHON)
-    add_subdirectory(python)
-endif()
 
 #  Testing setup (only *our* tests)
 include(CTest)
 
 if (BUILD_TESTING)
     add_subdirectory(tests)
+endif()
+
+#  The Python interface, after CTest so that its tests are registered
+if (MBD_BUILD_PYTHON)
+    add_subdirectory(python)
 endif()
 
 # API reference (documentation track H, task H.5): `cmake --build <dir>

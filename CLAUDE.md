@@ -189,3 +189,12 @@ not there. Use British spelling, as the existing text does.
 - PyChrono's getters (`GetLinVel()`, `GetPos()`) return references to the
   body's own vectors: copy the numbers out before changing the body, or the
   saved value changes with it.
+- `scripts\build.ps1` run under a PowerShell redirection (`*> log`) stops at
+  the first line a native command writes to stderr, which a configuration
+  that fetches a dependency does: Windows PowerShell turns each such line
+  into an error, and the script's `$ErrorActionPreference = "Stop"` ends it.
+  Redirect from outside instead: `powershell -File scripts\build.ps1 ... >
+  log 2>&1`.
+- The dev preset sets `FETCHCONTENT_UPDATES_DISCONNECTED`: a dependency whose
+  pinned commit changes keeps its old sources in `build/_deps/` until its
+  `<name>-src`, `-build` and `-subbuild` folders are removed.

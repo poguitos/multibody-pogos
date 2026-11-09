@@ -9,6 +9,7 @@ letter for the area, and three digits. Search this page for the code.
 | M | `kernel::validate()`: findings in a model | Lines of the report: `errors`, `warnings` and `notes`, and `summary()` |
 | F | Force elements | Errors, when the element is constructed |
 | A | Analysis: tracks and lap simulation | Errors |
+| P | The Python interface: values given from Python that the C++ engine would take without a check | Errors: the exception `multibody.MbdError`. In Python every error of the engine is a `multibody.MbdError` and every warning a `multibody.MbdWarning`, each with the code in `.code` |
 
 **Warnings** go through one replaceable sink, `mbd::diagnostic_sink()`. By
 default it writes `[mbd warning] <message>` to standard error;
@@ -850,3 +851,50 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
 - **Usual causes:** a folder in the path that does not exist, a file open in
   another program (a spreadsheet keeps CSV files locked on Windows), or a full
   disk.
+
+## P: the Python interface
+
+In Python the engine's errors, whatever their area, raise `multibody.MbdError`
+(a `RuntimeError`) with the message unchanged and its code in `.code`, and its
+warnings are Python warnings of class `multibody.MbdWarning`, so that Python's
+warning filters apply to them (`warnings.simplefilter("error",
+multibody.MbdWarning)` turns them into errors). The codes below are the
+interface's own: checks on values typed in Python that the C++ engine would
+take without question.
+
+### MBD-P001
+
+`<what> has <n> entries; the value given has <m>` (for example `Simulator.q has 1 entries; the value given has 2`)
+
+- **Means:** a state vector (`Simulator.q`, `v`, `x`, `tau`) or an argument
+  (`Simulator.acceleration`) was given with a size other than the model's.
+  Assigning it would have resized the simulator's state.
+- **What to do:** `model.nq` and `model.nv` give the sizes; a joint with a
+  quaternion has 4 coordinates for 3 velocities. To set one entry, write it
+  in place: `sim.q[0] = 0.3`.
+
+### MBD-P002
+
+`a rotation matrix must be orthonormal with determinant +1; |R^T R - I| = <e>, det R = <d>`
+
+- **Means:** a matrix given as a rotation (`Transform3(R, p)`,
+  `Transform3.from_rotation`, `Transform3.rotation = R`) is not one, to 1e-9:
+  a typing error, rounded entries, or a reflection (determinant -1).
+- **What to do:** build rotations from an axis and an angle
+  (`Transform3.from_axis_angle`) or from a quaternion, or orthonormalize the
+  matrix first.
+
+### MBD-P003
+
+`a quaternion [w, x, y, z] must have unit length; its length is <n>`
+
+- **Means:** a quaternion given to `Transform3.from_quaternion` or
+  `Transform3.quaternion` is not of unit length to 1e-6. Within that it is
+  normalized; farther off it is more likely a mistake (the order is
+  [w, x, y, z], the scalar first) than rounding.
+
+### MBD-P004
+
+`a rotation axis must not be zero`
+
+- **Means:** `Transform3.from_axis_angle` was given the axis [0, 0, 0].

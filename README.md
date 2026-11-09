@@ -35,7 +35,7 @@ The engine is one compiled library, `multibody_core`. Each folder under `include
 - CMake 3.25 or later.
 - Python 3.11 for the Python bindings. Configure with `-DMBD_BUILD_PYTHON=OFF` to leave them out.
 
-Eigen 3.4.0, Catch2 3.6.0, spdlog 1.13.0 and pybind11 2.12.0 are downloaded by CMake when it configures. Each is pinned to an exact hash.
+Eigen 3.4.0, Catch2 3.6.0, spdlog 1.13.0 and pybind11 3.1.0 (only with the Python interface) are downloaded by CMake when it configures. Each is pinned to an exact hash.
 
 ## Building and testing
 

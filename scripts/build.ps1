@@ -22,13 +22,20 @@
 .EXAMPLE
     scripts\build.ps1 -Test -Filter "Drivetrain"
     Build everything, then run the tests whose name contains "Drivetrain".
+
+.EXAMPLE
+    scripts\build.ps1 -Python C:\Users\me\miniforge3\envs\mbd-python\python.exe -Test
+    Configure the Python interface for that interpreter (CMake's
+    Python_EXECUTABLE, kept in the build directory's cache), then build and
+    test. Its tests need NumPy and pytest there (python/environment.yml).
 #>
 param(
     [string[]]$Target = @(),
     [switch]$Test,
     [string]$Filter = "",
     [switch]$Reconfigure,
-    [ValidateSet("dev", "ci")][string]$Preset = "dev"
+    [ValidateSet("dev", "ci")][string]$Preset = "dev",
+    [string]$Python = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -88,11 +95,20 @@ $configuredCodePage = if (Test-Path $stamp) { (Get-Content $stamp -TotalCount 1)
 
 Push-Location $root
 try {
-    $needsConfigure = $Reconfigure `
+    $needsConfigure = $Reconfigure -or $Python `
         -or -not (Test-Path (Join-Path $buildDir "build.ninja")) `
         -or ($configuredCodePage -ne "$codePage")
     if ($needsConfigure) {
-        Invoke-Checked cmake @("--preset", $Preset)
+        $configureArgs = @("--preset", $Preset)
+        if ($Python) {
+            if (-not (Test-Path $Python)) { throw "No Python interpreter at '$Python'." }
+            # -U drops the upper-case PYTHON_* entries that pybind11's legacy
+            # finder cached for an earlier interpreter (the module suffix
+            # among them, which pybind11 reuses if it is set); FindPython's
+            # own Python_* entries follow Python_EXECUTABLE by themselves.
+            $configureArgs += @("-U", "PYTHON_*", "-DPython_EXECUTABLE=$((Resolve-Path $Python).Path)")
+        }
+        Invoke-Checked cmake $configureArgs
         Set-Content -Path $stamp -Value $codePage -Encoding ascii
     }
 
