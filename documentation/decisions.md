@@ -61,6 +61,7 @@ and the journal entry of the work refers to them by number
 | D48 | The HMMWV benchmark: Chrono's HMMWV data where the paper gives none, corrected; one tyre spring to the nearest surface; runs without events, as the paper, and a second table with them | 7 Nov 2026 | In force, task 5.4 |
 | D49 | The regression harness: deterministic scenarios against stored references at 1e-8 of each channel, a nightly long suite, and mutation tests | 9 Nov 2026 | In force, task 5.5 |
 | D50 | The diagnosis of contradicting constraints damps its steps alike in every direction | 9 Nov 2026 | In force, Phase 5 gate |
+| D51 | Ideas from a second review of external sources adopted into the plan: suspension kinematics, validation and target cascading | 9 Nov 2026 | In force, plan amended (8.1, 8.4, 9.1, 9.3, 9.4, 9.5, 9.6, 9.7, 13.3) |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -1877,3 +1878,65 @@ and the journal entry of the work refers to them by number
   point, near enough to the axis for the filter.
 - **Record.** Journal: the nightly's first runs; `src/kernel/conflicts.cpp`,
   `tests/kernel/test_kernel_assembly.cpp`, `docs/kernel.md`.
+
+## D51. Ideas from a second review of external sources adopted into the plan: suspension kinematics, validation and target cascading
+
+- **Context.** At the Phase 5 gate the author recommended three sources:
+  Nick McCleery's series on suspension kinematic simulation, Suspension
+  Explorer (its web application, documentation and open-core solver), and
+  AVL's pages on vehicle engineering and simulation. Read against the plan
+  and the code (`documentation/review_2026-11-09/external_sources.md`), they
+  gave fourteen proposals, P1 to P14, and the author adopted them all
+  (9 November 2026).
+- **Decision.** The plan is amended where each belongs, every amended task
+  marked D51:
+  - **9.1** (P1 to P5, P8, P9): the steering axis also from the motion,
+    the instantaneous screw axis of the upright per unit of rack with a
+    declared hold, for every architecture; every steering output names its
+    hold; responses solved in the null space of the constraint Jacobian,
+    with the mobility reported and a response that is not unique reported
+    as unavailable rather than returned at least norm, and derivative
+    channels from tangents, not differences of sweep frames; each metric
+    defined once with its frame and sign; sweeps checked before solving and
+    a status per step (branch snap, mirror image, link near toggle, poor
+    conditioning); an axle's road plane; more outputs (ground offset,
+    anti-lift and the anti ratios, swing arms, wheel-centre recession,
+    contact-patch migration); `suspension-explorer-core` as a second code.
+    Its "done when" adds the double wishbone's motion axis equal to its
+    ball-joint line with zero pitch, a test of what the hold changes, and
+    the comparison recorded.
+  - **8.1, 8.4** (P6): shims as design and setup stack thicknesses that
+    change link lengths, applied through the assembly of 3.4.
+  - **9.5** (P7): a catalogue of every metric and channel, checked by a
+    test like the message catalogue.
+  - **9.6, 9.7** (P10, P11): ISO 19364 and ISO 19365 as the comparison
+    procedure where tests or another vehicle code are compared; coast-down
+    and weave in the identification sequence; a model fitted to target
+    figures where no measurement exists.
+  - **9.4** (P13): frequency responses from the linearisation, checked
+    against the time-domain sweep.
+  - **9.3** (P14): the driver's preview and gains set from the vehicle and
+    the track.
+  - **13.3** (P12): vehicle-level targets cascaded into subsystem
+    requirements through the sensitivities of 9.1 and 13.9.
+  - Effort raised by 50 to 75 hours (Phases 8, 9 and 13); the appendix of
+    references updated.
+- **Alternatives.** Not adopted (the review's "noted, not proposed"):
+  neural networks trained on millions of runs for concept attributes (no
+  such data; 13.5 covers the method); snow and soft-soil tyre models
+  (outside the plan's road and race cars); a lap-throughput target (to be
+  measured once 10.2 exists); tracks from map services (licensing);
+  generated Jacobians and dual numbers, and fitting a twist to points (the
+  kernel already gives both exactly).
+- **Consequences.** Task 9.1 grows by about a third, and its outputs gain
+  definitions, holds and diagnostics that make them checkable. Two choices
+  of the existing kinematic analysis are to change when 9.1 is done: the
+  least-norm velocities where freedom is left, and the camber gain
+  averaged across a sweep. `suspension-explorer-core` is AGPL-3.0 and this
+  repository has no licence: nothing of it, code or data, may enter the
+  repository; a comparison runs it separately and exchanges files. The ISO
+  standards must be bought before P10 can be applied. AVL's figures are the
+  vendor's claims and are not used as evidence.
+- **Record.** Journal: ideas from external sources, second review;
+  `documentation/review_2026-11-09/external_sources.md`;
+  `documentation/Master_plan.md`; local copies in `C:\dev\references\`.

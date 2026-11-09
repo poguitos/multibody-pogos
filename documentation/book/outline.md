@@ -267,6 +267,14 @@ real time on Windows and Linux (12), optimisation and AI (13), flexible bodies
 and FMI (14), documentation and release (15). Each part follows its phase's
 journal entries and retrospective.
 
+Already marked for vehicle analyses (9): the virtual kingpin, the steering
+axis of a five-link as the screw axis of a motion, decided by what is held,
+with the axodes as the figure; points with distance residuals against joint
+coordinates with loop closures, two formulations of one problem; a
+validation procedure from ISO 19364 and 19365. For optimisation (13):
+vehicle targets cascaded to subsystem requirements. *J: ideas from external
+sources, second review. D51.*
+
 ## Part X. Engineering practice
 
 - **Testing a numerical code.** Invariants, derived tolerances, tests that must
@@ -290,7 +298,9 @@ journal entries and retrospective.
 - **Help and diagnostics.** Messages written for the reader, codes and a
   catalogue, `validate()`; `describe()`, the state dump and the step trace,
   and the signature of conflicting constraints in a trace. *D19, D23; J:
-  debugging aids.*
+  debugging aids.* Report, don't guess: contradictions named instead of a
+  residual (D44, D50), and sensitivities reported as unavailable where they
+  are not unique instead of returned at least norm (D51).
 - **Working with an AI assistant.** The March 2026 rewrite from an AI proposal,
   the review, and the collaboration since: what worked, what had to be
   checked, and why every claim was tied to a measurement. With it, the
