@@ -3,6 +3,9 @@
 #include <cmath>
 
 #include "bindings.hpp"
+#include "mbd/forces/force_element.hpp"
+#include "mbd/kernel/constraints.hpp"
+#include "mbd/kernel/joint_forces.hpp"
 #include "mbd/kernel/simulator.hpp"
 
 namespace mbd::python {
@@ -37,7 +40,25 @@ void bind_simulator(py::module_& m)
         .def(py::init<>())
         .def_property_readonly(
             "model", [](System& s) -> Model& { return s.model; }, py::return_value_policy::reference_internal,
-            "The tree of bodies; build it with system.model.add_body(...).");
+            "The tree of bodies; build it with system.model.add_body(...).")
+        // The lists as tuples (an append to a copied list would be lost) and
+        // add_* to extend them, before a simulator is made from the system.
+        .def(
+            "add_constraint",
+            [](System& s, std::shared_ptr<ConstraintModel> c) { s.constraints.push_back(std::move(c)); },
+            py::arg("constraint").none(false))
+        .def(
+            "add_force_element",
+            [](System& s, std::shared_ptr<ForceElement> f) { s.force_elements.push_back(std::move(f)); },
+            py::arg("element").none(false))
+        .def(
+            "add_joint_force",
+            [](System& s, std::shared_ptr<JointForce> f) { s.joint_forces.push_back(std::move(f)); },
+            py::arg("force").none(false))
+        .def_property_readonly("constraints", [](const System& s) { return py::tuple(py::cast(s.constraints)); })
+        .def_property_readonly("force_elements",
+                               [](const System& s) { return py::tuple(py::cast(s.force_elements)); })
+        .def_property_readonly("joint_forces", [](const System& s) { return py::tuple(py::cast(s.joint_forces)); });
 
     py::native_enum<Integrator>(m, "Integrator", "enum.Enum", "The integration methods (docs/integrators.md).")
         .value("RK4", Integrator::RK4)
@@ -150,6 +171,7 @@ void bind_simulator(py::module_& m)
                 return py::make_tuple(q, v, x);
             },
             "t"_a, "DormandPrince: the state (q, v, x) at time t within its last step.");
+    bind_simulator_callbacks(sim);
 }
 
 } // namespace mbd::python

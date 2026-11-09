@@ -45,5 +45,8 @@ PYBIND11_MODULE(_mbd, m)
 
     bind_core(m);
     bind_model(m);
+    bind_constraints(m);
+    bind_forces(m);
     bind_simulator(m);
+    bind_analysis(m);
 }

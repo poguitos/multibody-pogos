@@ -898,3 +898,20 @@ take without question.
 `a rotation axis must not be zero`
 
 - **Means:** `Transform3.from_axis_angle` was given the axis [0, 0, 0].
+
+### MBD-P005
+
+`BodyForces used after its user force returned; add the forces during the call`
+
+- **Means:** a `UserForce`'s function kept the `forces` object it was given
+  and used it later. It is valid only during the call: the forces it wrote
+  into belong to that evaluation.
+- **What to do:** add every load inside the function.
+
+### MBD-P006
+
+`BodyForces: no body <b>; the model has <n> bodies, ground included`
+
+- **Means:** a `UserForce`'s function added a load to a body index the model
+  does not have.
+- **What to do:** use the indices `add_body` returned; 0 is the ground.

@@ -17,11 +17,20 @@
 
 namespace py = pybind11;
 
+namespace mbd::kernel {
+class Simulator;
+}
+
 namespace mbd::python {
 
 void bind_core(py::module_& m);
 void bind_model(py::module_& m);
+void bind_constraints(py::module_& m);
+void bind_forces(py::module_& m);
 void bind_simulator(py::module_& m);
+void bind_analysis(py::module_& m);
+/// Events and the force callback, on the Simulator class (bind_analysis.cpp).
+void bind_simulator_callbacks(py::class_<kernel::Simulator>& sim);
 
 /// A quaternion as NumPy sees it: [w, x, y, z].
 using QuatArray = Eigen::Vector4d;

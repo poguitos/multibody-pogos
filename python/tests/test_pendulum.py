@@ -6,30 +6,9 @@ import numpy as np
 
 import multibody as mbd
 
-L = 0.8        # pivot to bob [m]
-G = 9.81       # gravity [m/s^2], along -Y here
+from models import G, complete_elliptic_k, pendulum
 
-
-def pendulum():
-    """A point mass of 1 kg on a massless rod of length L, hinged at the
-    world origin about Z, swinging in the XY plane under gravity -Y. The bob's
-    frame is at the mass; its joint frame is L above it, so at q = 0 the bob
-    hangs at (0, -L, 0) and q is the angle from hanging."""
-    system = mbd.System()
-    system.model.gravity = [0.0, -G, 0.0]
-    system.model.add_body(0, mbd.RevoluteJointModel(), mbd.Transform3(),
-                          mbd.Transform3.from_translation([0.0, L, 0.0]),
-                          mbd.RigidBodyInertia(1.0, np.zeros(3), np.zeros((3, 3))), "bob")
-    return system
-
-
-def complete_elliptic_k(k):
-    """K(k) = pi / (2 AGM(1, sqrt(1 - k^2))), the arithmetic-geometric mean
-    converging quadratically (Abramowitz and Stegun 17.6)."""
-    a, b = 1.0, math.sqrt(1.0 - k * k)
-    while abs(a - b) > 1e-15 * a:
-        a, b = 0.5 * (a + b), math.sqrt(a * b)
-    return math.pi / (2.0 * a)
+L = 0.8        # the pendulum's length [m] (models.pendulum's default)
 
 
 def test_the_period_at_a_large_amplitude_is_the_elliptic_integral():

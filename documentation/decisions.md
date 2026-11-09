@@ -1999,8 +1999,19 @@ and the journal entry of the work refers to them by number
       note.
   - **The version.** The CMake project's version follows the tags (0.6.0
     now, raised at each gate) and is the module's `__version__`.
-  - **Scope of 6.1:** the kernel, its analyses, the force library and the
-    recorder. The vehicle layer is bound when Phases 7 and 8 rebuild it.
+  - **Scope of 6.1:** the kernel, its analyses, the recorder, and the
+    general force elements (springs, dampers, bushings, contact, forces
+    written in Python, joint forces). The vehicle layer, with the tyre,
+    aerodynamic and anti-roll-bar elements still on the old Y-up axes, is
+    bound when Phases 7 and 8 rebuild it.
+  - **Python callbacks** (user forces, prescribed functions, events, the
+    force callback, recorder channels) run with the interpreter lock taken.
+    A Python list or array handed to C++ code would be a copy, so where a
+    callback must change something it is given a handle that writes through.
+    `BodyForces` adds loads and is valid during its call only (MBD-P005).
+    The force callback gets `tau` as a writable view. Lists and curve
+    triples read as tuples, which refuse an item assignment that would
+    otherwise be lost.
   - **The interpreter lock** is held through calls into C++ for now, which
     keeps Python callbacks simple. Releasing it for long runs is left for
     later.
