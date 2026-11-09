@@ -137,3 +137,12 @@ mbd_add_test_exe(test_howto
     howto/test_howto_outputs.cpp
     howto/test_howto_pages.cpp
 )
+
+# The regression harness (plan task 5.5, D49): deterministic scenarios against
+# their stored references (regression/data/), on every commit; the long ones
+# ([long]) nightly.
+mbd_add_test_exe(test_regression
+    regression/regression.cpp
+    regression/scenarios.cpp
+    regression/test_regression.cpp
+)

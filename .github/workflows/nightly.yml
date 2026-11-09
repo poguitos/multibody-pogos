@@ -1,0 +1,98 @@
+name: Nightly
+
+# The long suite and the mutation tests (plan task 5.5, D49). GitHub runs a
+# schedule only from the default branch (main); on other branches the
+# workflow runs when it or the mutation script changes, and by hand.
+on:
+  schedule:
+    - cron: '17 3 * * *'      # 03:17 UTC
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/nightly.yml'
+      - 'scripts/mutation_test.py'
+
+jobs:
+  # The hidden long tests ([long]: the drift over 1000 s, the N-four-bar with
+  # 40 loops, the long regression scenarios) and the regression harness's
+  # sensitivity probe, on Linux with GCC.
+  long-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-nightly -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DMBD_COMPILE_JOBS=3
+          -DMBD_PCH=OFF
+          -DMBD_BUILD_PYTHON=OFF
+
+      - name: Build the test executables
+        run: cmake --build build-nightly --target test_core test_model test_kernel test_regression
+
+      - name: Fast suite
+        env:
+          MBD_REGRESSION_REPORT: ${{ github.workspace }}/regression-report.csv
+        run: ctest --test-dir build-nightly --output-on-failure -E "_NOT_BUILT"
+
+      - name: Long regression scenarios
+        env:
+          MBD_REGRESSION_REPORT: ${{ github.workspace }}/regression-report.csv
+        run: ./build-nightly/tests/test_regression "[long]"
+
+      - name: Regression sensitivity
+        run: ./build-nightly/tests/test_regression "[sensitivity]" -s
+
+      - name: Long kernel tests
+        run: ./build-nightly/tests/test_kernel "[long]"
+
+      - name: Regression differences
+        if: always()
+        shell: bash
+        run: |
+          if [ -f regression-report.csv ]; then
+            while IFS=, read -r name channel ratio difference tolerance; do
+              echo "::notice title=Regression ${name} (nightly)::${channel}: ${difference} against ${tolerance} (${ratio} of the tolerance)"
+            done < regression-report.csv
+          fi
+
+  # Each mutation of scripts/mutation_test.py must make a test fail.
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-mutation -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DMBD_COMPILE_JOBS=3
+          -DMBD_PCH=OFF
+          -DMBD_BUILD_PYTHON=OFF
+
+      - name: Build and run the unmutated tests
+        run: |
+          cmake --build build-mutation --target test_kernel test_regression
+          ./build-mutation/tests/test_regression
+          ./build-mutation/tests/test_kernel
+
+      - name: Mutations
+        run: >
+          python3 scripts/mutation_test.py
+          --build "cmake --build build-mutation --target test_kernel test_regression"
+          --test build-mutation/tests/test_regression
+          --test build-mutation/tests/test_kernel

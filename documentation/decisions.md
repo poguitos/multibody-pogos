@@ -59,6 +59,7 @@ and the journal entry of the work refers to them by number
 | D46 | Comparison with independent codes: Pinocchio's joints added depth first; Chrono's equations at rest solved from its own matrices, its motion checked by convergence | 7 Nov 2026 | In force, task 5.3 |
 | D47 | Statics: the Newton step by a rank-revealing QR, not the normal equations; a relaxation that ends worse is undone | 7 Nov 2026 | In force, task 5.4 |
 | D48 | The HMMWV benchmark: Chrono's HMMWV data where the paper gives none, corrected; one tyre spring to the nearest surface; runs without events, as the paper, and a second table with them | 7 Nov 2026 | In force, task 5.4 |
+| D49 | The regression harness: deterministic scenarios against stored references at 1e-8 of each channel, a nightly long suite, and mutation tests | 9 Nov 2026 | In force, task 5.5 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -1728,3 +1729,78 @@ and the journal entry of the work refers to them by number
 - **Record.** Journal: Phase 5, the HMMWV benchmark; `tests/kernel/hmmwv.hpp`,
   `tests/kernel/test_kernel_hmmwv.cpp`, `bench/hmmwv.cpp`, `docs/hmmwv.md`,
   `documentation/journal/data/2026-11-07_hmmwv-benchmark.md`.
+
+## D49. The regression harness: deterministic scenarios against stored references at 1e-8 of each channel, a nightly long suite, and mutation tests
+
+- **Context.** Task 5.5: "Stored reference results with tolerances. A fast
+  suite for every commit and a long suite nightly. Optionally, mutation
+  testing of the kernel in a Linux CI job: a deliberately altered source line
+  must make some test fail (D42). Done when a deliberate physics change is
+  caught." The suite's tests check results against what is known to be
+  right (closed forms, invariants, other codes); nothing yet noticed a
+  result that changed where nothing says what it should be: a vehicle's
+  motion, a lap, a mode. CI runs on Windows (MSVC) and Linux (GCC), whose
+  rounding differs; its logs cannot be read without logging in, its
+  annotations can.
+- **Decision.**
+  - **Scenarios, not stored states.** `tests/regression/scenarios.cpp`
+    runs nine models of the test suite deterministically (fixed steps, or a
+    solve to a tight tolerance: a step controller's accept-or-reject could
+    turn on rounding) and records named channels; together they cover the
+    kernel, the force elements, the vehicle template with its tyres and
+    drivetrain, statics and linearisation, suspension kinematics and the lap
+    model. Three more run longer, for the nightly suite.
+  - **References in CSV** (`tests/regression/data/`, 17 significant digits,
+    a header saying what wrote them), written by the test itself when
+    `MBD_REGRESSION_UPDATE=1`. Writing one again is allowed only for a
+    change meant and understood, recorded in the task's journal entry and
+    commit with the channels' differences (`tests/regression/README.md`).
+  - **The tolerance: 1e-8 of each channel's largest magnitude**, set
+    between two measurements (the hidden `[sensitivity]` case): a relative
+    change of 1e-12 in one physical parameter, standing for rounding
+    differences, moves no scenario by more than 5e-3 of it; a change of
+    1e-6 moves every scenario by 26 times it or more. A fast test requires
+    the second for five scenarios, so the harness's power is itself tested.
+  - **Platforms reported, not assumed:** each CI test job sets
+    `MBD_REGRESSION_REPORT`, and a step turns each scenario's worst channel
+    into an annotation.
+  - **The nightly workflow** (`.github/workflows/nightly.yml`, Linux): the
+    hidden `[long]` tests, the long scenarios, the sensitivity probe, and the
+    mutation tests.
+  - **Mutation tests** (`scripts/mutation_test.py`): nine one-line changes
+    to the physics of the kernel and the force elements (signs, missing
+    terms, factors of 1 or 2 %), each applied, built, tested with the kernel
+    and regression executables (stopping at the first failure), and undone.
+    A mutation no test catches, or one whose line has gone from the source,
+    fails the job.
+- **Alternatives.**
+  - **References of whole states at every step**: large files, and a
+    failure would say only that something changed. Channels with names and
+    units say what changed. Rejected.
+  - **Adaptive integrators in the scenarios**: a rejected step that turns on
+    rounding would make the platforms disagree by the tolerance of the
+    integration. Rejected; fixed steps throughout.
+  - **A tolerance per channel set by hand**: each would need its own
+    reasoning; one relative rule, measured against both bounds for every
+    scenario, is checkable. Rejected for now.
+  - **A mutation tool (Mull, Dextool)**: thousands of generated mutants,
+    most equivalent or irrelevant to physics, and a toolchain to maintain.
+    A short list of meaningful mutations, each saying what it breaks, is
+    enough to show the tests notice physics. Rejected for now.
+  - **Mutation tests on every commit**: each costs a rebuild; nightly is
+    enough. Rejected.
+- **Consequences.** Ten more test cases on every commit (1.4 s in all on the
+  laptop). A physics change of one part in a million in any scenario fails
+  CI. Every planned change that moves results (the vehicle layer's axes in
+  Phase 7, a new tyre) will fail these scenarios on purpose, and the
+  references will be written again with the reasons recorded. On the
+  laptop the nine mutations were all caught, in 3.5 minutes: seven by the
+  regression scenarios, which run first, and two by the kernel tests alone
+  (gravity in the recursive Newton-Euler pass and the articulated-body
+  pass, which the simulator does not use). Run against the kernel tests
+  alone, six of those seven are caught too; the tyres' peak force is caught
+  only by the regression scenarios.
+- **Record.** Journal: Phase 5, the regression harness;
+  `tests/regression/` (README, scenarios, references), `tests/CMakeLists.txt`,
+  `scripts/mutation_test.py`, `.github/workflows/ci.yml`,
+  `.github/workflows/nightly.yml`, `CLAUDE.md`.

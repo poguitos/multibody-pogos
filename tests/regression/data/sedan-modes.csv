@@ -1,0 +1,14 @@
+# Regression reference (plan task 5.5): sedan-modes
+# The sedan's static equilibrium and its modes at rest.
+# Each channel is held to 1e-08 times its largest magnitude here. Written by test_regression with
+# MBD_REGRESSION_UPDATE=1; see tests/regression/README.md before writing it again.
+mode,natural frequency [rad/s],damping ratio
+0,7.6630206457184675,0.34504177941271952
+1,7.8659632150327479,0.28452220069587897
+2,12.074828190754392,0.45337176114868249
+3,71.724382795587928,0.44042312515595911
+4,72.870160578485297,0.40765759550165215
+5,73.72232985767107,0.41575063995336931
+6,73.849592701452821,0.39379919852962464
+7,187.95579921267807,1
+8,270.83196829790751,1

@@ -23,7 +23,21 @@ jobs:
 
       - name: Configure, build and test
         shell: pwsh
+        env:
+          MBD_REGRESSION_REPORT: ${{ github.workspace }}/regression-report.csv
         run: ./scripts/build.ps1 -Preset ci -Test
+
+      # The regression harness's worst difference per scenario, as annotations
+      # (readable without logging in; plan task 5.5, D49).
+      - name: Regression differences
+        if: always()
+        shell: bash
+        run: |
+          if [ -f regression-report.csv ]; then
+            while IFS=, read -r name channel ratio difference tolerance; do
+              echo "::notice title=Regression ${name} (Windows)::${channel}: ${difference} against ${tolerance} (${ratio} of the tolerance)"
+            done < regression-report.csv
+          fi
 
   # Portability and memory-safety check: GCC with the address and
   # undefined-behaviour sanitizers, on the fast part of the suite, without the
@@ -50,12 +64,25 @@ jobs:
           "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer"
 
       - name: Build the core test executables
-        run: cmake --build build-linux --target test_core test_model test_kernel
+        run: cmake --build build-linux --target test_core test_model test_kernel test_regression
 
       - name: Run tests
         env:
           UBSAN_OPTIONS: print_stacktrace=1
+          MBD_REGRESSION_REPORT: ${{ github.workspace }}/regression-report.csv
         run: ctest --test-dir build-linux --output-on-failure -E "_NOT_BUILT"
+
+      # The regression harness's worst difference per scenario, as annotations
+      # (readable without logging in; plan task 5.5, D49).
+      - name: Regression differences
+        if: always()
+        shell: bash
+        run: |
+          if [ -f regression-report.csv ]; then
+            while IFS=, read -r name channel ratio difference tolerance; do
+              echo "::notice title=Regression ${name} (Linux)::${channel}: ${difference} against ${tolerance} (${ratio} of the tolerance)"
+            done < regression-report.csv
+          fi
 
   # The kernel must not allocate memory once set up (plan tasks 2.6, 2.10).
   # In a Debug build with EIGEN_RUNTIME_NO_MALLOC, any Eigen heap allocation

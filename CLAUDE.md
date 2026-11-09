@@ -18,14 +18,14 @@ agent (plan task H.7, decision D42). Read them before the first change.
 | Sources reviewed for ideas, and what was taken | `documentation/review_2026-10-20/external_sources.md` |
 
 **Where the work stands:** the plan's checkboxes and the journal index say it.
-On 7 November 2026: Phase 4 merged into `main` (tag `v0.5.0`); branch
+On 9 November 2026: Phase 4 merged into `main` (tag `v0.5.0`); branch
 `phase-5` carries Phase 3's how-to guides, the D42 plan amendments, this
 file, task 5.1 (analytic cases and manufactured trajectories, D43), task 5.2
 (the IFToMM benchmarks, D44, with the library's results for A04 and A05 in
 `tests/kernel/data/iftomm/`), task 5.3 (the comparison with Pinocchio and
-Project Chrono, D46, in `crosscheck/`) and task 5.4 (the HMMWV benchmark,
-D47 and D48, `docs/hmmwv.md`); the next task is **5.5** (the regression
-harness).
+Project Chrono, D46, in `crosscheck/`), task 5.4 (the HMMWV benchmark, D47
+and D48, `docs/hmmwv.md`) and task 5.5 (the regression harness, D49,
+`tests/regression/`); the next task is **5.6** (the validation report).
 
 **Not in the repository:** the textbooks and papers in `documentation/` (git
 ignores PDFs), and local copies of the reviewed sources (on the author's
@@ -72,7 +72,8 @@ portability fix to make (and record), not a sign that the build is broken.
 
 **Tests.** One executable per area: `test_core`, `test_model`, `test_kernel`,
 `test_forces`, `test_vehicle`, `test_analysis`, `test_alloc` (counts every
-allocation in a step), `test_howto` (the how-to guides' examples). Run one
+allocation in a step), `test_howto` (the how-to guides' examples),
+`test_regression` (scenarios against stored references, D49). Run one
 case by name with `-s` to read the values behind each check; a comma in a
 test's name must be written `\,`. Hidden tests (`[.]`, such as `[alloc]` and
 `[long]`) are not registered with ctest. `mbd_bench`, `mbd_verify` and
@@ -90,12 +91,23 @@ laptop it is `C:\Users\margk\miniforge3\envs\mbd-crosscheck` (Miniforge, not
 on the PATH). Build `mbd_crosscheck`, then run the two scripts as
 `crosscheck/README.md` says; the Chrono one takes about two minutes.
 
+**The regression harness** (`tests/regression/`, D49) compares nine
+scenarios with references stored there, each channel within 1e-8 of its
+largest magnitude. When one fails, find out why before anything else: a
+reference is written again (`MBD_REGRESSION_UPDATE=1`, as its README says)
+only for a change meant and understood, and the task's journal entry and
+commit say which scenarios moved, by how much, and why.
+
 **CI** (GitHub Actions, every push to any branch): Windows through the build
 script; Linux with GCC and the address and undefined-behaviour sanitizers,
 any report failing its test (D45); Linux Debug checking that nothing
 allocates; the Doxygen reference with every warning an error; the comparison
-with Pinocchio and Project Chrono (D46). A task is finished when CI is green
-on its commit.
+with Pinocchio and Project Chrono (D46). Both test jobs report the
+regression scenarios' worst differences as annotations. A task is finished
+when CI is green on its commit. **Nightly** (`.github/workflows/nightly.yml`,
+from `main` only; elsewhere when the workflow or the mutation script
+changes): the hidden long tests, the long regression scenarios, and the
+mutation tests (`scripts/mutation_test.py`, D49).
 
 **Timings** compare only on one machine in one session: the laptop's speed
 varies by a factor of two between days. Its benchmarks run pinned to one

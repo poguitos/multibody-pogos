@@ -19,12 +19,12 @@ How the project has been developed, and why it is built the way it is, is record
 | `include/mbd/forces` | Springs, tyres, aerodynamics, anti-roll bar |
 | `include/mbd/vehicle` | Suspension corners, vehicle builders, drivetrain |
 | `include/mbd/analysis` | Suspension kinematics, bicycle model, track, lap simulation, optimisation |
-| `tests` | One executable per folder above, and `howto` for the how-to guides' examples |
+| `tests` | One executable per folder above, `howto` for the how-to guides' examples, and `regression` for results compared with stored references ([its README](tests/regression/README.md)) |
 | `bench` | Built on request: the timings (`mbd_bench`, [performance](docs/performance.md)), the integrators' verification (`mbd_verify`, [the report](docs/integrators.md)) and the HMMWV benchmark (`mbd_hmmwv`, [the report](docs/hmmwv.md)) |
 | `crosscheck` | Built on request: the comparison with independent codes, Pinocchio and Project Chrono (`mbd_crosscheck` and two Python scripts; [how to run it](crosscheck/README.md)) |
 | `documentation` | The plan, the development record (journal, decisions, book outline), review evidence, reference notes |
 | `docs` | Project documentation |
-| `scripts` | Build helper |
+| `scripts` | Build helper; mutation tests (`mutation_test.py`, run nightly) |
 | `CLAUDE.md`, `AGENTS.md` | The working rules, for people and agents: building and testing on Windows and Linux, the record kept with every task |
 
 The engine is one compiled library, `multibody_core`. Each folder under `include/mbd` has its source files in the same folder under `src`; the headers hold declarations, small inline functions and templates.

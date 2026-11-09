@@ -261,6 +261,13 @@ journal entries and retrospective.
 
 - **Testing a numerical code.** Invariants, derived tolerances, tests that must
   be able to fail, hidden tests for special builds. *D11; working rules 2, 3.*
+  Three kinds of check: against what is known (closed forms, other codes),
+  against what was (stored references, the tolerance placed between what a
+  change the size of rounding does and what the smallest change worth
+  catching does), and against what a mutation breaks (nine changes to the
+  physics, and which tests notice each; two algorithms the simulator never
+  uses). The sensitivity table as a figure. *J: Phase 5, the regression
+  harness. D49.*
 - **Measuring performance.** *D21; `docs/performance.md`.* Compile time as
   well as run time: the decomposition that cost 31 s per file (journal:
   initial-condition assembly).
