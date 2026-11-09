@@ -19,17 +19,19 @@ agent (plan task H.7, decision D42). Read them before the first change.
 | Sources reviewed for ideas, and what was taken | `documentation/review_2026-10-20/external_sources.md` |
 
 **Where the work stands:** the plan's checkboxes and the journal index say it.
-On 9 November 2026: Phase 4 merged into `main` (tag `v0.5.0`); branch
-`phase-5` carries Phase 3's how-to guides, the D42 plan amendments, this
-file, task 5.1 (analytic cases and manufactured trajectories, D43), task 5.2
+On 9 November 2026: Phase 5 merged into `main` (tag `v0.6.0`, milestone
+M1), after Phase 4 (`v0.5.0`). Phase 5 brought Phase 3's how-to guides,
+the D42 plan amendments, this file, task 5.1 (analytic cases and manufactured trajectories, D43), task 5.2
 (the IFToMM benchmarks, D44, with the library's results for A04 and A05 in
 `tests/kernel/data/iftomm/`), task 5.3 (the comparison with Pinocchio and
 Project Chrono, D46, in `crosscheck/`), task 5.4 (the HMMWV benchmark, D47
 and D48, `docs/hmmwv.md`), task 5.5 (the regression harness, D49,
 `tests/regression/`) and task 5.6 (the validation report,
-`docs/validation.md`), and the nightly's first runs (D50). Phase 5's gate is
-passed (retrospective, how-to guide, CI and the nightly green on `28ac8af`);
-the merge into `main` and the tag `v0.6.0` wait for the author's go-ahead.
+`docs/validation.md`), and the nightly's first runs (D50). Branch
+`phase-6` starts from `v0.6.0` with D51 (a second review of external
+sources: suspension kinematics, validation, target cascading; plan amended
+in 8.1, 8.4, 9.1, 9.3 to 9.7 and 13.3); Phase 6 (the Python interface) is
+next. The nightly workflow now runs on schedule from `main`.
 
 **Not in the repository:** the textbooks and papers in `documentation/` (git
 ignores PDFs), and local copies of the reviewed sources (on the author's

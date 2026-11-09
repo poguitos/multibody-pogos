@@ -140,8 +140,12 @@ Release build and caught all nine mutations, seven by the regression
 scenarios and two by the kernel tests, as on the laptop. The nightly's
 first two runs had failed; their fixes are D50 and the A02 bound
 ([the nightly's first runs](2026-11-09_nightly-first-runs.md)). Milestone
-M1, a trustworthy core, is reached with this gate. The merge into `main`
-and the tag `v0.6.0` wait for the author's go-ahead.
+M1, a trustworthy core, is reached with this gate. With the author's
+go-ahead (9 November), `main` was fast-forwarded to the commit that adds
+this entry (`9349c52`) and tagged `v0.6.0`. On `main`, CI run 42593897074
+passed all five jobs and the nightly's run 42593897025 both of its jobs,
+all nine mutations caught again; the tag's push started the nightly as
+well (42593903425, green).
 
 ## For the book
 

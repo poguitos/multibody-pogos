@@ -208,7 +208,7 @@ Decisions taken since the review, from D9 on, are recorded in [decisions.md](dec
 The total is roughly 1,150 to 1,900 hours: 1,000 to 1,650 as first planned, the same order as the 950 to 1,380 hours of your original schedule, about 100 to 150 more for what D42 added on 20 October 2026 (Phases 5, 7, 8, 9, 10, 13 and 14), and 50 to 75 more for what D51 added on 9 November 2026 (Phases 8, 9 and 13). These are planning guesses, not commitments. The spread is wide because the vehicle, CFD and real-time phases depend on choices not yet made.
 
 **Milestones.**
-- **M1, trustworthy core:** end of Phase 5.
+- **M1, trustworthy core:** end of Phase 5. *Reached 9 Nov 2026: tag `v0.6.0`, CI and the nightly green on `main`.*
 - **M2, credible vehicle:** end of Phase 9.
 - **M3 to M6:** Phases 10 to 13 are independent of each other once M2 is reached. Take them in the order you care about. The suggested order is lap time, then CFD (which improves lap time), then real time, then the AI layer.
 - **M7, release:** Phases 14 and 15.
