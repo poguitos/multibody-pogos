@@ -17,6 +17,9 @@ pybind11_add_module(_mbd MODULE
     src/bind_state.cpp
 )
 target_link_libraries(_mbd PRIVATE multibody_core mbd_warnings)
+# The module is a shared library, so on Linux the static library linked into
+# it must be compiled as position-independent code (a no-op with MSVC).
+set_target_properties(multibody_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # The release this build follows: the last tag, raised at each phase gate.
 target_compile_definitions(_mbd PRIVATE MBD_VERSION="${PROJECT_VERSION}")
 set_target_properties(_mbd PROPERTIES

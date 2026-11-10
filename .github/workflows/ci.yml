@@ -87,8 +87,17 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
+      # A failure's first error lines become annotations, readable without
+      # logging in.
       - name: Install the package from the checkout
-        run: python -m pip install -v -C cmake.define.MBD_COMPILE_JOBS=3 -e . "${{ matrix.numpy }}" pytest
+        run: |
+          set -o pipefail
+          python -m pip install -v -C cmake.define.MBD_COMPILE_JOBS=3 -e . "${{ matrix.numpy }}" pytest 2>&1 | tee install.log || {
+            grep -E "error|Error|undefined reference|relocation" install.log | head -20 | while IFS= read -r line; do
+              echo "::error title=pip install (${{ matrix.os }})::${line}"
+            done
+            exit 1
+          }
 
       - name: Test the installed package
         run: |
