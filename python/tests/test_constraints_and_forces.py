@@ -59,10 +59,26 @@ def test_a_parallelogram_stays_a_parallelogram():
     # joint at -theta) and the rocker parallel to the crank (its joint at
     # +theta), whatever the motion: q = (theta, -theta, theta). Released at
     # 1 rad above the horizontal and run for 1 s, it swings down and up to
-    # -(pi + 1), symmetric about the bottom (a range of 5.14 rad). The
-    # projection guarantees the loop to its tolerance, 1e-10 m, which on
-    # links of 0.3 m bounds those angles at about 3e-10 rad; allowed 3e-9.
-    # (Measured: 1.9e-15 rad, its Newton step closing the loop to 3.9e-16 m.)
+    # -(pi + 1), symmetric about the bottom (a range of 5.14 rad).
+    # How far it may leave that branch follows from the projection's
+    # tolerance on the loop, r = 1e-10 m. With phi the coupler's angle
+    # (q0 + q1) and psi the rocker's (q0 + q1 + q2), the loop's Jacobian in
+    # (phi, psi) on the branch is [[0, a sin theta], [d, -a cos theta]], of
+    # determinant -a d sin theta, singular at the change points (theta = 0
+    # and -pi, the crank along the ground link):
+    # - where |sin theta| >= 0.5 its smaller singular value is at least
+    #   0.14 m, so r bounds (phi, psi) at 7e-10 rad and q2 - q0 = psi - phi -
+    #   theta at 1.0e-9 rad; allowed 3e-9;
+    # - through a change point a departure phi costs only
+    #   d (d - a) / (2 a) phi^2 of closure, so r bounds phi at
+    #   sqrt(2 a r / (d (d - a))) = 1.2e-5 rad and q2 - q0 = (d / a - 1) phi
+    #   at 2.0e-5 rad; allowed 5e-5. The antiparallelogram meets this branch
+    #   there; a switch to it would show away from them, as a departure of
+    #   order 1.
+    # (Measured: on Windows 1.9e-15 rad at theta = -0.009 and 2.2e-16 where
+    # |sin theta| >= 0.5, the loop closed to 3.9e-16 m; on Linux 4.0e-9 rad,
+    # which failed a bound of 3e-9 on the whole run, derived without the
+    # change points.)
     # A planar loop closed by a spatial hinge has redundant equations, which
     # the engine reports as warning MBD-K050, here a Python warning.
     sim = mbd.Simulator(parallelogram())
@@ -72,8 +88,11 @@ def test_a_parallelogram_stays_a_parallelogram():
         result = sim.run_recorded(1.0, 1e-3)
     assert any(w.message.code == "MBD-K050" for w in caught)
     q = result["q"]
-    assert np.max(np.abs(q[:, 0] + q[:, 1])) < 3e-9
-    assert np.max(np.abs(q[:, 2] - q[:, 0])) < 3e-9
+    far = np.abs(np.sin(q[:, 0])) >= 0.5
+    for departure in (np.abs(q[:, 0] + q[:, 1]), np.abs(q[:, 2] - q[:, 0])):
+        worst = int(np.argmax(departure))
+        assert departure[worst] < 5e-5, f"{departure[worst]:.3e} at theta = {q[worst, 0]:.4f}"
+        assert np.max(departure[far]) < 3e-9
     assert abs(np.ptp(q[:, 0]) - (math.pi + 2.0)) < 1e-3   # from 1 to -(pi + 1)
     assert sim.constraint_drift().max_position_residual <= 1e-10
 
