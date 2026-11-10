@@ -275,7 +275,11 @@ callback; lifetimes decided at the binding. *J: Phase 6, the bindings. D52.*
 Packaging a CMake project for pip: the same build serving the suite and the
 package, a build folder kept between installs, and the editable install's
 finder that comes before `PYTHONPATH`, so that a test suite can test the
-wrong copy without a sign. *J: Phase 6, packaging. D53.*
+wrong copy without a sign. *J: Phase 6, packaging. D53.* Tuning an
+interface with its user where changes are cheapest: a survey as the
+evidence for the proposal, the user's choices, and conveniences kept
+general by tests that every class shows itself and every function says
+what it does. *J: Phase 6, the interface tuned with the author. D54.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

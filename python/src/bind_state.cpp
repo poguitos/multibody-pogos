@@ -89,7 +89,7 @@ void bind_state_elements(py::module_& m, py::class_<Simulator>& sim)
         "Python, call super().__init__(), and define name(), size(), initial_states(x), rates(sim, t, x, "
         "x_dot), and optionally begin_evaluation(sim, t, x) and end_step(sim, t, x); x_dot and the x of "
         "initial_states and end_step are written in place. Each call goes through Python.")
-        .def(py::init<>());
+        .def(py::init<>(), "Call it from the subclass's __init__: super().__init__().");
 
     sim.def("attach", &Simulator::attach, "element"_a, py::keep_alive<1, 2>(),
             "Integrate `element`'s states with the bodies from now on (in sim.x, after those attached before); "

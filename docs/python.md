@@ -87,10 +87,47 @@ as written. Python adds only what it needs and C++ lacks:
 - `Simulator.run_recorded`, which runs as `run()` and returns the states as
   arrays without a Python call per step;
 - `Recorder.as_dict`;
-- `kinetic_energy(sim)` and `potential_energy(sim)`.
+- `kinetic_energy(sim)` and `potential_energy(sim)`;
+- the shorthands below.
 
 One rename: a report's multipliers are `loads.lambda_`, because `lambda` is a
 Python keyword.
+
+**Shorthands** (tuned with the author, D54):
+- A body's joint frames default to the identity, so
+  `model.add_body(0, hinge, inertia=I, name="arm")` is enough for a joint at
+  the body's origin.
+- Three numbers stand for a translation wherever a `Transform3` is expected:
+  `x_pj=[0.3, 0.0, 0.0]`, `mbd.Marker(body, [0.0, 0.1, 0.0])`,
+  `mbd.Transform3([x, y, z])`. Anything else (two numbers, a matrix) is
+  refused as before.
+- Bodies by name: `add_body("crank", ...)` takes the parent by its name
+  (`"ground"` for body 0), and `model.body("crank")` gives an index.
+  MBD-P008 says no body has the name, MBD-P009 that several share it.
+- The settings classes take their settings by keyword:
+  `mbd.StaticOptions(max_iterations=50)`,
+  `mbd.SpringDamperParams(free_length=0.3, spring=mbd.Curve.linear(3e4))`.
+  The rest keep their defaults, each keyword goes through the setting's own
+  checks, and a name that is not a setting raises MBD-P010 (a misspelling
+  would otherwise leave the default in place). They are `AssemblyOptions`,
+  `StaticOptions`, `LinearizationOptions`, `StepControl`, `ImplicitControl`
+  and the parameters of the force elements (`SpringDamperParams`,
+  `RotationalSpringDamperParams`, `BushingParams`, `ContactParams`,
+  `JointCoordinateForceParams`). Each prints as the call that builds it.
+- Every object prints what it holds: a record as its fields
+  (`IntegratorStats(steps=500, rejected=0, evaluations=2000, ...)`), a
+  report or a live object as a line of what matters
+  (`<StaticReport: converged in 18 iterations, residual 5.61e-11 (given
+  69.8); 1 degree of freedom; 0 warnings>`, `<Simulator: t = 0.5 s, RK4; 3
+  coordinates, 3 velocities, 0 states>`). A report's
+  `summary(model)` still gives the whole text. Curves show only whether they
+  are zero, or their value and slope at 0, until task 6.4 makes their points
+  readable.
+
+These conveniences live in `python/multibody/_display.py` and
+`_settings.py`, and in the bindings for frames and names. Two tests keep
+them general: every class prints more than its address, and every function
+has a docstring (`python/tests/test_shorthands.py`).
 
 **Arrays.**
 - Vectors and matrices are NumPy arrays. A quaternion is `[w, x, y, z]`.
@@ -188,9 +225,8 @@ import multibody as mbd
 
 system = mbd.System()
 system.model.gravity = [0.0, -9.81, 0.0]
-system.model.add_body(0, mbd.RevoluteJointModel(), mbd.Transform3(),
-                      mbd.Transform3.from_translation([0.0, 0.8, 0.0]),
-                      mbd.RigidBodyInertia(1.0, np.zeros(3), np.zeros((3, 3))), "bob")
+system.model.add_body(0, mbd.RevoluteJointModel(), x_cj=[0.0, 0.8, 0.0],   # the hinge 0.8 m above
+                      inertia=mbd.RigidBodyInertia(1.0, np.zeros(3), np.zeros((3, 3))), name="bob")
 sim = mbd.Simulator(system)
 sim.method = mbd.Integrator.DormandPrince
 sim.q[0] = 1.0                              # released 1 rad from hanging

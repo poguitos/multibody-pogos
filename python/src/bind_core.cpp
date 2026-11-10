@@ -56,6 +56,9 @@ void bind_core(py::module_& m)
         .def(py::init<>(), "The identity.")
         .def(py::init([](const Mat3& R, const Vec3& p) { return Transform3(checked_rotation(R), p); }),
              "rotation"_a, "translation"_a, "From a rotation matrix (checked, MBD-P002) and a translation.")
+        .def(py::init(&Transform3::FromTranslation), "translation"_a,
+             "A translation only: the local origin at `translation` in the parent frame. Wherever a "
+             "Transform3 is expected, a list [x, y, z] stands for this.")
         .def_static("identity", &Transform3::Identity)
         .def_static("from_translation", &Transform3::FromTranslation, "translation"_a)
         .def_static("from_rotation", [](const Mat3& R) { return Transform3::FromRotation(checked_rotation(R)); },
@@ -82,10 +85,14 @@ void bind_core(py::module_& m)
             "The translation p: the local origin in the parent frame.")
         .def("apply", &Transform3::apply, "point"_a, "A point of the local frame in the parent frame: R x + p.")
         .def("rotate", &Transform3::rotate, "vector"_a, "A vector of the local frame in the parent frame: R v.")
-        .def("inverse", &Transform3::inverse)
+        .def("inverse", &Transform3::inverse, "The transform the other way, from the parent frame to the local one.")
         .def("__mul__", [](const Transform3& a, const Transform3& b) { return a * b; },
              "Composition: if a maps B to A and b maps C to B, a * b maps C to A.")
         .def("__repr__", &repr);
+    // A sequence where a Transform3 is expected goes through the constructors
+    // above: three numbers make a translation (task 6.2's tuning, D54); any
+    // other sequence fails to convert, and the call reports the types it takes.
+    py::implicitly_convertible<py::sequence, Transform3>();
 
     py::class_<RigidBodyInertia> inertia(m, "RigidBodyInertia",
                                          "Mass, centre of mass and rotational inertia, in a body's frame.");
@@ -106,7 +113,8 @@ void bind_core(py::module_& m)
                                "The orientation as a rotation matrix.")
         .def_readonly("v_WB", &RigidBodyState::v_WB, "The body origin's velocity [m/s].")
         .def_readonly("w_WB", &RigidBodyState::w_WB, "The angular velocity [rad/s].")
-        .def("pose_WB", &RigidBodyState::pose_WB);
+        .def("pose_WB", &RigidBodyState::pose_WB,
+             "The pose as a Transform3 from the body frame to the world: x_W = R_WB x_B + p_WB.");
 }
 
 } // namespace mbd::python

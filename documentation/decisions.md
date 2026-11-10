@@ -64,6 +64,7 @@ and the journal entry of the work refers to them by number
 | D51 | Ideas from a second review of external sources adopted into the plan: suspension kinematics, validation and target cascading | 9 Nov 2026 | In force, plan amended (8.1, 8.4, 9.1, 9.3, 9.4, 9.5, 9.6, 9.7, 13.3) |
 | D52 | The Python interface: pybind11 3, one extension module inside a package, the C++ names, the state as views, errors and warnings with their codes | 9 Nov 2026 | In force, task 6.1 |
 | D53 | The Python package: scikit-build-core, only the module built, a build folder kept between installs, one compiler by default | 10 Nov 2026 | In force, task 6.2 |
+| D54 | The Python interface tuned with the author: the C++ names kept, shorthands for frames and bodies, settings by keyword, objects that show what they hold | 10 Nov 2026 | In force, Phase 6 (plan amended) |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -2097,3 +2098,71 @@ and the journal entry of the work refers to them by number
 - **Record.** Journal: Phase 6, packaging; `pyproject.toml`,
   `python/CMakeLists.txt`, `python/tests/conftest.py`, `CMakeLists.txt`,
   `scripts/build.ps1`, `.github/workflows/ci.yml`, `docs/python.md`.
+
+## D54. The Python interface tuned with the author: the C++ names kept, shorthands for frames and bodies, settings by keyword, objects that show what they hold
+
+- **Context.** With task 6.2 done the author asked to tune the interface
+  together, before task 6.3's parity tests, 6.4's files and 6.6's notebooks
+  are written against it. A survey of the installed package found every
+  argument already named; 71 functions and methods without a docstring;
+  joint frames that had to be typed even when they are the identity;
+  settings set one attribute at a time; and most results printing as a bare
+  address (joints and constraints had readable reprs through their base
+  classes). Four sets of changes were proposed; the author chose three, and
+  chose to keep the C++ names.
+- **Decision.**
+  - **The C++ names stay** (D52, confirmed): one vocabulary for C++, the
+    help and Python, the frames carried by the monograms (`p_WB`, `x_pj`).
+  - **Frames.** `add_body`'s joint frames default to the identity. Three
+    numbers convert to a translation wherever a `Transform3` is expected
+    (a constructor `Transform3(translation)` and pybind11's implicit
+    conversion from a sequence); anything else still fails to convert, and
+    the call reports the types it takes.
+  - **Bodies by name.** `add_body` takes the parent by its name as well as
+    its index, and `Model.body(name)` gives an index: MBD-P008 when no body
+    has the name, MBD-P009 when several do. In the bindings, not in the C++
+    `Model`, whose interface stays one of indices.
+  - **Settings by keyword.** The ten settings classes (the options of
+    assembly, statics and linearisation, `StepControl`, `ImplicitControl`,
+    the parameters of five force elements) take their settings as keywords
+    over their defaults, each through the setting's own setter; any other
+    name raises MBD-P010, since a misspelt one would otherwise be lost
+    without a word. Each prints as the call that builds it, which reads
+    back to the same object for numeric settings.
+  - **Objects that show what they hold.** Records print as a call listing
+    their fields; reports and objects holding a model or a state print as
+    `<Name: what matters>`, with numbers to the digits that matter and
+    arrays on one line. A report's `summary(model)` keeps the full text.
+    Curves show only whether they are zero, or their value and slope at 0:
+    their points are private in C++, and task 6.4 makes them readable for
+    files.
+  - **Docstrings** for the 71, from the headers' comments;
+    `ValidationReport.ok()` bound.
+  - **Where each lives.** The reprs and the keyword constructors are Python
+    (`python/multibody/_display.py`, `_settings.py`), installed on the
+    classes when the package is imported: formatting needs NumPy anyway,
+    and a change needs no compiler. The frames and the names are in the
+    bindings, since they change how arguments convert.
+  - **Kept general by tests:** every class prints more than its address, and
+    every function and method has a docstring (61 classes, 166 functions and
+    methods today); the message catalogue's test now reads the package's
+    Python files.
+- **Alternatives.**
+  - Python-style names, as aliases or as the only names: rejected by the
+    author.
+  - The reprs and keyword constructors as C++ templates in the bindings:
+    a rebuild for every wording, and NumPy called from C++ for arrays.
+    Rejected.
+  - Names in the C++ `Model`: deferred, the C++ interface being one of
+    indices throughout.
+  - Results of `run_recorded` as an object with named columns: not chosen;
+    task 6.4 brings pandas.
+  - Curve accessors now: a header most of the library includes, a near-full
+    rebuild on the laptop; 6.4 needs them for JSON and adds them.
+- **Consequences.** A class bound later needs a repr and docstrings, or the
+  tests fail; a settings class bound later is added to
+  `_settings.install()`. The plan gains the tuning as a done item after 6.2.
+- **Record.** Journal: Phase 6, the interface tuned with the author;
+  `python/src/bind_*.cpp`, `python/multibody/`, `python/tests/test_shorthands.py`,
+  `docs/python.md`, `docs/help/messages.md` (P008 to P010),
+  `tests/core/test_message_catalogue.cpp`.

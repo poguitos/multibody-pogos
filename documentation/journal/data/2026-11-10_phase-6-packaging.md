@@ -52,6 +52,7 @@ From `build\python`, with the suite's interpreter (mbd-python) and
 | `60ee42d` | package, Linux | with the library position-independent: installed in 117 s; the tests failed within a second, the cause again only in the log |
 | `254b403` | package, Linux | installed in 103 s; the annotations: `test_a_parallelogram_stays_a_parallelogram` failed, `assert np.float64(4.019842680946795e-09) < 3e-09` (max \|q2 - q0\|), 1 failed, 32 passed in 0.18 s |
 | `6522fd7` | all seven jobs | passed (CI run 42790138563), the package job on both platforms included |
+| `2537513` | all seven jobs | passed (CI run 42793160687); the wheels: `multibody-0.6.0-cp314-cp314-win_amd64.whl`, 668 kB, built with Visual Studio 18 2026 (plain pip's choice on Windows), tested with NumPy 2.5.4; `multibody-0.6.0-cp311-cp311-linux_x86_64.whl`, 1136 kB, built with Ninja, tested with NumPy 2.0.2 |
 
 ## The parallelogram's departure from its branch, on Windows
 

@@ -83,10 +83,10 @@ void bind_forces(py::module_& m)
         .def_static("linear", &Curve::linear, "slope"_a, "offset"_a = 0.0, "f(x) = offset + slope x.")
         .def_static("table", &Curve::table, "x"_a, "y"_a,
                     "Through the points (x[k], y[k]); x strictly increasing, at least two points.")
-        .def("value", &Curve::value, "x"_a)
-        .def("slope", &Curve::slope, "x"_a)
+        .def("value", &Curve::value, "x"_a, "f(x).")
+        .def("slope", &Curve::slope, "x"_a, "df/dx at x.")
         .def("integral", &Curve::integral, "a"_a, "b"_a, "The integral from a to b: a spring's stored energy.")
-        .def("is_zero", &Curve::is_zero)
+        .def("is_zero", &Curve::is_zero, "True for the zero function.")
         .def("__call__", &Curve::value, "x"_a);
 
     py::class_<LawValue>(m, "LawValue", "A force law's value at a coordinate and rate, with its derivatives.")
@@ -95,8 +95,8 @@ void bind_forces(py::module_& m)
         .def_readonly("d_rate", &LawValue::d_rate);
 
     py::classh<ForceElement>(m, "ForceElement", "A force between bodies, read from their states.")
-        .def("name", &ForceElement::name)
-        .def("bodies", &ForceElement::bodies);
+        .def("name", &ForceElement::name, "The element's kind, in words.")
+        .def("bodies", &ForceElement::bodies, "The bodies it acts on.");
 
     py::classh<LinearSpringDamper, ForceElement>(m, "LinearSpringDamper",
                                                  "A linear spring and damper between two points.")
@@ -116,9 +116,13 @@ void bind_forces(py::module_& m)
         .def_readwrite("rebound_stop", &SpringDamperParams::rebound_stop);
     py::classh<SpringDamper, ForceElement>(m, "SpringDamper", "A nonlinear spring, damper and stops between two points.")
         .def(py::init<BodyIndex, BodyIndex, const Vec3&, const Vec3&, SpringDamperParams>(), "body1"_a, "body2"_a,
-             "anchor1"_a, "anchor2"_a, "params"_a)
-        .def("law", &SpringDamper::law, "length"_a, "rate"_a)
-        .def("potential_energy", &SpringDamper::potential_energy, "length"_a);
+             "anchor1"_a, "anchor2"_a, "params"_a,
+             "Between point anchor1 on body1 and anchor2 on body2, each in its body's frame.")
+        .def("law", &SpringDamper::law, "length"_a, "rate"_a,
+             "The force pushing the points apart at a length and its rate, with its derivatives.")
+        .def("potential_energy", &SpringDamper::potential_energy, "length"_a,
+             "The energy stored at a length by the spring, the preload and the stops, zero at the free "
+             "length [J].");
 
     py::class_<RotationalSpringDamperParams>(m, "RotationalSpringDamperParams")
         .def(py::init<>())
@@ -129,9 +133,13 @@ void bind_forces(py::module_& m)
     py::classh<RotationalSpringDamper, ForceElement>(m, "RotationalSpringDamper",
                                                      "A torsion spring and damper about marker 1's Z axis.")
         .def(py::init<BodyIndex, const Transform3&, BodyIndex, const Transform3&, RotationalSpringDamperParams>(),
-             "body1"_a, "X_1M"_a, "body2"_a, "X_2M"_a, "params"_a)
-        .def("law", &RotationalSpringDamper::law, "angle"_a, "rate"_a)
-        .def("potential_energy", &RotationalSpringDamper::potential_energy, "angle"_a);
+             "body1"_a, "X_1M"_a, "body2"_a, "X_2M"_a, "params"_a,
+             "Between marker X_1M on body1 and marker X_2M on body2, each in its body's frame; the axis is "
+             "the first marker's Z axis.")
+        .def("law", &RotationalSpringDamper::law, "angle"_a, "rate"_a,
+             "The torque on body2 about the axis at a twist and its rate, with its derivatives.")
+        .def("potential_energy", &RotationalSpringDamper::potential_energy, "angle"_a,
+             "The energy stored at a twist by the spring and the preload, zero at the reference [J].");
 
     py::class_<BushingParams>(m, "BushingParams",
                               "Per axis of marker 1 (X, Y, Z): curves of stiffness and damping, each set given "
@@ -168,9 +176,12 @@ void bind_forces(py::module_& m)
              "centres"_a, "radius"_a, "plane_body"_a, "plane_X"_a, "params"_a,
              "Spheres of `radius` centred at `centres` (body frame) against the XY plane of frame plane_X on "
              "plane_body, its Z axis out of the solid side.")
-        .def("normal_law", &PlaneContact::normal_law, "penetration"_a, "rate"_a)
-        .def("friction", &PlaneContact::friction, "speed"_a)
-        .def("penetrations", &PlaneContact::penetrations, "states"_a);
+        .def("normal_law", &PlaneContact::normal_law, "penetration"_a, "rate"_a,
+             "The normal force at a penetration and its rate, with its derivatives.")
+        .def("friction", &PlaneContact::friction, "speed"_a,
+             "The friction coefficient at a sliding speed, in .force, with its derivative in .d_rate.")
+        .def("penetrations", &PlaneContact::penetrations, "states"_a,
+             "Each sphere's penetration at the bodies' states (sim.states()); negative when apart [m].");
 
     py::classh<BodyForces>(m, "BodyForces", "What a UserForce adds to the bodies, during its call.")
         .def("add_force", &BodyForces::add_force, "body"_a, "force"_a, "point"_a = py::none(),
@@ -198,8 +209,8 @@ void bind_forces(py::module_& m)
              "it acts on, for the checks. Each call goes through Python: slow beside the C++ elements.");
 
     py::classh<JointForce>(m, "JointForce", "A force on joint coordinates directly.")
-        .def("name", &JointForce::name)
-        .def("bodies", &JointForce::bodies);
+        .def("name", &JointForce::name, "The force's kind, in words.")
+        .def("bodies", &JointForce::bodies, "The bodies whose joints it acts on.");
     py::class_<JointCoordinateForceParams>(m, "JointCoordinateForceParams")
         .def(py::init<>())
         .def_readwrite("reference", &JointCoordinateForceParams::reference, "[rad or m]")
@@ -215,9 +226,13 @@ void bind_forces(py::module_& m)
     py::classh<JointCoordinateForce, JointForce>(m, "JointCoordinateForce",
                                                  "Spring, preload, damper, friction and stops on the coordinate "
                                                  "of `body`'s joint (one coordinate).")
-        .def(py::init<const Model&, int, JointCoordinateForceParams>(), "model"_a, "body"_a, "params"_a)
-        .def("law", &JointCoordinateForce::law, "q"_a, "v"_a)
-        .def("potential_energy", &JointCoordinateForce::potential_energy, "q"_a);
+        .def(py::init<const Model&, int, JointCoordinateForceParams>(), "model"_a, "body"_a, "params"_a,
+             "On the joint of `body`, which must have one coordinate (revolute or prismatic).")
+        .def("law", &JointCoordinateForce::law, "q"_a, "v"_a,
+             "The generalized force at a coordinate and its rate, with its derivatives.")
+        .def("potential_energy", &JointCoordinateForce::potential_energy, "q"_a,
+             "The energy stored at a coordinate by the spring, the preload and the stops, zero at the "
+             "reference [J]; damping and friction store none.");
 }
 
 } // namespace mbd::python

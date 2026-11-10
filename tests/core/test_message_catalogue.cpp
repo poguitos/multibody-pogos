@@ -43,6 +43,11 @@ std::vector<fs::path> source_files(const fs::path& root)
             }
         }
     }
+    // The Python package's own files raise codes too (D54); its tests only
+    // check them, and do not count as a use.
+    for (const auto& entry : fs::recursive_directory_iterator(root / "python" / "multibody")) {
+        if (entry.is_regular_file() && entry.path().extension() == ".py") files.push_back(entry.path());
+    }
     return files;
 }
 

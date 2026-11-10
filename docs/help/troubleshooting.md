@@ -687,3 +687,4 @@ Before building on it (working rule 2):
 | Ideas from external sources, second review | (no problems for a user) |
 | Phase 6: the bindings | The build script stopped by PowerShell, a dependency kept at its old version, a module built for another Python (Builds); a Python force reading the step's start (Simulations) |
 | Phase 6: packaging | The suite importing an installed package, an installed package running old C++ (Builds); a bound derived through a Jacobian that loses rank (Numerical traps); the Linux module needing position-independent code (fixed) |
+| Phase 6: the interface tuned | A misspelt setting, now refused (MBD-P010 in the catalogue); the package's example pendulum, which could not swing (corrected) |

@@ -926,3 +926,32 @@ take without question.
   optional.)
 - **What to do:** define it; and call `super().__init__()` in the subclass's
   `__init__`, or pybind11 refuses the object.
+
+### MBD-P008
+
+`no body is named '<name>'; the bodies are '<name>', ...`
+
+- **Means:** `Model.body(name)`, or `add_body` with its parent given by
+  name, was given a name no body has. The ground is named `ground`; a body
+  added without a name has the name `''`.
+- **What to do:** check the spelling against the list in the message, or
+  give the body's index (`add_body` returns it).
+
+### MBD-P009
+
+`<n> bodies are named '<name>' (<indices>); give the index instead`
+
+- **Means:** a body was asked for by a name that several bodies share. The
+  model allows it (names are for messages), so a name cannot say which.
+- **What to do:** give the index, or name the bodies apart.
+
+### MBD-P010
+
+`<class> has no setting '<name>'; its settings are <names>`
+
+- **Means:** a settings class (`StaticOptions`, `StepControl`,
+  `SpringDamperParams` and the others) was built with a keyword that is not
+  one of its settings: usually a misspelling, which would otherwise leave the
+  default in place without a word.
+- **What to do:** use a name from the list in the message; `repr()` of the
+  class's default object lists them with their defaults.

@@ -37,7 +37,7 @@ void bind_simulator(py::module_& m)
     using namespace mbd::kernel;
 
     py::class_<System>(m, "System", "A model with what acts on it: constraints and force elements.")
-        .def(py::init<>())
+        .def(py::init<>(), "The ground alone, with nothing acting on it.")
         .def_property_readonly(
             "model", [](System& s) -> Model& { return s.model; }, py::return_value_policy::reference_internal,
             "The tree of bodies; build it with system.model.add_body(...).")
@@ -46,15 +46,15 @@ void bind_simulator(py::module_& m)
         .def(
             "add_constraint",
             [](System& s, std::shared_ptr<ConstraintModel> c) { s.constraints.push_back(std::move(c)); },
-            py::arg("constraint").none(false))
+            py::arg("constraint").none(false), "Add a constraint; before a simulator is made from the system.")
         .def(
             "add_force_element",
             [](System& s, std::shared_ptr<ForceElement> f) { s.force_elements.push_back(std::move(f)); },
-            py::arg("element").none(false))
+            py::arg("element").none(false), "Add a force element; before a simulator is made from the system.")
         .def(
             "add_joint_force",
             [](System& s, std::shared_ptr<JointForce> f) { s.joint_forces.push_back(std::move(f)); },
-            py::arg("force").none(false))
+            py::arg("force").none(false), "Add a joint force; before a simulator is made from the system.")
         .def_property_readonly("constraints", [](const System& s) { return py::tuple(py::cast(s.constraints)); })
         .def_property_readonly("force_elements",
                                [](const System& s) { return py::tuple(py::cast(s.force_elements)); })
@@ -160,9 +160,14 @@ void bind_simulator(py::module_& m)
             "q"_a, "v"_a, "t"_a, "The accelerations at (q, v, t) with everything applied.")
         .def("states", [](const Simulator& s) { return s.states(); },
              "The bodies' world states at the current state (a copy; index 0 is the ground).")
-        .def("integrator_stats", [](const Simulator& s) { return s.integrator_stats(); })
-        .def("constraint_drift", [](const Simulator& s) { return s.constraint_drift(); })
-        .def("projection_failures", &Simulator::projection_failures)
+        .def("integrator_stats", [](const Simulator& s) { return s.integrator_stats(); },
+             "What the integrator has done so far: steps, rejections, evaluations, Newton iterations.")
+        .def("constraint_drift", [](const Simulator& s) { return s.constraint_drift(); },
+             "How far the last step's result and the state are from the constraints, and the largest values "
+             "so far.")
+        .def("projection_failures", &Simulator::projection_failures,
+             "How many steps' projections onto the constraints did not converge (the first is reported as "
+             "MBD-K051).")
         .def(
             "interpolate",
             [](const Simulator& s, Real t) {

@@ -100,8 +100,10 @@ void bind_analysis(py::module_& m)
         .def_readonly("loads", &AssemblyReport::loads)
         .def_readonly("acceleration_residual", &AssemblyReport::acceleration_residual)
         .def_readonly("warnings", &AssemblyReport::warnings)
-        .def("ok", &AssemblyReport::ok)
-        .def("summary", &AssemblyReport::summary, "model"_a);
+        .def("ok", &AssemblyReport::ok, "True when positions and velocities satisfy the constraints.")
+        .def("summary", &AssemblyReport::summary, "model"_a,
+             "The counts, the residuals, every coordinate's given and assembled value, and the warnings, as "
+             "text.");
     m.def("assemble", &assemble, "sim"_a, "options"_a = AssemblyOptions(),
           "Bring the simulator's state onto the constraints with the held coordinates kept, by the smallest "
           "correction to the rest; the report names conflicting constraints when they cannot all hold.");
@@ -136,7 +138,8 @@ void bind_analysis(py::module_& m)
         .def_readonly("loads", &StaticReport::loads)
         .def_readonly("warnings", &StaticReport::warnings)
         .def_readonly("notes", &StaticReport::notes)
-        .def("summary", &StaticReport::summary, "model"_a);
+        .def("summary", &StaticReport::summary, "model"_a,
+             "The counts, the history, each coordinate's change and the messages, as text.");
     m.def("static_equilibrium", &static_equilibrium, "sim"_a, "options"_a = StaticOptions(),
           "Bring the system to rest where its forces balance; leaves the state there.");
 
@@ -151,7 +154,8 @@ void bind_analysis(py::module_& m)
         .def_readonly("shape", &Mode::shape, "dq in velocity coordinates, its largest entry 1 (complex).")
         .def_readonly("energy_fraction", &Mode::energy_fraction,
                       "The share of the mode's kinetic energy in each velocity coordinate, adding up to 1.")
-        .def("oscillatory", &Mode::oscillatory);
+        .def("oscillatory", &Mode::oscillatory, "True for a complex pair (a vibration), False for a real "
+                                                "eigenvalue (a decay or a drift).");
     py::class_<LinearModel>(m, "LinearModel", "The motion near an operating point: x' = A x in n coordinates.")
         .def_readonly("time", &LinearModel::time)
         .def_readonly("q", &LinearModel::q)
@@ -162,7 +166,9 @@ void bind_analysis(py::module_& m)
         .def_readonly("A", &LinearModel::A, "2n x 2n")
         .def_readonly("modes", &LinearModel::modes, "By natural frequency.")
         .def_readonly("warnings", &LinearModel::warnings)
-        .def("summary", &LinearModel::summary, "model"_a);
+        .def("summary", &LinearModel::summary, "model"_a,
+             "The operating point, each mode's frequency, damping and largest shape components, and the "
+             "warnings, as text.");
     m.def("linearize", &linearize, "sim"_a, "options"_a = LinearizationOptions(),
           "The linear model at the simulator's state, on the constraints.");
 
@@ -177,7 +183,7 @@ void bind_analysis(py::module_& m)
         .def_readwrite("t", &Kinematics::t, "The driving parameter.")
         .def("solve", &Kinematics::solve, "max_iterations"_a = 100, "tolerance"_a = 1e-10,
              "Solve phi(q, t) = 0 from the current q; True if converged.")
-        .def("phi", [](Kinematics& k) -> VecX { return k.phi(); })
+        .def("phi", [](Kinematics& k) -> VecX { return k.phi(); }, "The constraints' residual phi(q, t).")
         .def("velocities", [](Kinematics& k) -> VecX { return k.velocities(); },
              "dq/dt in velocity coordinates (least norm where freedom is left). Call after solve().")
         .def("accelerations", [](Kinematics& k) -> VecX { return k.accelerations(); },
@@ -199,7 +205,8 @@ void bind_analysis(py::module_& m)
         .def_readonly("independent_equations", &ValidationReport::independent_equations)
         .def_readonly("redundant_equations", &ValidationReport::redundant_equations)
         .def_readonly("degrees_of_freedom", &ValidationReport::degrees_of_freedom)
-        .def("summary", &ValidationReport::summary);
+        .def("ok", &ValidationReport::ok, "True when there is no error.")
+        .def("summary", &ValidationReport::summary, "The counts, then every message, one per line.");
     m.def("validate", py::overload_cast<const System&>(&validate), "system"_a,
           "Check a system before it runs (at its neutral configuration).");
     m.def("validate", py::overload_cast<const System&, const VecX&, Real>(&validate), "system"_a, "q"_a, "t"_a = 0.0,
@@ -212,7 +219,7 @@ void bind_analysis(py::module_& m)
 
     // --- The recorder ------------------------------------------------------------
     py::class_<Recorder>(m, "Recorder", "Named channels, each read at every sample.")
-        .def(py::init<>())
+        .def(py::init<>(), "No channel yet.")
         .def(
             "add",
             [](Recorder& r, const std::string& name, py::function channel) {
@@ -223,9 +230,10 @@ void bind_analysis(py::module_& m)
             },
             "name"_a, "channel"_a, "Add a channel: a function of no arguments returning a number.")
         .def("sample", &Recorder::sample, "time"_a, "Read every channel and store the values with the time.")
-        .def("samples", &Recorder::samples)
-        .def("names", &Recorder::names)
-        .def("times", [](const Recorder& r) { return Eigen::Map<const VecX>(r.times().data(), static_cast<Index>(r.times().size())).eval(); })
+        .def("samples", &Recorder::samples, "Number of samples taken.")
+        .def("names", &Recorder::names, "The channels' names, in the order added.")
+        .def("times", [](const Recorder& r) { return Eigen::Map<const VecX>(r.times().data(), static_cast<Index>(r.times().size())).eval(); },
+             "The samples' times, as an array.")
         .def(
             "column",
             [](const Recorder& r, const std::string& name) {
@@ -245,7 +253,9 @@ void bind_analysis(py::module_& m)
                 return d;
             },
             "Every channel, and 'time', as arrays: ready for pandas.DataFrame(...).")
-        .def("write_csv", &Recorder::write_csv, "path"_a);
+        .def("write_csv", &Recorder::write_csv, "path"_a,
+             "One row per sample, time then the channels, under a header of names; 17 significant digits, "
+             "so the values read back exactly.");
     m.def("add_drift_channels", &add_drift_channels, "recorder"_a, "sim"_a, py::keep_alive<1, 2>(),
           "Add the constraint drift and residual channels, read from `sim` at every sample.");
 }
@@ -285,7 +295,7 @@ void bind_simulator_callbacks(py::class_<kernel::Simulator>& sim)
             std::vector<std::string> names;
             for (const auto& e : s.events) names.push_back(e.name);
             return names;
-        })
+        }, "The events' names, in the order added.")
         .def("event_log", [](const Simulator& s) { return s.event_log(); }, "The events that fired, in order.")
         .def_property(
             "force_callback", [](const Simulator& s) { return static_cast<bool>(s.force_callback); },
