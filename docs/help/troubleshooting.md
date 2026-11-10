@@ -106,6 +106,19 @@ module was built for another Python: its file name says which (`cp312` is
 also drops the upper-case `PYTHON_*` entries an older pybind11 cached (one
 of them had kept the suffix at `cp313`). *(Phase 6: the bindings.)*
 
+**The suite's Python tests stop with "the tests imported multibody from
+...".** A package installed into the suite's interpreter with
+`pip install -e` is imported before the build's own: its finder comes
+before `PYTHONPATH`, and its compiled module is the one built at that
+install. Uninstall it there (`pip uninstall multibody`), or install it into
+another environment (`docs/python.md`). *(Phase 6: packaging.)*
+
+**An installed package runs the C++ as it was.** An editable install reads
+the package's Python files from `python/multibody/` but its compiled module
+from the last install. Install again after a change to the C++ (on the
+author's laptop `scripts\build.ps1 -Install -Python <python.exe>`); only
+what changed compiles. *(Phase 6: packaging.)*
+
 ## Models
 
 **`validate()` reports errors.** Each message names what is wrong; the M
@@ -547,8 +560,13 @@ on a quantity that rounding moves, set from one run, fails on the next
 platform's draw: before setting it, measure how far the quantity moves
 under changes that leave the mathematics alone (the output interval, a
 tolerance a few percent apart, another start), and bound a multiple of the
-largest. A compiler's optimisation level counts as a platform. *(The
-nightly's first runs; D50.)*
+largest. A compiler's optimisation level counts as a platform. A bound
+carried from a tolerance through a Jacobian holds only where the Jacobian
+keeps its rank: a parallelogram's loop, closed to 1e-10 m, held its angles
+to 2e-15 on Windows and missed a bound of 3e-9 on Linux, because at its
+change points a departure costs only second order in the closure. Check the
+rank along the whole motion before deriving such a bound. *(The nightly's
+first runs; D50. Phase 6: packaging.)*
 
 **A test that cannot fail.** A check that compares a quantity with itself
 passes whatever the code does. Make every check able to fail; Phase 1's
@@ -668,3 +686,4 @@ Before building on it (working rule 2):
 | The nightly's first runs | Contradicting constraints not named (Simulations: MBD-K051; fixed, D50); a test that passes on one platform and fails on another (Numerical traps) |
 | Ideas from external sources, second review | (no problems for a user) |
 | Phase 6: the bindings | The build script stopped by PowerShell, a dependency kept at its old version, a module built for another Python (Builds); a Python force reading the step's start (Simulations) |
+| Phase 6: packaging | The suite importing an installed package, an installed package running old C++ (Builds); a bound derived through a Jacobian that loses rank (Numerical traps); the Linux module needing position-independent code (fixed) |

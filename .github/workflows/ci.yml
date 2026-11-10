@@ -107,7 +107,8 @@ jobs:
           scripts/ci_annotate.sh "Wheel install (${{ matrix.os }})" "$py" -m pip install dist/*.whl "${{ matrix.numpy }}" pytest
           scripts/ci_annotate.sh "Tests of the wheel (${{ matrix.os }})" "$py" -m pytest -q -p no:cacheprovider -rs python/tests
           wheel=$(ls dist/*.whl)
-          echo "::notice title=Wheel (${{ matrix.os }})::$(basename "$wheel"), $(du -k "$wheel" | cut -f1) kB, tested with NumPy $("$py" -c 'import numpy; print(numpy.__version__)')"
+          generator=$(grep -h "^CMAKE_GENERATOR:INTERNAL=" build-python/*/CMakeCache.txt | cut -d= -f2)
+          echo "::notice title=Wheel (${{ matrix.os }})::$(basename "$wheel"), $(du -k "$wheel" | cut -f1) kB, built with ${generator}, tested with NumPy $("$py" -c 'import numpy; print(numpy.__version__)')"
 
       - name: Keep the wheel
         uses: actions/upload-artifact@v7

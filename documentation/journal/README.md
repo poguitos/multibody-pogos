@@ -93,3 +93,4 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 9 Nov 2026 | [Phase 5 retrospective](2026-11-09_phase-5-retrospective.md) | Phase 5 gate; H.6 for Phase 5 | see git log | At the time |
 | 9 Nov 2026 | [Ideas from external sources, second review: suspension kinematics, validation, target cascading](2026-11-09_external-sources-second-review.md) | D51 (plan amended) | see git log | At the time |
 | 9 Nov 2026 | [Phase 6: the Python interface (bindings)](2026-11-09_phase-6-bindings.md) | 6.1, D52 | `668b992`, `72980ee`, then see git log | At the time |
+| 10 Nov 2026 | [Phase 6: packaging (pip install -e .)](2026-11-10_phase-6-packaging.md) | 6.2, D53 | `f583c86` to `6522fd7`, then see git log | At the time |

@@ -63,6 +63,7 @@ and the journal entry of the work refers to them by number
 | D50 | The diagnosis of contradicting constraints damps its steps alike in every direction | 9 Nov 2026 | In force, Phase 5 gate |
 | D51 | Ideas from a second review of external sources adopted into the plan: suspension kinematics, validation and target cascading | 9 Nov 2026 | In force, plan amended (8.1, 8.4, 9.1, 9.3, 9.4, 9.5, 9.6, 9.7, 13.3) |
 | D52 | The Python interface: pybind11 3, one extension module inside a package, the C++ names, the state as views, errors and warnings with their codes | 9 Nov 2026 | In force, task 6.1 |
+| D53 | The Python package: scikit-build-core, only the module built, a build folder kept between installs, one compiler by default | 10 Nov 2026 | In force, task 6.2 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -2034,3 +2035,65 @@ and the journal entry of the work refers to them by number
   bindings in `python/src/`, the tests in `python/tests/`, the environment
   file), `docs/python.md`, `CMakeLists.txt`, `scripts/build.ps1`,
   `.github/workflows/ci.yml`, `docs/help/messages.md` (area P).
+
+## D53. The Python package: scikit-build-core, only the module built, a build folder kept between installs, one compiler by default
+
+- **Context.** Phase 6, task 6.2: "`pyproject.toml`, an editable install,
+  and a wheel built in CI. *Done when `pip install -e .` works on a clean
+  machine.*" Until then the module was built only by the project's CMake
+  build, for the interpreter given with `-Python`, and imported through
+  `PYTHONPATH`.
+- **Decision.**
+  - **scikit-build-core 1.1.2, pinned, as the build backend.** pip runs the
+    project's own CMake, so the package's module is built by the same
+    `CMakeLists.txt` as the suite's. pybind11 stays fetched by CMake at its
+    pinned commit.
+  - **Only the module.** `pyproject.toml` configures with the interface on
+    and the tests off and builds the target `_mbd` (with the library it
+    needs). CMake installs only its component `python`, the module, into the
+    package; the Python files come from `python/multibody/`. Catch2 is now
+    fetched only when the tests are built.
+  - **Release**, where the suite builds RelWithDebInfo. Task 6.3's parity
+    tests belong to the suite's build, with the C++ tests' flags.
+  - **A build folder kept between installs,** `build-python/<wheel tag>/`.
+    An install after a change compiles only what changed.
+  - **One version.** pip's metadata reads it from `CMakeLists.txt`'s
+    `project()` line, which the module reports as `__version__`. A test
+    compares the two.
+  - **NumPy 2.0 or later**, the only dependency; CI tests that floor.
+    pytest is the extra `test`.
+  - **One compiler by default.** The build system's job pools hold for
+    pip's build where it uses Ninja (Linux). On Windows pip uses Visual
+    Studio's generator, which ignores them; on the laptop the build script's
+    `-Install` sets Ninja, and pip is not run by hand there.
+  - **The suite checks what it imports.** An editable install's finder is
+    inserted at the head of `sys.meta_path`, before `PYTHONPATH`, so a
+    package installed into the suite's interpreter would be tested instead
+    of the build. `python/tests/conftest.py` stops the tests then, from
+    `MBD_TEST_PACKAGE_DIR`, which CMake sets.
+  - **CI.** A package job installs from the checkout with plain pip on
+    Linux (Python 3.11 and NumPy 2.0, the oldest allowed) and on Windows
+    (Python 3.14), tests the installed package, then builds a wheel, tests
+    it in an empty environment and keeps it 14 days.
+  - **Not published.** A wheel suits machines like the one that built it (a
+    Linux wheel for PyPI needs a manylinux build), and the repository has no
+    licence. Publishing is a later decision.
+- **Alternatives.**
+  - setuptools with a CMake extension written in `setup.py`: the build
+    logic in two places. Rejected.
+  - meson-python: the project builds with CMake. Rejected.
+  - pybind11 from PyPI as a build requirement: two sources for one
+    dependency. Rejected.
+  - A new temporary build folder per install (scikit-build-core's default):
+    every install compiles everything. Rejected.
+  - Rebuilding at import (`editable.rebuild`): on the laptop a compiler
+    would start from an import, outside the script, perhaps beside another
+    build. Rejected.
+  - cibuildwheel and manylinux wheels: needed only to publish. Deferred.
+- **Consequences.** A machine needs Python, git and a C++20 compiler; CMake
+  and, on Linux, Ninja come from PyPI when it has none. The build folder
+  takes 726 MB on the laptop. The laptop's rule, to build only through the
+  script, gains `-Install`.
+- **Record.** Journal: Phase 6, packaging; `pyproject.toml`,
+  `python/CMakeLists.txt`, `python/tests/conftest.py`, `CMakeLists.txt`,
+  `scripts/build.ps1`, `.github/workflows/ci.yml`, `docs/python.md`.

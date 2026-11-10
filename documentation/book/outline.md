@@ -272,6 +272,10 @@ boundary (every list or array that crosses is a copy unless made a view)
 and how each case was designed out, with views, handles that close after
 their call, and tuples that refuse a write; the stage against the step in a
 callback; lifetimes decided at the binding. *J: Phase 6, the bindings. D52.*
+Packaging a CMake project for pip: the same build serving the suite and the
+package, a build folder kept between installs, and the editable install's
+finder that comes before `PYTHONPATH`, so that a test suite can test the
+wrong copy without a sign. *J: Phase 6, packaging. D53.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,
@@ -295,7 +299,13 @@ sources, second review. D51.*
   start (one start tests one path), and a bound set from one sample of a
   quantity that rounding moves (a tolerance is a claim about a spread);
   an optimisation level as one more platform. *J: the nightly's first
-  runs. D50.*
+  runs. D50.* A bound carried from a tolerance through a Jacobian that loses
+  rank along the motion: the parallelogram's change points, where a
+  departure costs only second order, met on the first Linux run of the
+  Python tests (2e-15 on Windows, 4e-9 on Linux, against a bound of 3e-9
+  derived without them). A worked example of a bound in two regimes, linear
+  away from the singularity and square-root through it. *J: Phase 6,
+  packaging.*
 - **Measuring performance.** *D21; `docs/performance.md`.* Compile time as
   well as run time: the decomposition that cost 31 s per file (journal:
   initial-condition assembly).

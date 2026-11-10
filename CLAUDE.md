@@ -32,8 +32,9 @@ and D48, `docs/hmmwv.md`), task 5.5 (the regression harness, D49,
 `phase-6` starts from `v0.6.0` with D51 (a second review of external
 sources: suspension kinematics, validation, target cascading; plan amended
 in 8.1, 8.4, 9.1, 9.3 to 9.7 and 13.3), then Phase 6 (the Python
-interface): task 6.1, the bindings, is done (D52, `docs/python.md`); 6.2,
-packaging, is next. The nightly workflow runs on schedule from `main`.
+interface): task 6.1, the bindings, is done (D52, `docs/python.md`), and
+6.2, packaging (D53, `pyproject.toml`); next, the interface tuned with the
+author, then 6.3. The nightly workflow runs on schedule from `main`.
 
 **Not in the repository:** the textbooks and papers in `documentation/` (git
 ignores PDFs), and local copies of the reviewed sources (on the author's
