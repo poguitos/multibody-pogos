@@ -1,2 +1,5 @@
 # Patch files must keep their exact bytes, whatever core.autocrlf says.
 *.patch -text
+
+# Shell scripts run by bash, on Windows runners too: LF everywhere.
+*.sh text eol=lf

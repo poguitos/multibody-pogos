@@ -87,32 +87,25 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      # A failure's first error lines become annotations, readable without
-      # logging in.
+      # Each step through ci_annotate.sh, which turns a failure's error lines
+      # and last lines into annotations, readable without logging in.
       - name: Install the package from the checkout
-        run: |
-          set -o pipefail
-          python -m pip install -v -C cmake.define.MBD_COMPILE_JOBS=3 -e . "${{ matrix.numpy }}" pytest 2>&1 | tee install.log || {
-            grep -E "error|Error|undefined reference|relocation" install.log | head -20 | while IFS= read -r line; do
-              echo "::error title=pip install (${{ matrix.os }})::${line}"
-            done
-            exit 1
-          }
+        run: scripts/ci_annotate.sh "pip install (${{ matrix.os }})" python -m pip install -v -C cmake.define.MBD_COMPILE_JOBS=3 -e . "${{ matrix.numpy }}" pytest
 
       - name: Test the installed package
         run: |
-          python -c "import multibody, numpy; print(multibody.__version__, multibody._mbd.__file__, 'NumPy', numpy.__version__)"
-          python -m pytest -q -p no:cacheprovider -rs python/tests
+          scripts/ci_annotate.sh "Import (${{ matrix.os }})" python -c "import multibody, numpy; print(multibody.__version__, multibody._mbd.__file__, 'NumPy', numpy.__version__)"
+          scripts/ci_annotate.sh "Tests of the installed package (${{ matrix.os }})" python -m pytest -q -p no:cacheprovider -rs python/tests
 
       - name: Build a wheel
-        run: python -m pip wheel -v --no-deps -C cmake.define.MBD_COMPILE_JOBS=3 -w dist .
+        run: scripts/ci_annotate.sh "Wheel (${{ matrix.os }})" python -m pip wheel -v --no-deps -C cmake.define.MBD_COMPILE_JOBS=3 -w dist .
 
       - name: Test the wheel in an empty environment
         run: |
           python -m venv clean
           if [ -x clean/Scripts/python.exe ]; then py=clean/Scripts/python.exe; else py=clean/bin/python; fi
-          "$py" -m pip install dist/*.whl "${{ matrix.numpy }}" pytest
-          "$py" -m pytest -q -p no:cacheprovider -rs python/tests
+          scripts/ci_annotate.sh "Wheel install (${{ matrix.os }})" "$py" -m pip install dist/*.whl "${{ matrix.numpy }}" pytest
+          scripts/ci_annotate.sh "Tests of the wheel (${{ matrix.os }})" "$py" -m pytest -q -p no:cacheprovider -rs python/tests
           wheel=$(ls dist/*.whl)
           echo "::notice title=Wheel (${{ matrix.os }})::$(basename "$wheel"), $(du -k "$wheel" | cut -f1) kB, tested with NumPy $("$py" -c 'import numpy; print(numpy.__version__)')"
 
