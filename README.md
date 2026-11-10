@@ -21,6 +21,7 @@ How the project has been developed, and why it is built the way it is, is record
 | `include/mbd/analysis` | Suspension kinematics, bicycle model, track, lap simulation, optimisation |
 | `tests` | One executable per folder above, `howto` for the how-to guides' examples, and `regression` for results compared with stored references ([its README](tests/regression/README.md)) |
 | `bench` | Built on request: the timings (`mbd_bench`, [performance](docs/performance.md)), the integrators' verification (`mbd_verify`, [the report](docs/integrators.md)) and the HMMWV benchmark (`mbd_hmmwv`, [the report](docs/hmmwv.md)) |
+| `python`, `pyproject.toml` | The Python interface: the package `multibody`, its bindings and its tests; `pip install -e .` installs it ([docs/python.md](docs/python.md)) |
 | `crosscheck` | Built on request: the comparison with independent codes, Pinocchio and Project Chrono (`mbd_crosscheck` and two Python scripts; [how to run it](crosscheck/README.md)) |
 | `documentation` | The plan, the development record (journal, decisions, book outline), review evidence, reference notes |
 | `docs` | Project documentation |
@@ -35,7 +36,9 @@ The engine is one compiled library, `multibody_core`. Each folder under `include
 - CMake 3.25 or later.
 - Python 3.11 or later, with its development files, for the Python interface (`docs/python.md`); NumPy and pytest for its tests (`python/environment.yml` creates such an environment). Pass the interpreter with `scripts\build.ps1 -Python <path>`, or configure with `-DMBD_BUILD_PYTHON=OFF` to leave the interface out.
 
-Eigen 3.4.0, Catch2 3.6.0, spdlog 1.13.0 and pybind11 3.1.0 (only with the Python interface) are downloaded by CMake when it configures. Each is pinned to an exact hash.
+Eigen 3.4.0, Catch2 3.6.0 (only with the tests), spdlog 1.13.0 and pybind11 3.1.0 (only with the Python interface) are downloaded by CMake when it configures. Each is pinned to an exact hash.
+
+To use the engine from Python without building the rest, `pip install -e .` in the repository root builds and installs the package `multibody` ([docs/python.md](docs/python.md) says what the machine needs).
 
 ## Building and testing
 

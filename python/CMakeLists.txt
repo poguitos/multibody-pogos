@@ -34,9 +34,17 @@ add_custom_target(mbd_python_files
 )
 add_dependencies(_mbd mbd_python_files)
 
+# What pip installs (task 6.2, D53): the module, into the package. The
+# package's Python files come from python/multibody/ through pyproject.toml,
+# and only this component is installed, so no dependency's install rules run.
+install(TARGETS _mbd LIBRARY DESTINATION multibody COMPONENT python)
+
 # Tests: each file in python/tests/ is one CTest test, run by pytest with the
 # interpreter the module was built for. They need NumPy and pytest in it
 # (python/environment.yml); without them the tests are left out, with a note.
+# MBD_TEST_PACKAGE_DIR names the package they must import: a package
+# installed with pip install -e into the same interpreter would be imported
+# first (its finder precedes PYTHONPATH), and python/tests/conftest.py stops.
 if (BUILD_TESTING)
     execute_process(
         COMMAND "${Python_EXECUTABLE}" -c "import numpy, pytest"
@@ -51,7 +59,7 @@ if (BUILD_TESTING)
                 COMMAND "${Python_EXECUTABLE}" -B -m pytest -q -p no:cacheprovider "${test_file}"
                 WORKING_DIRECTORY "${MBD_PYTHON_DIR}")
             set_tests_properties("Python: ${test_name}" PROPERTIES
-                ENVIRONMENT "PYTHONPATH=${MBD_PYTHON_DIR};PYTHONNOUSERSITE=1")
+                ENVIRONMENT "PYTHONPATH=${MBD_PYTHON_DIR};PYTHONNOUSERSITE=1;MBD_TEST_PACKAGE_DIR=${MBD_PYTHON_PACKAGE_DIR}")
         endforeach()
     else()
         message(STATUS "Python tests left out: ${Python_EXECUTABLE} lacks NumPy or pytest "

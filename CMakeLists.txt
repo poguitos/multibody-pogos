@@ -76,16 +76,20 @@ if (MBD_BUILD_PYTHON)
     FetchContent_MakeAvailable(pybind11)
 endif()
 
-#  Catch2 (v3.6.0, our test framework)
-set(CATCH_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+#  Catch2 (v3.6.0, our test framework), only when the tests are built:
+#  BUILD_TESTING is set by include(CTest) below, so here it is defined only
+#  when given on the command line (pip's build gives OFF, pyproject.toml).
+if (NOT DEFINED BUILD_TESTING OR BUILD_TESTING)
+    set(CATCH_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
-FetchContent_Declare(
-    Catch2
-    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-    GIT_TAG 4e8d92bf02f7d1c8006a0e7a5ecabd8e62d98502
-    SYSTEM
-)
-FetchContent_MakeAvailable(Catch2)
+    FetchContent_Declare(
+        Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG 4e8d92bf02f7d1c8006a0e7a5ecabd8e62d98502
+        SYSTEM
+    )
+    FetchContent_MakeAvailable(Catch2)
+endif()
 
 #  spdlog (v1.13.0, logging)
 FetchContent_Declare(

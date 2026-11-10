@@ -1,0 +1,48 @@
+# The Python package `multibody` (plan task 6.2, D53): `pip install -e .` from
+# this folder builds the extension module with CMake, through scikit-build-core,
+# and installs the package. docs/python.md says what a machine needs.
+#
+# On the author's laptop, install through scripts\build.ps1 -Install, which
+# keeps the build to one compiler (CLAUDE.md).
+
+[build-system]
+requires = ["scikit-build-core==1.1.2"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "multibody"
+dynamic = ["version"]
+description = "Multibody dynamics for vehicles: the engine's Python interface"
+requires-python = ">=3.11"
+# The oldest NumPy allowed is the one CI's Linux package job installs.
+dependencies = ["numpy>=2.0"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+cmake.version = ">=3.25"
+cmake.build-type = "Release"
+# A folder kept between installs, so that an install after a change compiles
+# only what changed. One per Python version and platform; build-*/ is ignored
+# by git.
+build-dir = "build-python/{wheel_tag}"
+# Only the module and what it needs; the tests, benchmarks and comparison
+# programs are left out. CMake installs only the module (its component
+# "python"), and the package's Python files come from python/multibody/.
+build.targets = ["_mbd"]
+install.components = ["python"]
+wheel.packages = ["python/multibody"]
+
+[tool.scikit-build.cmake.define]
+MBD_BUILD_PYTHON = "ON"
+BUILD_TESTING = "OFF"
+
+# The version is the one in CMakeLists.txt's project() line, which the module
+# also reports as multibody.__version__.
+[[tool.dynamic-metadata]]
+provider = "scikit_build_core.metadata.regex"
+field = "version"
+input = "CMakeLists.txt"
+regex = 'project\(MultibodyCore\s+VERSION\s+(?P<value>[0-9]+\.[0-9]+\.[0-9]+)'

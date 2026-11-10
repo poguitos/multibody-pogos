@@ -14,7 +14,7 @@ agent (plan task H.7, decision D42). Read them before the first change.
 | The journal: an entry per task, its index, the template | `documentation/journal/` (`README.md`, `TEMPLATE.md`), raw measurements in `journal/data/` |
 | The book's outline and bibliography | `documentation/book/` |
 | How the program works | `docs/conventions.md`, `docs/kernel.md`, `docs/integrators.md`, `docs/performance.md`, `docs/hmmwv.md`, `docs/python.md` |
-| The Python interface: the package, its bindings, its tests | `python/multibody/`, `python/src/`, `python/tests/` (D52) |
+| The Python interface: the package, its bindings, its tests, its packaging | `python/multibody/`, `python/src/`, `python/tests/` (D52), `pyproject.toml` (D53) |
 | What is validated, against what, and what is not | `docs/validation.md` |
 | Help: how-to guides, troubleshooting, the message catalogue | `docs/help/` |
 | Sources reviewed for ideas, and what was taken | `documentation/review_2026-10-20/external_sources.md` |
@@ -68,6 +68,14 @@ environment `mbd-python` (`python/environment.yml`):
 `scripts\build.ps1 -Python C:\Users\margk\miniforge3\envs\mbd-python\python.exe`.
 Its tests run in the suite as `Python: <file>`; run one by hand from
 `build\python` with `PYTHONPATH` set there and `python -m pytest`.
+
+pip installs the package (`pyproject.toml`, scikit-build-core, D53) in its
+own folder, `build-python\<wheel tag>`. On the laptop never run `pip install`
+of this folder by hand: Visual Studio's generator, pip's default there,
+ignores the build system's limit. Go through the script, which uses Ninja:
+`scripts\build.ps1 -Install -Python <python.exe>`, into an environment other
+than `mbd-python` (an installed package is imported before `PYTHONPATH`'s;
+`python/tests/conftest.py` then stops the suite's Python tests).
 
 **On Linux (a cloud machine, CI):** as the CI's Linux jobs do
 (`.github/workflows/ci.yml`); three compile jobs are fine there:

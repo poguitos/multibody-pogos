@@ -28,6 +28,13 @@
     Configure the Python interface for that interpreter (CMake's
     Python_EXECUTABLE, kept in the build directory's cache), then build and
     test. Its tests need NumPy and pytest there (python/environment.yml).
+
+.EXAMPLE
+    scripts\build.ps1 -Install -Python C:\Users\me\miniforge3\envs\mbd-try\python.exe
+    Install the package into that interpreter with pip install -e (task 6.2,
+    pyproject.toml), building it in build-python\ with one compiler. Nothing
+    else is built or tested. Use an environment other than the one the suite
+    tests with: an installed package would be imported in its place.
 #>
 param(
     [string[]]$Target = @(),
@@ -35,7 +42,8 @@ param(
     [string]$Filter = "",
     [switch]$Reconfigure,
     [ValidateSet("dev", "ci")][string]$Preset = "dev",
-    [string]$Python = ""
+    [string]$Python = "",
+    [switch]$Install
 )
 
 $ErrorActionPreference = "Stop"
@@ -95,6 +103,18 @@ $configuredCodePage = if (Test-Path $stamp) { (Get-Content $stamp -TotalCount 1)
 
 Push-Location $root
 try {
+    if ($Install) {
+        # pip builds the package through scikit-build-core, in its own folder
+        # (build-python\<wheel tag>, pyproject.toml). The generator is set to
+        # Ninja so that the build system's limit of one compiler holds: pip's
+        # default on Windows, Visual Studio's generator, ignores it.
+        if (-not $Python) { throw "-Install needs -Python <the interpreter to install into>." }
+        if (-not (Test-Path $Python)) { throw "No Python interpreter at '$Python'." }
+        $env:CMAKE_GENERATOR = "Ninja"
+        Invoke-Checked $Python @("-m", "pip", "install", "-v", "--editable", $root)
+        return
+    }
+
     $needsConfigure = $Reconfigure -or $Python `
         -or -not (Test-Path (Join-Path $buildDir "build.ninja")) `
         -or ($configuredCodePage -ne "$codePage")

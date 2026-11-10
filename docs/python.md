@@ -5,13 +5,55 @@ decision D52). This page says how the interface is built, the conventions it
 follows, what is bound and what is not yet, and what to know about Python
 code that the engine calls back.
 
-## Building it
+## Installing it
 
 The interface is the package `multibody`. Its Python files are in
 `python/multibody/` and its compiled module `multibody._mbd` is built from
-`python/src/`, one file per part of the engine. A build lays the two out
-together in `<build>/python/multibody/`, so with `PYTHONPATH=<build>/python`
-the package imports.
+`python/src/`, one file per part of the engine. pip builds and installs it
+from the repository's folder (task 6.2, decision D53):
+
+```bash
+pip install -e .              # or pip install -e ".[test]" to add pytest
+```
+
+A machine needs:
+- Python 3.11 or later; NumPy 2.0 or later is installed with the package;
+- a C++20 compiler: on Windows, Visual Studio 2022 or later with its C++
+  tools, which pip finds without a developer prompt; on Linux, GCC;
+- git and the network for the first install, since CMake fetches the
+  dependencies (Eigen, spdlog, pybind11) when it configures.
+
+CMake 3.25 or later and, on Linux, Ninja are taken from PyPI when the machine
+has none. The build is Release and runs **one compiler at a time**; on a
+machine with memory to spare, `pip install -e . -C cmake.define.MBD_COMPILE_JOBS=4`
+runs four (Linux; see "Build limits" in the README).
+
+`-e` (editable) leaves the Python files where they are: a change to them
+shows at the next import. A change to the C++ needs `pip install -e .`
+again, which compiles only what changed: the build is kept in
+`build-python/<wheel tag>/`.
+
+A wheel: `pip wheel --no-deps -w dist .`. CI builds one for Linux and one
+for Windows at every push and keeps them 14 days. A wheel suits machines like
+the one that built it; the package is not published.
+
+**On the author's laptop,** install through the build script, which loads
+MSVC and uses Ninja so that the limit of one compiler holds:
+
+```powershell
+scripts\build.ps1 -Install -Python C:\Users\<you>\miniforge3\envs\<env>\python.exe
+```
+
+Install into an environment other than the suite's (`mbd-python`): an
+installed package is imported before `PYTHONPATH`'s, so the suite would test
+it instead of its own build. `python/tests/conftest.py` stops the suite's
+Python tests when that happens.
+
+## Building it for development
+
+The suite builds the module in the project's own build folder. A build lays
+the package out in `<build>/python/multibody/`, so with
+`PYTHONPATH=<build>/python` the package imports.
 
 It is built for one interpreter, CMake's `Python_EXECUTABLE`, which needs
 its development files. On Windows the build script passes it:
@@ -30,7 +72,10 @@ The tests are `python/tests/test_*.py`, with the small models they share in
 `python/tests/models.py`. Each test file is one CTest test (`Python: <file>`),
 run by pytest under the same interpreter. When that interpreter lacks NumPy
 or pytest, CMake leaves the tests out and says so. CI's Windows job uses
-Python 3.11; the laptop's environment uses 3.12.
+Python 3.11; the laptop's environment uses 3.12. The same tests run against
+an installed package with `python -m pytest python/tests` from the
+repository's folder; CI's package job does so with Python 3.11 and NumPy 2.0
+on Linux and Python 3.14 with the newest NumPy on Windows.
 
 ## Conventions
 

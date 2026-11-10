@@ -1,6 +1,7 @@
 """How the Python interface behaves: errors, arrays, frames, lifetimes (task 6.1, D52)."""
 
 import gc
+import importlib.metadata
 import math
 
 import numpy as np
@@ -19,6 +20,17 @@ def one_body_system():
 
 def test_the_version_is_the_last_release():
     assert mbd.__version__ == "0.6.0"
+
+
+def test_an_installed_package_states_the_modules_version():
+    # pip's metadata takes the version from CMakeLists.txt's project() line
+    # (pyproject.toml), the module from the build's PROJECT_VERSION: the two
+    # must agree. In the suite's build tree nothing is installed.
+    try:
+        installed = importlib.metadata.version("multibody")
+    except importlib.metadata.PackageNotFoundError:
+        pytest.skip("multibody is not installed with pip")
+    assert installed == mbd.__version__
 
 
 def test_an_engine_error_is_an_mbd_error_with_its_code():
