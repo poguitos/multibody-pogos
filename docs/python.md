@@ -9,8 +9,160 @@ code that the engine calls back.
 
 The interface is the package `multibody`. Its Python files are in
 `python/multibody/` and its compiled module `multibody._mbd` is built from
-`python/src/`, one file per part of the engine. pip builds and installs it
-from the repository's folder (task 6.2, decision D53):
+`python/src/`, one file per part of the engine. pip compiles the module and
+installs the package from the repository's folder (task 6.2, decision D53).
+How pip is started depends on the machine: on the author's laptop through
+the build script, as below; on other machines directly (further down).
+
+### On the author's laptop, step by step
+
+The laptop compiles with one compiler at a time: two builds that used every
+core once restarted it (D9). pip's own build on Windows uses Visual Studio's
+generator, which ignores that limit. So on the laptop the package is
+installed through `scripts\build.ps1`, which builds with Ninja under the
+limit. **Do not type `pip install -e .` there.**
+
+The laptop already has what this needs: Miniforge in
+`C:\Users\<you>\miniforge3`, Visual Studio with its C++ tools, CMake and
+git. The first install also needs the network, to fetch Eigen, pybind11 and
+spdlog.
+
+1. **Open a "miniforge3 Prompt"** from the Start menu. It is a Command
+   Prompt (`cmd`) with conda ready; its lines start with `(base)`.
+
+2. **Activate the environment to install into:**
+
+   ```bat
+   conda activate mbd-try
+   ```
+
+   The lines now start with `(mbd-try)`. Install into `mbd-try` or another
+   environment of your own, never into:
+   - `base`, conda's own environment: conda itself runs from it;
+   - `mbd-python`, the suite's: an installed package is imported before the
+     build's own, so the suite would test the wrong one
+     (`python/tests/conftest.py` then stops the suite's Python tests).
+
+   `mbd-try` was made with
+   `conda create -n mbd-try -c conda-forge python=3.14 numpy matplotlib ipykernel pytest`;
+   another environment is made the same way under another name.
+
+3. **Go to the repository's folder:**
+
+   ```bat
+   cd /d C:\dev\multibody
+   ```
+
+   (`/d` changes the drive as well, in case the prompt is on another one.)
+
+4. **Start the install:**
+
+   ```bat
+   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Install -Python "%CONDA_PREFIX%\python.exe"
+   ```
+
+   Part by part:
+   - `powershell ... -File scripts\build.ps1`: the script is a PowerShell
+     script and the prompt is `cmd`, so PowerShell is started to run it.
+   - `-ExecutionPolicy Bypass`: Windows refuses to run scripts under its
+     default policy (on this laptop: "la ejecución de scripts está
+     deshabilitada en este sistema"). This allows it for this one run and
+     changes no setting.
+   - `-NoProfile`: leaves out your PowerShell profile, so that the build
+     starts from the same environment every time.
+   - `-Install -Python "%CONDA_PREFIX%\python.exe"`: install into the active
+     environment's Python. `%CONDA_PREFIX%` is that environment's folder,
+     here `C:\Users\<you>\miniforge3\envs\mbd-try`.
+
+   The script first prints the interpreter it installs into. It then loads
+   Visual Studio's compiler and runs `pip install -e` with Ninja, one
+   compiler at a time, in its own folder `build-python\ninja-<wheel tag>\`
+   (for Python 3.14 the tag is `cp314-cp314-win_amd64`). pip prints its
+   whole log, a hundred lines or more. The first install takes 4 to 11
+   minutes: CMake downloads the dependencies (under a minute) and then
+   compiles the whole library and the module, 59 steps one after another.
+   Two first installs on 10 November 2026 took 3 min 41 s and 11 min, the
+   second with the laptop on battery. The last line says
+
+   ```
+   Successfully installed multibody-0.6.0
+   ```
+
+   with NumPy added if the environment lacked it. The prompt then shows
+   `(mbd-try)` again.
+
+5. **Check it:**
+
+   ```bat
+   python -c "import multibody as mbd; print(mbd.__version__, mbd.__file__)"
+   python -m pytest python/tests -q
+   ```
+
+   The first prints the version and where the package is read from, the
+   repository itself:
+
+   ```
+   0.6.0 C:\dev\multibody\python\multibody\__init__.py
+   ```
+
+   The second runs the package's tests and ends with `43 passed in 0.37s`
+   (the count grows with the package, the time varies).
+
+**Using it in VS Code:** choose the environment as the interpreter
+(Ctrl+Shift+P, "Python: Select Interpreter", then `mbd-try`; if it is not
+listed, "Enter interpreter path..." and
+`C:\Users\<you>\miniforge3\envs\mbd-try\python.exe`). A script then runs
+with `import multibody as mbd`. In a notebook choose `mbd-try` as the
+kernel.
+
+**After a change:**
+- to the Python files in `python/multibody/`: nothing to do. `-e`
+  (editable) leaves them where they are, and a change shows at the next
+  import (in a notebook, after restarting its kernel);
+- to the C++ (`include/`, `src/`, `python/src/`): steps 1 to 4 again. Only
+  what changed compiles. A second install with nothing changed took 16 s
+  (37 s on battery); one after a change to the eight binding files, 161 s.
+
+**From PowerShell** instead (VS Code's terminal, for one), the activation is
+not needed; give the interpreter's full path:
+
+```powershell
+cd C:\dev\multibody
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Install -Python $env:USERPROFILE\miniforge3\envs\mbd-try\python.exe
+```
+
+**If it fails:**
+- *"la ejecución de scripts está deshabilitada en este sistema"* ("running
+  scripts is disabled on this system"): the script was started without
+  `powershell -ExecutionPolicy Bypass -File`, for instance by typing
+  `scripts\build.ps1`. Use step 4's line.
+- *"\"conda\" no se reconoce como un comando interno o externo"* ("'conda'
+  is not recognized as an internal or external command"): the prompt is a
+  plain Command Prompt, not a miniforge3 Prompt. Open one (step 1).
+- *"El argumento 'scripts\build.ps1' para el parámetro -File no existe"*
+  ("the argument 'scripts\build.ps1' to the -File parameter does not
+  exist"): the prompt is not in the repository's folder. Step 3.
+- *"No Python interpreter at '%CONDA_PREFIX%\python.exe'"*, with
+  `%CONDA_PREFIX%` written out: no conda environment is active. Steps 1 and 2.
+- *"CMake configuration failed"*, after a CMake error that points at
+  `FetchContent_MakeAvailable` in `CMakeLists.txt`: the build folder was
+  configured with another generator. CMake says so a few lines above:
+
+  ```
+  CMake Error: Error: generator : Visual Studio 18 2026
+  Does not match the generator used previously: Ninja
+  ```
+
+  A CMake folder serves one generator, and the dependencies' sub-builds keep
+  the first. This happened when plain pip was run in the folder the script
+  had used; since 10 November 2026 they use different folders. Delete the
+  folder under `build-python\` (only build output is there) and start again;
+  the next install takes as long as a first one.
+- `docs/help/troubleshooting.md` has these and more under "Builds".
+
+### On other machines: pip
+
+From the repository's folder:
 
 ```bash
 pip install -e .              # or pip install -e ".[test]" to add pytest
@@ -21,33 +173,23 @@ A machine needs:
 - a C++20 compiler: on Windows, Visual Studio 2022 or later with its C++
   tools, which pip finds without a developer prompt; on Linux, GCC;
 - git and the network for the first install, since CMake fetches the
-  dependencies (Eigen, spdlog, pybind11) when it configures.
+  dependencies (Eigen, pybind11, spdlog) when it configures.
 
 CMake 3.25 or later and, on Linux, Ninja are taken from PyPI when the machine
-has none. The build is Release and runs **one compiler at a time**; on a
-machine with memory to spare, `pip install -e . -C cmake.define.MBD_COMPILE_JOBS=4`
-runs four (Linux; see "Build limits" in the README).
+has none. The build is Release. With Ninja (Linux) it runs **one compiler at
+a time**, the build system's limit; on a machine with memory to spare,
+`pip install -e . -C cmake.define.MBD_COMPILE_JOBS=4` runs four (see "Build
+limits" in the README). On Windows pip uses Visual Studio's generator, which
+ignores the limit.
 
-`-e` (editable) leaves the Python files where they are: a change to them
-shows at the next import. A change to the C++ needs `pip install -e .`
-again, which compiles only what changed: the build is kept in
-`build-python/<wheel tag>/`.
+The build is kept in `build-python/<wheel tag>/`, so an install after a
+change to the C++ compiles only what changed. A change to the Python files
+needs no install, as above. Install into an environment other than the
+suite's, for the reason given in step 2.
 
 A wheel: `pip wheel --no-deps -w dist .`. CI builds one for Linux and one
 for Windows at every push and keeps them 14 days. A wheel suits machines like
 the one that built it; the package is not published.
-
-**On the author's laptop,** install through the build script, which loads
-MSVC and uses Ninja so that the limit of one compiler holds:
-
-```powershell
-scripts\build.ps1 -Install -Python C:\Users\<you>\miniforge3\envs\<env>\python.exe
-```
-
-Install into an environment other than the suite's (`mbd-python`): an
-installed package is imported before `PYTHONPATH`'s, so the suite would test
-it instead of its own build. `python/tests/conftest.py` stops the suite's
-Python tests when that happens.
 
 ## Building it for development
 
@@ -62,6 +204,10 @@ its development files. On Windows the build script passes it:
 mamba env create -f python/environment.yml      # once: Python 3.12.16, NumPy 2.5.4, pytest 9.2.0
 scripts\build.ps1 -Python C:\Users\<you>\miniforge3\envs\mbd-python\python.exe -Test
 ```
+
+Under Windows' default execution policy start the script as in step 4 above:
+`powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1`,
+then the same arguments.
 
 The choice is kept in the build folder's cache, so it is given once.
 `-Python` also drops pybind11's old upper-case `PYTHON_*` cache entries,

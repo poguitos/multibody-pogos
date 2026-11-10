@@ -119,6 +119,28 @@ from the last install. Install again after a change to the C++ (on the
 author's laptop `scripts\build.ps1 -Install -Python <python.exe>`); only
 what changed compiles. *(Phase 6: packaging.)*
 
+**`scripts\build.ps1` is refused: "running scripts is disabled on this
+system"** (on a Spanish Windows, "la ejecución de scripts está deshabilitada
+en este sistema"). Windows' default execution policy, Restricted, runs no
+script. Start it as `powershell -NoProfile -ExecutionPolicy Bypass -File
+scripts\build.ps1` followed by the same arguments, which allows it for that
+run only; this works from a Command Prompt too. To allow local scripts for
+good, for your account only, `Set-ExecutionPolicy -Scope CurrentUser
+RemoteSigned` once in PowerShell; scripts downloaded from the internet then
+still need a signature. *(Phase 6: the author's first install.)*
+
+**pip stops with "CMake configuration failed" after an error at
+`FetchContent_MakeAvailable`.** The build folder was configured with another
+CMake generator. A folder serves one generator, and the dependencies'
+sub-builds (`_deps/<name>-subbuild/`) keep the first. CMake's message, a few
+lines above, says "Does not match the generator used previously". It
+happened when plain `pip install -e .` (Visual Studio's generator on
+Windows) ran in the folder the build script's install (Ninja) had used; they
+now build in different folders, `build-python\<wheel tag>` and
+`build-python\ninja-<wheel tag>`. Delete the folder the log names and
+install again; it then builds from the start. *(Phase 6: the author's first
+install.)*
+
 ## Models
 
 **`validate()` reports errors.** Each message names what is wrong; the M
@@ -688,3 +710,4 @@ Before building on it (working rule 2):
 | Phase 6: the bindings | The build script stopped by PowerShell, a dependency kept at its old version, a module built for another Python (Builds); a Python force reading the step's start (Simulations) |
 | Phase 6: packaging | The suite importing an installed package, an installed package running old C++ (Builds); a bound derived through a Jacobian that loses rank (Numerical traps); the Linux module needing position-independent code (fixed) |
 | Phase 6: the interface tuned | A misspelt setting, now refused (MBD-P010 in the catalogue); the package's example pendulum, which could not swing (corrected) |
+| Phase 6: the author's first install | A script refused by Windows' execution policy; pip and the build script failing in a folder configured by the other's generator (Builds) |

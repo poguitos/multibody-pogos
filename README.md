@@ -38,7 +38,7 @@ The engine is one compiled library, `multibody_core`. Each folder under `include
 
 Eigen 3.4.0, Catch2 3.6.0 (only with the tests), spdlog 1.13.0 and pybind11 3.1.0 (only with the Python interface) are downloaded by CMake when it configures. Each is pinned to an exact hash.
 
-To use the engine from Python without building the rest, `pip install -e .` in the repository root builds and installs the package `multibody` ([docs/python.md](docs/python.md) says what the machine needs).
+To use the engine from Python without building the rest, `pip install -e .` in the repository root builds and installs the package `multibody` ([docs/python.md](docs/python.md) says what the machine needs). On the development laptop install it through the build script instead, which keeps the limit of one compiler; [docs/python.md](docs/python.md) gives the steps from a Miniforge Prompt.
 
 ## Building and testing
 
@@ -50,6 +50,8 @@ scripts\build.ps1 -Test                         # build everything, run all test
 scripts\build.ps1 -Target test_model -Test      # one test executable
 scripts\build.ps1 -Test -Filter "Drivetrain"    # tests whose name matches
 ```
+
+Windows' default execution policy runs no script. If PowerShell answers "running scripts is disabled on this system", start the script as `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Test` (with the same arguments as above), which allows it for that run only and works from a Command Prompt too.
 
 The script loads the Visual Studio environment and then uses the presets in `CMakePresets.json`. From a "x64 Native Tools" prompt the same steps are `cmake --preset dev`, `cmake --build --preset dev` and `ctest --preset dev`.
 

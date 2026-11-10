@@ -280,6 +280,10 @@ interface with its user where changes are cheapest: a survey as the
 evidence for the proposal, the user's choices, and conveniences kept
 general by tests that every class shows itself and every function says
 what it does. *J: Phase 6, the interface tuned with the author. D54.*
+Instructions tried by the one they are for: the author's first install
+failed on a build folder two routes shared, and on steps written for the
+assistant's shell rather than the author's. *J: Phase 6, the author's first
+install. D53 (amended).*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

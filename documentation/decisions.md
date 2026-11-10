@@ -63,7 +63,7 @@ and the journal entry of the work refers to them by number
 | D50 | The diagnosis of contradicting constraints damps its steps alike in every direction | 9 Nov 2026 | In force, Phase 5 gate |
 | D51 | Ideas from a second review of external sources adopted into the plan: suspension kinematics, validation and target cascading | 9 Nov 2026 | In force, plan amended (8.1, 8.4, 9.1, 9.3, 9.4, 9.5, 9.6, 9.7, 13.3) |
 | D52 | The Python interface: pybind11 3, one extension module inside a package, the C++ names, the state as views, errors and warnings with their codes | 9 Nov 2026 | In force, task 6.1 |
-| D53 | The Python package: scikit-build-core, only the module built, a build folder kept between installs, one compiler by default | 10 Nov 2026 | In force, task 6.2 |
+| D53 | The Python package: scikit-build-core, only the module built, a build folder kept between installs, one compiler by default | 10 Nov 2026 | In force, task 6.2; amended 10 Nov 2026 (the build script's own folder) |
 | D54 | The Python interface tuned with the author: the C++ names kept, shorthands for frames and bodies, settings by keyword, objects that show what they hold | 10 Nov 2026 | In force, Phase 6 (plan amended) |
 
 ## D9. One compiler at a time, enforced by the build system
@@ -2098,6 +2098,28 @@ and the journal entry of the work refers to them by number
 - **Record.** Journal: Phase 6, packaging; `pyproject.toml`,
   `python/CMakeLists.txt`, `python/tests/conftest.py`, `CMakeLists.txt`,
   `scripts/build.ps1`, `.github/workflows/ci.yml`, `docs/python.md`.
+- **Amended 10 Nov 2026, after the author's first install.** The author
+  typed `pip install -e .`, the first command `docs/python.md` then showed,
+  in a miniforge3 Prompt, in the base environment and in `mbd-try`. Both run
+  Python 3.14, so both builds went to `build-python/cp314-cp314-win_amd64/`,
+  where the script's install had built with Ninja that morning. pip's build
+  used Visual Studio's generator: the top-level cache was written again for
+  it, and the dependencies' sub-builds, which keep the generator they were
+  made with, refused it ("CMake configuration failed" at the first
+  `FetchContent_MakeAvailable`). Keeping a folder was not the fault; one
+  folder for two routes with different generators was.
+  - **The script's install builds in a folder of its own,**
+    `build-python/ninja-<wheel tag>/` (pip's `-C build-dir=...`). Plain pip
+    keeps `build-python/<wheel tag>/`.
+  - **The laptop's instructions are steps from a miniforge3 Prompt**, the
+    script started with `powershell -NoProfile -ExecutionPolicy Bypass
+    -File`, since the laptop's execution policy is Windows' default and runs
+    no script; tried as written before they were committed.
+  - Alternatives: FetchContent without sub-builds (policy CMP0168, from
+    CMake 3.30, above the project's minimum of 3.25; and the top-level cache
+    would still change generator at every switch of route, each switch a
+    full build). Rejected. A temporary folder for plain pip: rejected above.
+  - Journal: Phase 6, the author's first install.
 
 ## D54. The Python interface tuned with the author: the C++ names kept, shorthands for frames and bodies, settings by keyword, objects that show what they hold
 

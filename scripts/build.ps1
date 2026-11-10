@@ -32,9 +32,16 @@
 .EXAMPLE
     scripts\build.ps1 -Install -Python C:\Users\me\miniforge3\envs\mbd-try\python.exe
     Install the package into that interpreter with pip install -e (task 6.2,
-    pyproject.toml), building it in build-python\ with one compiler. Nothing
-    else is built or tested. Use an environment other than the one the suite
-    tests with: an installed package would be imported in its place.
+    pyproject.toml), building it in build-python\ninja-<wheel tag>\ with one
+    compiler. Nothing else is built or tested. Use an environment other than
+    the one the suite tests with: an installed package would be imported in
+    its place. docs/python.md gives the steps from a Miniforge Prompt.
+
+.NOTES
+    Windows refuses to run scripts under its default execution policy. From a
+    prompt, start the script as
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 ...
+    which allows it for that one run.
 #>
 param(
     [string[]]$Target = @(),
@@ -104,14 +111,20 @@ $configuredCodePage = if (Test-Path $stamp) { (Get-Content $stamp -TotalCount 1)
 Push-Location $root
 try {
     if ($Install) {
-        # pip builds the package through scikit-build-core, in its own folder
-        # (build-python\<wheel tag>, pyproject.toml). The generator is set to
-        # Ninja so that the build system's limit of one compiler holds: pip's
-        # default on Windows, Visual Studio's generator, ignores it.
+        # pip builds the package through scikit-build-core. The generator is
+        # set to Ninja so that the build system's limit of one compiler holds:
+        # pip's default on Windows, Visual Studio's generator, ignores it.
+        # A CMake build folder serves one generator (the dependencies'
+        # sub-builds keep the first), so the script builds in a folder of its
+        # own, build-python\ninja-<wheel tag>, apart from plain pip's
+        # build-python\<wheel tag> (pyproject.toml). Sharing one, the second
+        # route failed at its first FetchContent.
         if (-not $Python) { throw "-Install needs -Python <the interpreter to install into>." }
         if (-not (Test-Path $Python)) { throw "No Python interpreter at '$Python'." }
+        Write-Host "Installing the package multibody into $((Resolve-Path $Python).Path)"
         $env:CMAKE_GENERATOR = "Ninja"
-        Invoke-Checked $Python @("-m", "pip", "install", "-v", "--editable", $root)
+        Invoke-Checked $Python @("-m", "pip", "install", "-v", "--editable", $root,
+            "--config-settings=build-dir=build-python/ninja-{wheel_tag}")
         return
     }
 

@@ -77,7 +77,13 @@ of this folder by hand: Visual Studio's generator, pip's default there,
 ignores the build system's limit. Go through the script, which uses Ninja:
 `scripts\build.ps1 -Install -Python <python.exe>`, into an environment other
 than `mbd-python` (an installed package is imported before `PYTHONPATH`'s;
-`python/tests/conftest.py` then stops the suite's Python tests).
+`python/tests/conftest.py` then stops the suite's Python tests). The
+script's install builds in `build-python\ninja-<wheel tag>`: a CMake folder
+serves one generator, and the two routes shared one until the author's
+first install failed in it. The author runs scripts from a miniforge3
+Prompt under Windows' default execution policy, so instructions for the
+author give `powershell -NoProfile -ExecutionPolicy Bypass -File
+scripts\build.ps1 ...` and are tried as written (`docs/python.md`).
 
 **On Linux (a cloud machine, CI):** as the CI's Linux jobs do
 (`.github/workflows/ci.yml`); three compile jobs are fine there:
