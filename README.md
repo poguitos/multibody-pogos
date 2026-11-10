@@ -19,6 +19,7 @@ How the project has been developed, and why it is built the way it is, is record
 | `include/mbd/forces` | Springs, tyres, aerodynamics, anti-roll bar |
 | `include/mbd/vehicle` | Suspension corners, vehicle builders, drivetrain |
 | `include/mbd/analysis` | Suspension kinematics, bicycle model, track, lap simulation, optimisation |
+| `include/mbd/io` | Model files: a model as JSON and back ([docs/model-files.md](docs/model-files.md)) |
 | `tests` | One executable per folder above, `howto` for the how-to guides' examples, and `regression` for results compared with stored references ([its README](tests/regression/README.md)) |
 | `bench` | Built on request: the timings (`mbd_bench`, [performance](docs/performance.md)), the integrators' verification (`mbd_verify`, [the report](docs/integrators.md)) and the HMMWV benchmark (`mbd_hmmwv`, [the report](docs/hmmwv.md)) |
 | `python`, `pyproject.toml` | The Python interface: the package `multibody`, its bindings and its tests; `pip install -e .` installs it ([docs/python.md](docs/python.md)) |
@@ -34,9 +35,9 @@ The engine is one compiled library, `multibody_core`. Each folder under `include
 
 - Windows with Visual Studio 2022 or later, "Desktop development with C++" workload. That provides the compiler, CMake and Ninja.
 - CMake 3.25 or later.
-- Python 3.11 or later, with its development files, for the Python interface (`docs/python.md`); NumPy and pytest for its tests (`python/environment.yml` creates such an environment). Pass the interpreter with `scripts\build.ps1 -Python <path>`, or configure with `-DMBD_BUILD_PYTHON=OFF` to leave the interface out.
+- Python 3.11 or later, with its development files, for the Python interface (`docs/python.md`); NumPy and pytest for its tests, pandas and pyarrow for those of results as tables (`python/environment.yml` creates such an environment). Pass the interpreter with `scripts\build.ps1 -Python <path>`, or configure with `-DMBD_BUILD_PYTHON=OFF` to leave the interface out.
 
-Eigen 3.4.0, Catch2 3.6.0 (only with the tests), spdlog 1.13.0 and pybind11 3.1.0 (only with the Python interface) are downloaded by CMake when it configures. Each is pinned to an exact hash.
+Eigen 3.4.0, Catch2 3.6.0 (only with the tests), spdlog 1.13.0, nlohmann/json 3.12.0 (model files) and pybind11 3.1.0 (only with the Python interface) are downloaded by CMake when it configures. Each is pinned to an exact hash.
 
 To use the engine from Python without building the rest, `pip install -e .` in the repository root builds and installs the package `multibody` ([docs/python.md](docs/python.md) says what the machine needs). On the development laptop install it through the build script instead, which keeps the limit of one compiler; [docs/python.md](docs/python.md) gives the steps from a Miniforge Prompt.
 

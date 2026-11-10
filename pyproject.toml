@@ -19,6 +19,8 @@ dependencies = ["numpy>=2.0"]
 
 [project.optional-dependencies]
 test = ["pytest"]
+# Results as tables (task 6.4, D56): pandas, and pyarrow for Parquet.
+results = ["pandas>=2.2.2", "pyarrow>=16"]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"

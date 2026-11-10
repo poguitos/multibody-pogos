@@ -53,6 +53,11 @@ public:
 
     BushingLaw law(const Vec6& x, const Vec6& x_dot) const;
 
+    /// The markers, each in its body's frame, and the settings.
+    const Transform3& X_1M() const { return X_1M_; }
+    const Transform3& X_2M() const { return X_2M_; }
+    const BushingParams& params() const { return params_; }
+
 private:
     BodyIndex body1_, body2_;
     Transform3 X_1M_, X_2M_;

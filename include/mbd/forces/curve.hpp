@@ -44,6 +44,14 @@ public:
 
     bool is_zero() const { return xs_.empty() && slope_ == 0.0 && offset_ == 0.0; }
 
+    /// What the curve was made from (task 6.4, for model files): a table's
+    /// points, or a line's slope and offset (zero for a table).
+    bool is_table() const { return !xs_.empty(); }
+    const std::vector<Real>& table_x() const { return xs_; }
+    const std::vector<Real>& table_y() const { return ys_; }
+    Real line_slope() const { return slope_; }
+    Real line_offset() const { return offset_; }
+
 private:
     /// The integral from the first point (tabulated) or from 0 (linear) to x.
     Real primitive(Real x) const;

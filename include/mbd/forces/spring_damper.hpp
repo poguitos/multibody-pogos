@@ -58,6 +58,9 @@ public:
     Real potential_energy(Real length) const;
 
     const SpringDamperParams& params() const { return params_; }
+    /// The attachment points, each in its body's frame.
+    const Vec3& anchor1() const { return a1_B_; }
+    const Vec3& anchor2() const { return a2_B_; }
 
 private:
     BodyIndex body1_, body2_;

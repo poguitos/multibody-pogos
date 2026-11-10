@@ -286,9 +286,10 @@ Python keyword.
   (`<StaticReport: converged in 18 iterations, residual 5.61e-11 (given
   69.8); 1 degree of freedom; 0 warnings>`, `<Simulator: t = 0.5 s, RK4; 3
   coordinates, 3 velocities, 0 states>`). A report's
-  `summary(model)` still gives the whole text. Curves show only whether they
-  are zero, or their value and slope at 0, until task 6.4 makes their points
-  readable.
+  `summary(model)` still gives the whole text. A curve prints as the call
+  that makes it, every number in full (`Curve.table([0.0, 0.01], [0.0,
+  2000.0])`, `Curve.linear(150.0)`, `Curve()`), and its points are readable
+  (`table_x()`, `table_y()`, `line_slope()`, `line_offset()`; task 6.4).
 
 These conveniences live in `python/multibody/_display.py` and
 `_settings.py`, and in the bindings for frames and names. Two tests keep
@@ -341,6 +342,7 @@ without a word; a tuple refuses the append.
 | The simulator | `System`, `Simulator`, `Integrator`, `StepControl`, `ImplicitControl`, events, the force callback, state elements, the trace, the last projection onto the constraints (`last_projection()`, a `ProjectionInfo`) |
 | Analyses | `assemble`, `static_equilibrium`, `linearize`, `Kinematics`, `point_height_driver`, `compute_loads`, the energies |
 | Checks and output | `validate`, `describe`, `dump_state`, `Recorder`, `add_drift_channels` |
+| Files | `save_model`, `load_model`, `model_to_json`, `model_from_json` (`docs/model-files.md`); `dataframe`, `write_results`, `read_results`, `coordinate_names` (results as tables) |
 
 **Not bound yet:**
 - The vehicle layer, with its tyre, aerodynamic and anti-roll-bar elements:
@@ -385,6 +387,51 @@ elements where one exists.
   written in place. Then call `sim.attach(element)`.
 - **A Python exception** raised in any of them reaches the caller of
   `step()` or `run()` unchanged.
+
+## Model files and results as tables
+
+(Task 6.4, decision D56.)
+
+**A model to a file and back:**
+
+```python
+mbd.save_model(system, "four_bar.json")       # a str or a pathlib.Path
+system = mbd.load_model("four_bar.json")
+text = mbd.model_to_json(system)              # and mbd.model_from_json(text)
+```
+
+The file is JSON, described in `docs/model-files.md`; the engine reads and
+writes it in C++, so a C++ program reads the same files. A model read back
+writes the same text again and runs bit for bit as the original. What a file
+cannot hold (a `UserForce`, a time function given as code) is refused by
+name, MBD-I008, and a misspelt key in a file is an error, MBD-I004.
+
+**Results as tables** (pandas; pyarrow for Parquet; `pip install -e
+".[results]"`, or `conda install pandas pyarrow`; the rest of the package
+needs neither):
+
+```python
+run = sim.run_recorded(2.0, 1e-3)
+df = mbd.dataframe(run, sim)                  # indexed by time
+df["q"]["crank"]                              # a coordinate, by its body's name
+df[("v", "crank")]                            # the same for its velocity
+mbd.write_results(df, "run.parquet")          # or "run.csv"
+df = mbd.read_results("run.parquet")
+channels = mbd.dataframe(recorder)            # a Recorder: one column per channel
+```
+
+A run's columns have two levels, the vector (`q`, `v`, and `x` for the states
+of state elements) and the coordinate. A coordinate is named after its body;
+a joint with several coordinates numbers them (`block[0]` to `block[6]` for a
+free joint: x, y, z, then the quaternion's x, y, z, w; its velocities
+`block[0]` to `block[5]`); a body without a name is `body3`, and a name
+several bodies share is followed by its index (`twin#4`). A state element's
+states are numbered `0`, `1`, ... `mbd.coordinate_names(model, "q")` gives
+the names alone.
+
+Both formats keep every number exactly: Parquet in binary, CSV with each
+number in full and read back with pandas's exact parser. `read_results` also
+reads a `Recorder`'s own CSV (`recorder.write_csv`).
 
 ## A pendulum
 

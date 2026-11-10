@@ -15,6 +15,7 @@ pybind11_add_module(_mbd MODULE
     src/bind_simulator.cpp
     src/bind_analysis.cpp
     src/bind_state.cpp
+    src/bind_files.cpp
 )
 target_link_libraries(_mbd PRIVATE multibody_core mbd_warnings)
 # The module is a shared library, so on Linux the static library linked into

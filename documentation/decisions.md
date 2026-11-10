@@ -66,6 +66,7 @@ and the journal entry of the work refers to them by number
 | D53 | The Python package: scikit-build-core, only the module built, a build folder kept between installs, one compiler by default | 10 Nov 2026 | In force, task 6.2; amended 10 Nov 2026 (the build script's own folder) |
 | D54 | The Python interface tuned with the author: the C++ names kept, shorthands for frames and bodies, settings by keyword, objects that show what they hold | 10 Nov 2026 | In force, Phase 6 (plan amended) |
 | D55 | Parity tests: C++ test cases reproduced through Python, their numbers compared bit for bit in the same build | 10 Nov 2026 | In force, task 6.3 |
+| D56 | Model files in the C++ library (JSON, nlohmann/json), exact and strict; results as pandas tables with two column levels | 10 Nov 2026 | In force, task 6.4 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -2263,10 +2264,89 @@ and the journal entry of the work refers to them by number
   runs in the suite on the laptop and in CI's Windows job (Linux CI builds
   without the interface). A change to one of the ten cases, or to its
   model, is made on both sides. The parity tests took 8 to 15 s in three
-  runs on the laptop (once 218 s, for a cause not found; the journal),
+  runs on the laptop (once 218 s; all in energy-saving mode; the journal),
   most of it the bushed pendulum's reference at tolerance 1e-12, run once
   in C++ and once from Python (as fast from Python as from C++).
 - **Record.** Journal: Phase 6, parity tests; `tests/support/parity.hpp`,
   `python/tests/parity.py`, `python/tests/test_parity.py`,
   `python/CMakeLists.txt`, `python/src/bind_simulator.cpp`,
   `docs/python.md`.
+
+## D56. Model files in the C++ library (JSON, nlohmann/json), exact and strict; results as pandas tables with two column levels
+
+- **Context.** Task 6.4: "Models to and from JSON. Results to pandas, Parquet
+  and CSV. *Done when a model survives a round trip unchanged.*" D8 chose
+  JSON for model files; task 8.2 will extend the format to the vehicle, with
+  a schema and units, where "an unknown key is an error, never ignored"
+  (D42); task H.6 foresees a command-line program reading model files. Most
+  elements and every constraint kept their settings private, so a model
+  could be built but not read back out.
+- **Decision.**
+  - **In the C++ library, chosen by the author:** `mbd/io/model_file.hpp`
+    (`model_to_json`, `model_from_json`, `save_model`, `load_model`), bound
+    to Python with the same names. One reader for Python, C++ programs, the
+    command line and the real-time runner to come.
+  - **nlohmann/json 3.12.0** (MIT), fetched and pinned by its archive's
+    hash like every dependency, used in one source file of the library and
+    private to it; its implicit conversions are switched off there.
+  - **Read accessors** for what the elements, constraints and curves kept
+    private: a curve's points or line, a time function's constant, the
+    constraints' markers, axes and functions, the elements' anchors,
+    markers, geometry and settings, a joint force's body. A constraint set
+    owns its name (it held a pointer to a literal), so a set read from a
+    file can have any name.
+  - **Exact.** Numbers in nlohmann's shortest round-trip form; infinite
+    values as the texts "inf" and "-inf"; transforms set member by member,
+    since the `Transform3` constructor normalises its quaternion and could
+    move its last bit. A model read back writes the same text and runs bit
+    for bit as the original.
+  - **Strict.** Every object's keys are checked: an unknown key or one given
+    twice is an error (MBD-I004), and every error names its place in the
+    file (`bodies[2].x_pj.quaternion`). Values then go through the same
+    constructors as code, whose own errors keep their codes with the place
+    added. What a file cannot hold is refused by name when writing
+    (MBD-I008): a force written as code, a time function given as code,
+    elements the format does not know. Messages in a new area, I.
+  - **Readable.** Keys and type names are those of the C++ and Python
+    classes and arguments (`Bushing`, `X_1M`, `revolute_closure`); joints by
+    their kind (`revolute`). A closure is written as the call that makes
+    it, but only when that call makes exactly the set (compared as
+    written); other sets part by part. Keys with defaults may be left out
+    when writing by hand. Short objects and lists are printed on one line,
+    within 100 columns. `docs/model-files.md` describes version 1.
+  - **Results as tables, in Python** (pandas; pyarrow for Parquet, the extra
+    `results`): `dataframe(run, sim)` indexed by time with two column levels,
+    chosen by the author: the vector (q, v, x) and the coordinate, named
+    after its body (`df["q"]["crank"]`); several coordinates numbered, an
+    unnamed body `body<i>`, a shared name followed by `#<i>`.
+    `dataframe(recorder)` for a recorder's channels. `write_results` and
+    `read_results` keep a table in Parquet or CSV exactly. `import
+    multibody` needs neither pandas nor pyarrow.
+  - **Curves show the call that makes them**, numbers in full, now that
+    their points can be read (the open end of D54).
+- **Alternatives.**
+  - The files in Python only (the json module): quicker, but C++ programs
+    could not read them, and Phase 8 would need a second reader. Offered to
+    the author, not chosen.
+  - A JSON reader written here: the crosscheck programs write JSON by hand,
+    but reading needs a parser with exact numbers and positioned errors.
+    Rejected.
+  - Writing only what differs from the defaults: shorter files, but a
+    default changed later would silently change old files' models.
+    Rejected; written files are complete, hand-written ones may be brief.
+  - Closures as their primitives always: exact but unreadable, and a reader
+    of the file would not see a hinge. Rejected.
+  - A results table with one column level (`q[0]`) or by body only: offered
+    to the author with the two levels; the two levels chosen.
+- **Consequences.** A new kind of element, constraint or joint is added to
+  the format, or is refused by name when a model holding it is written;
+  the format's test covers the kinds it builds, so a kind added to the
+  format is added to that test's system. The suite's environment and the author's gain pandas 3.1.1 and
+  pyarrow 26.0.1; CI installs them. The catalogue's test accepts two forms
+  of a coded throw it did not know: a caught error's message rethrown with
+  its place, and a code a function is given by its callers.
+- **Record.** Journal: Phase 6, files; `include/mbd/io/model_file.hpp`,
+  `src/io/model_file.cpp`, `tests/io/test_model_files.cpp`,
+  `python/src/bind_files.cpp`, `python/multibody/_results.py`,
+  `python/tests/test_files.py`, `docs/model-files.md`, `docs/python.md`,
+  `docs/help/messages.md` (area I, P012 to P014).

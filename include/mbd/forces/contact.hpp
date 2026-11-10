@@ -71,6 +71,10 @@ public:
     std::vector<Real> penetrations(const std::vector<RigidBodyState>& states) const;
 
     const ContactParams& params() const { return params_; }
+    /// The geometry as given to the constructor.
+    const std::vector<Vec3>& centres() const { return centres_B_; }
+    Real radius() const { return radius_; }
+    const Transform3& plane_frame() const { return plane_X_; }
 
 private:
     BodyIndex body_, plane_body_;

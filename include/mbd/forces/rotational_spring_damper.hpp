@@ -52,6 +52,11 @@ public:
     /// reference: the conservative torque is -dV/d(angle).
     Real potential_energy(Real angle) const;
 
+    /// The markers, each in its body's frame, and the settings.
+    const Transform3& X_1M() const { return X_1M_; }
+    const Transform3& X_2M() const { return X_2M_; }
+    const RotationalSpringDamperParams& params() const { return params_; }
+
 private:
     BodyIndex body1_, body2_;
     Transform3 X_1M_, X_2M_;

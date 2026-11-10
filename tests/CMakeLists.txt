@@ -78,6 +78,7 @@ mbd_add_test_exe(test_kernel
     kernel/test_kernel_manufactured.cpp
     kernel/test_kernel_iftomm.cpp
     kernel/test_kernel_hmmwv.cpp
+    io/test_model_files.cpp
 )
 find_package(Threads REQUIRED)
 target_link_libraries(test_kernel PRIVATE Threads::Threads)

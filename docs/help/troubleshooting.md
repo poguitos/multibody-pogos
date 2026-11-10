@@ -739,3 +739,4 @@ Before building on it (working rule 2):
 | Phase 6: the interface tuned | A misspelt setting, now refused (MBD-P010 in the catalogue); the package's example pendulum, which could not swing (corrected) |
 | Phase 6: the author's first install | A script refused by Windows' execution policy; pip and the build script failing in a folder configured by the other's generator (Builds) |
 | Phase 6: parity tests | An editable install older than its Python files (MBD-P011); a parity test's numbers apart; the build script stopped by a redirected stderr line (Builds) |
+| Phase 6: files | A model file refused, or a model that cannot be written: each error names its place, area I of the catalogue; pandas or pyarrow missing (MBD-P012) |

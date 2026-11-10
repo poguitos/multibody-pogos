@@ -9,6 +9,7 @@ letter for the area, and three digits. Search this page for the code.
 | M | `kernel::validate()`: findings in a model | Lines of the report: `errors`, `warnings` and `notes`, and `summary()` |
 | F | Force elements | Errors, when the element is constructed |
 | A | Analysis: tracks and lap simulation | Errors |
+| I | Model files: reading and writing them (`mbd/io/model_file.hpp`, `docs/model-files.md`) | Errors, when a file is written or read; in Python a `multibody.MbdError` |
 | P | The Python interface: values given from Python that the C++ engine would take without a check | Errors: the exception `multibody.MbdError`. In Python every error of the engine is a `multibody.MbdError` and every warning a `multibody.MbdWarning`, each with the code in `.code` |
 
 **Warnings** go through one replaceable sink, `mbd::diagnostic_sink()`. By
@@ -852,6 +853,95 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
   another program (a spreadsheet keeps CSV files locked on Windows), or a full
   disk.
 
+## I: model files
+
+Every message names its place in the file, as a path from the top:
+`bodies[2].x_pj.quaternion` is the quaternion of the third body's parent-side
+joint frame (lists count from 0). `docs/model-files.md` describes the format.
+
+### MBD-I001
+
+`cannot write the model file <path>` / `cannot read the model file <path>`
+
+- **Means:** the file could not be opened: the folder does not exist, the
+  name is wrong, or the file is open elsewhere or protected.
+- **What to do:** check the path; when writing, that the folder exists.
+
+### MBD-I002
+
+`not valid JSON: <the parser's message, with the line and column>`
+
+- **Means:** the text is not JSON: a missing comma or bracket, a comment, a
+  trailing comma, single quotes.
+- **What to do:** fix the text at the line and column given.
+
+### MBD-I003
+
+`the file: not a model file: it must begin with "format": "multibody model"` /
+`version: this program reads version 1; the file has <...>` /
+`units: this program reads SI units (m, kg, s, rad, N), "units": "SI"`
+
+- **Means:** the file is JSON but not a model file this program reads: it
+  lacks the format's name, is of another version, or states other units.
+- **What to do:** a model file starts with `"format": "multibody model"` and
+  `"version": 1`; values are in SI units.
+
+### MBD-I004
+
+`<place>: unknown key '<key>'; the keys here are <keys>` /
+`the key '<key>' is given twice in one object`
+
+- **Means:** a key the format does not have at that place, usually a
+  misspelling, or a key written twice. Neither is ignored: a misspelt
+  setting would otherwise leave its default in place without a word.
+- **What to do:** use one of the keys listed, once.
+
+### MBD-I005
+
+`<place>: the key '<key>' is missing`
+
+- **Means:** a key without a default is not given: a body's `parent`,
+  `joint` or `inertia.mass`, an entry's `type`, a marker's `body`, and the
+  like.
+- **What to do:** add it (`docs/model-files.md` lists what each entry needs).
+
+### MBD-I006
+
+`<place>: expected <what>, found <what was there>` / `<place>: there is no
+body <n> (...)` / `<place>: a rotation's quaternion must have unit length;
+its length is <n>` / `<place>: a curve is either a table (x, y) or a line
+(slope, offset)`
+
+- **Means:** a value of the wrong kind (a text where a number belongs, two
+  numbers where three do), a body that does not exist, a quaternion further
+  than 1e-6 from unit length, or a curve given both ways.
+- **What to do:** correct the value at the place named. A quaternion within
+  1e-6 of unit length is normalised; one written by the program is kept
+  exactly.
+
+### MBD-I007
+
+`<place>: unknown joint '<name>'; the joints are <names>` / `<place>: unknown
+constraint type '<type>'; the types are <types>` (and the same for force
+elements and joint forces)
+
+- **Means:** a joint or a type the format does not know.
+- **What to do:** use one of the names listed. A file names joints by their
+  kind (`revolute`) and everything else by its class or function in C++ and
+  Python (`Bushing`, `revolute_closure`).
+
+### MBD-I008
+
+`<place>: <what> cannot be written to a model file`
+
+- **Means:** the system holds something a file cannot: a force written as
+  code (`UserForce`), a time function given as code (a constraint's `s` or
+  a distance's length that is not a constant), or an element, constraint or
+  joint the format does not know (the vehicle layer's, or one written in
+  C++). The file is not written, rather than written without it.
+- **What to do:** write the model without it and add it in code after
+  loading, or give the time function as a constant.
+
 ## P: the Python interface
 
 In Python the engine's errors, whatever their area, raise `multibody.MbdError`
@@ -967,3 +1057,30 @@ take without question.
   bindings the two disagree until the next install.
 - **What to do:** install again (`docs/python.md`, "After a change"; on the
   author's laptop step 4 of the steps there).
+
+### MBD-P012
+
+`results as tables need pandas (...)` / `Parquet needs pyarrow (pip install pyarrow)`
+
+- **Means:** `multibody.dataframe()`, `write_results()` or `read_results()`
+  was called where pandas is not installed, or a Parquet file was asked for
+  where pyarrow is not. The rest of the package needs neither.
+- **What to do:** install them (`pip install pandas pyarrow`, or the
+  package's extra `pip install -e ".[results]"`; with conda, `conda install
+  pandas pyarrow`).
+
+### MBD-P013
+
+`the run has <n> values of <q or v> per sample; the model <m>: it is not this model's run`
+
+- **Means:** `dataframe(run, sim)` was given a run recorded from another
+  model than the one its names are to come from.
+- **What to do:** give the simulator (or system, or model) that made the run.
+
+### MBD-P014
+
+`a results file ends in .parquet or .csv; '<path>' does not`
+
+- **Means:** `write_results()` or `read_results()` chooses the format by the
+  file's ending, and this one is neither.
+- **What to do:** end the name in `.parquet` or `.csv`.

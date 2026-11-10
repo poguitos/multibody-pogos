@@ -13,7 +13,7 @@ agent (plan task H.7, decision D42). Read them before the first change.
 | Design decisions D1 onwards, with context and alternatives | `documentation/decisions.md` |
 | The journal: an entry per task, its index, the template | `documentation/journal/` (`README.md`, `TEMPLATE.md`), raw measurements in `journal/data/` |
 | The book's outline and bibliography | `documentation/book/` |
-| How the program works | `docs/conventions.md`, `docs/kernel.md`, `docs/integrators.md`, `docs/performance.md`, `docs/hmmwv.md`, `docs/python.md` |
+| How the program works | `docs/conventions.md`, `docs/kernel.md`, `docs/integrators.md`, `docs/performance.md`, `docs/hmmwv.md`, `docs/python.md`, `docs/model-files.md` |
 | The Python interface: the package, its bindings, its tests, its packaging | `python/multibody/`, `python/src/`, `python/tests/` (D52), `pyproject.toml` (D53) |
 | What is validated, against what, and what is not | `docs/validation.md` |
 | Help: how-to guides, troubleshooting, the message catalogue | `docs/help/` |
@@ -36,8 +36,9 @@ interface): task 6.1, the bindings, is done (D52, `docs/python.md`), and
 6.2, packaging (D53, `pyproject.toml`), and the interface tuned with the
 author (D54: shorthands, settings by keyword, readable objects; the author's
 environment is conda `mbd-try`), and 6.3, parity tests (D55: ten C++ cases
-reproduced through Python, 516 numbers identical, `python/tests/test_parity.py`);
-6.4, files, is next. After a change to the bindings, reinstall `mbd-try`
+reproduced through Python, 516 numbers identical, `python/tests/test_parity.py`),
+and 6.4, files (D56: model files as JSON in the C++ library,
+`docs/model-files.md`; results as pandas tables); 6.5, viewing, is next. After a change to the bindings, reinstall `mbd-try`
 (an editable install whose module is older than its Python files stops with
 MBD-P011). The nightly workflow runs on schedule from `main`.
 

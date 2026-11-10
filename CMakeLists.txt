@@ -100,6 +100,16 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(spdlog)
 
+#  nlohmann/json (v3.12.0, MIT licence): model files (task 6.4, D56), read and
+#  written in one source file of the library (src/io/model_file.cpp).
+FetchContent_Declare(
+    nlohmann_json
+    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+    URL_HASH SHA256=42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa
+    SYSTEM
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 # --- Warning level for our own targets (never for the dependencies) ---
 add_library(mbd_warnings INTERFACE)
 if (MBD_WARNINGS)

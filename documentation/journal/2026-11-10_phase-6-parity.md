@@ -94,7 +94,10 @@ missing for one of them is bound.
 - **A slow run, not explained.** In the first suite run `test_parity.py`
   took 218 s; alone through CTest 8 s, by hand 15 s, in the next suite run
   14 s. The other Python files took their usual times in that run. The
-  laptop was on battery; the cause was not found.
+  laptop was on battery; the cause was not found at the time. Afterwards
+  the author said the laptop was in energy-saving mode, which slows it
+  drastically: every time in this entry was taken that way, and they are to
+  be taken again on mains power.
 - **A timing misread, then corrected:** one run put the bushed pendulum's
   reference at 6.7 s from Python against 2.8 s for the whole C++ case, which
   looked like an overhead of the bindings. Alternated, twice, the two take
@@ -136,7 +139,8 @@ build stopped by stderr, the author's environment before and after.
   cannot be reproduced yet.
 - Linux CI builds without the interface, so the parity tests run on Windows
   only.
-- The 218 s run.
+- The times, again on mains power (the author: the laptop was in
+  energy-saving mode throughout this task).
 
 ## For the book
 

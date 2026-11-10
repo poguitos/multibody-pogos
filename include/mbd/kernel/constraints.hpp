@@ -31,6 +31,8 @@
 
 #include <functional>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "mbd/kernel/model.hpp"
@@ -63,6 +65,12 @@ public:
     Real value(Real t) const { return s_ ? s_(t) : constant_; }
     Real rate(Real t) const { return ds_ ? ds_(t) : 0.0; }
     Real acceleration(Real t) const { return dds_ ? dds_(t) : 0.0; }
+
+    /// A constant (made by constant() or by default), whose value() is
+    /// constant_value(); otherwise a function given as code (task 6.4: only
+    /// a constant goes into a model file).
+    bool is_constant() const { return !s_; }
+    Real constant_value() const { return constant_; }
 
 private:
     Real constant_{0.0};
@@ -120,6 +128,9 @@ public:
     void add_wrenches(const Model& model, const Data& data, Real t,
                       ConstVecRef lambda, std::vector<Vec6>& wrenches) const override;
 
+    const Marker& i() const { return i_; }
+    const Marker& j() const { return j_; }
+
 private:
     Marker i_, j_;
 };
@@ -137,6 +148,12 @@ public:
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
     void add_wrenches(const Model& model, const Data& data, Real t,
                       ConstVecRef lambda, std::vector<Vec6>& wrenches) const override;
+
+    const Marker& i() const { return i_; }
+    const Marker& j() const { return j_; }
+    int axis_i() const { return axis_i_; }
+    int axis_j() const { return axis_j_; }
+    const TimeFunction& s() const { return s_; }
 
 private:
     Marker i_, j_;
@@ -157,6 +174,11 @@ public:
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
     void add_wrenches(const Model& model, const Data& data, Real t,
                       ConstVecRef lambda, std::vector<Vec6>& wrenches) const override;
+
+    const Marker& i() const { return i_; }
+    const Marker& j() const { return j_; }
+    int axis_i() const { return axis_i_; }
+    const TimeFunction& s() const { return s_; }
 
 private:
     Marker i_, j_;
@@ -182,6 +204,11 @@ public:
     void add_wrenches(const Model& model, const Data& data, Real t,
                       ConstVecRef lambda, std::vector<Vec6>& wrenches) const override;
 
+    const Marker& i() const { return i_; }
+    const Marker& j() const { return j_; }
+    const TimeFunction& length() const { return L_; }
+    Real nominal_length() const { return L0_; }
+
 private:
     Marker i_, j_;
     TimeFunction L_;
@@ -203,6 +230,9 @@ public:
     void add_wrenches(const Model& model, const Data& data, Real t,
                       ConstVecRef lambda, std::vector<Vec6>& wrenches) const override;
 
+    const Marker& i() const { return i_; }
+    const Marker& j() const { return j_; }
+
 private:
     Marker i_, j_;
 };
@@ -223,6 +253,9 @@ public:
     void calc(const Model& model, const Data& data, Real t,
               VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
 
+    int body() const { return body_; }
+    const TimeFunction& s() const { return s_; }
+
 private:
     int body_;
     int iv_;
@@ -237,11 +270,11 @@ private:
 /// Several constraints stacked, in order.
 class ConstraintSet final : public ConstraintModel {
 public:
-    explicit ConstraintSet(const char* set_name) : name_(set_name) {}
+    explicit ConstraintSet(std::string set_name) : name_(std::move(set_name)) {}
 
     void add(std::shared_ptr<const ConstraintModel> c);
 
-    const char* name() const override { return name_; }
+    const char* name() const override { return name_.c_str(); }
     std::vector<int> bodies() const override;
     int size() const override { return size_; }
     void calc(const Model& model, const Data& data, Real t,
@@ -252,7 +285,7 @@ public:
     const std::vector<std::shared_ptr<const ConstraintModel>>& parts() const { return parts_; }
 
 private:
-    const char* name_;
+    std::string name_;
     int size_{0};
     std::vector<std::shared_ptr<const ConstraintModel>> parts_;
 };

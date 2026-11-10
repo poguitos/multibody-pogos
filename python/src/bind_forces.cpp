@@ -87,6 +87,11 @@ void bind_forces(py::module_& m)
         .def("slope", &Curve::slope, "x"_a, "df/dx at x.")
         .def("integral", &Curve::integral, "a"_a, "b"_a, "The integral from a to b: a spring's stored energy.")
         .def("is_zero", &Curve::is_zero, "True for the zero function.")
+        .def("is_table", &Curve::is_table, "True for a curve through tabulated points (Curve.table).")
+        .def("table_x", &Curve::table_x, "A table's x values, as given (empty for a line).")
+        .def("table_y", &Curve::table_y, "A table's y values, as given (empty for a line).")
+        .def("line_slope", &Curve::line_slope, "A line's slope (Curve.linear); 0 for a table.")
+        .def("line_offset", &Curve::line_offset, "A line's offset (Curve.linear); 0 for a table.")
         .def("__call__", &Curve::value, "x"_a);
 
     py::class_<LawValue>(m, "LawValue", "A force law's value at a coordinate and rate, with its derivatives.")

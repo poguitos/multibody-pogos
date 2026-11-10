@@ -49,4 +49,5 @@ PYBIND11_MODULE(_mbd, m)
     bind_forces(m);
     bind_simulator(m);
     bind_analysis(m);
+    bind_files(m);
 }

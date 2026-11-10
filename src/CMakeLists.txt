@@ -48,6 +48,7 @@ add_library(multibody_core
     analysis/lap_speed_profile.cpp
     analysis/optimization.cpp
     analysis/recorder.cpp
+    io/model_file.cpp
 )
 
 # Public headers live in the top-level include directory
@@ -63,6 +64,7 @@ target_link_libraries(multibody_core
         spdlog::spdlog_header_only
     PRIVATE
         mbd_warnings
+        nlohmann_json::nlohmann_json   # model files, src/io/model_file.cpp only
 )
 
 # Each source file would otherwise parse Eigen and the kernel headers again,

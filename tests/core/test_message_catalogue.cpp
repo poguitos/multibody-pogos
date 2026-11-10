@@ -122,7 +122,13 @@ TEST_CASE("Messages: every error and warning in the sources carries a code", "[c
             }
             ++sites;
             const std::size_t end = text.find(';', start);
-            if (text.substr(start, end - start).find("MBD-") == std::string::npos) {
+            const std::string statement = text.substr(start, end - start);
+            // A caught error's message rethrown with more said (.what())
+            // keeps its own code; a code a function was given by its callers
+            // (std::string(code)) is theirs, written where they call it and
+            // counted by the test above (task 6.4, src/io/model_file.cpp).
+            if (statement.find("MBD-") == std::string::npos && statement.find(".what()") == std::string::npos
+                && statement.find("std::string(code)") == std::string::npos) {
                 const auto line = 1 + std::count(text.begin(), text.begin() + static_cast<std::ptrdiff_t>(start), '\n');
                 missing.push_back(file.filename().string() + ":" + std::to_string(line));
             }

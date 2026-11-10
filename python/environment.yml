@@ -15,6 +15,9 @@ dependencies:
   - python=3.12.16
   - numpy=2.5.4
   - pytest=9.2.0
+  # Results as tables (task 6.4, D56), added on 10 November 2026.
+  - pandas=3.1.1
+  - pyarrow=26.0.1
   # NumPy with OpenBLAS, not MKL: the MKL build stopped Python with
   # 0xc06d007f in crosscheck/'s environment on this machine.
   - libblas=*=*openblas

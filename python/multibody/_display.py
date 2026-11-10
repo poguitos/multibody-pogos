@@ -140,11 +140,15 @@ def loads_repr(loads):
 
 
 def curve_repr(curve):
-    # A curve's points are not readable from Python yet (task 6.4 adds them,
-    # for files): its value and slope at 0 say what can be said.
+    # The call that makes the curve (its points readable since task 6.4),
+    # every number in full, so that the text reads back as the same curve.
+    if curve.is_table():
+        return f"Curve.table({curve.table_x()!r}, {curve.table_y()!r})"
     if curve.is_zero():
-        return "<Curve: zero>"
-    return f"<Curve: f(0) = {curve.value(0.0):.6g}, f'(0) = {curve.slope(0.0):.6g}>"
+        return "Curve()"
+    if curve.line_offset() == 0.0:
+        return f"Curve.linear({curve.line_slope()!r})"
+    return f"Curve.linear({curve.line_slope()!r}, offset={curve.line_offset()!r})"
 
 
 def install(m):

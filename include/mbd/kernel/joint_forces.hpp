@@ -75,6 +75,7 @@ public:
     Real potential_energy(Real q) const;
 
     const JointCoordinateForceParams& params() const { return params_; }
+    int body() const { return body_; }
 
 private:
     int body_;

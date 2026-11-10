@@ -108,7 +108,14 @@ def test_objects_show_what_they_hold():
     report = mbd.static_equilibrium(sim)
     assert report.converged
     assert f"converged in {report.iterations} iteration" in repr(report)
-    assert repr(mbd.Curve()) == "<Curve: zero>"
+    # A curve shows the call that makes it, its numbers in full (task 6.4).
+    assert repr(mbd.Curve()) == "Curve()"
+    assert repr(mbd.Curve.linear(3.0e4)) == "Curve.linear(30000.0)"
+    assert repr(mbd.Curve.linear(2.0, -0.1)) == "Curve.linear(2.0, offset=-0.1)"
+    table = mbd.Curve.table([-0.1, 0.0, 0.3], [-50.0, 0.0, 0.1 + 0.2])
+    assert repr(table) == "Curve.table([-0.1, 0.0, 0.3], [-50.0, 0.0, 0.30000000000000004])"
+    rebuilt = eval(repr(table), {"Curve": mbd.Curve})
+    assert rebuilt.table_x() == table.table_x() and rebuilt.table_y() == table.table_y()
 
 
 def test_a_mode_shows_its_frequency_and_damping():
