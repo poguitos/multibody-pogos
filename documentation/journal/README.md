@@ -96,3 +96,4 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 10 Nov 2026 | [Phase 6: packaging (pip install -e .)](2026-11-10_phase-6-packaging.md) | 6.2, D53 | `f583c86` to `6522fd7`, then see git log | At the time |
 | 10 Nov 2026 | [Phase 6: the interface tuned with the author](2026-11-10_phase-6-tuning.md) | after 6.2, D54 | see git log | At the time |
 | 10 Nov 2026 | [Phase 6: the author's first install](2026-11-10_phase-6-first-install.md) | after 6.2, D53 (amended) | see git log | At the time |
+| 10 Nov 2026 | [Phase 6: parity tests](2026-11-10_phase-6-parity.md) | 6.3, D55 | see git log | At the time |

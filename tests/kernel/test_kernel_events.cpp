@@ -18,6 +18,8 @@
 #include "mbd/core/core.hpp"
 #include "mbd/kernel/simulator.hpp"
 
+#include "support/parity.hpp"
+
 using namespace mbd;
 using namespace mbd::kernel;
 
@@ -86,6 +88,18 @@ TEST_CASE("Events: a bouncing ball's impact times match the closed form", "[kern
     CHECK(worst < 1e-9);
     CHECK(sim.event_log().size() == 6);
     CHECK(std::abs(sim.time - 3.0) < 1e-12);
+
+    // Plan task 6.3: what its reproduction through Python must match
+    // (python/tests/test_parity.py).
+    using mbd_test::parity;
+    for (const Real t : impacts) parity("impact", t);
+    for (const FiredEvent& fired : sim.event_log()) {
+        parity("event", fired.event);
+        parity("event_time", fired.time);
+    }
+    parity("q", sim.q);
+    parity("v", sim.v);
+    parity("time", sim.time);
 }
 
 TEST_CASE("Events: with Dormand-Prince the impacts are found on the interpolant, at the exact times",

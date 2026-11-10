@@ -3,6 +3,7 @@
 import gc
 import importlib.metadata
 import math
+import types
 
 import numpy as np
 import pytest
@@ -31,6 +32,22 @@ def test_an_installed_package_states_the_modules_version():
     except importlib.metadata.PackageNotFoundError:
         pytest.skip("multibody is not installed with pip")
     assert installed == mbd.__version__
+
+
+def test_a_compiled_module_older_than_the_python_files_is_named():
+    # An editable install after a change to the bindings: the Python files
+    # name a class (here ProjectionInfo, bound for task 6.3) that the module
+    # of the last install lacks. The import says what to do (MBD-P011)
+    # instead of failing on the missing attribute. The reprs are installed
+    # only once every class is found, so the real classes are left as they
+    # were.
+    old = types.SimpleNamespace(**{name: getattr(mbd._mbd, name) for name in dir(mbd._mbd)
+                                   if name != "ProjectionInfo"})
+    with pytest.raises(ImportError) as caught:
+        mbd._install(old)
+    assert str(caught.value).startswith("MBD-P011: ")
+    assert "ProjectionInfo" in str(caught.value) and "install the package again" in str(caught.value)
+    assert repr(mbd.StaticOptions()).startswith("StaticOptions(")
 
 
 def test_an_engine_error_is_an_mbd_error_with_its_code():

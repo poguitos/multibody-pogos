@@ -23,6 +23,8 @@
 #include "mbd/kernel/simulator.hpp"
 #include "mbd/kernel/validate.hpp"
 
+#include "support/parity.hpp"
+
 using namespace mbd;
 using namespace mbd::kernel;
 using Catch::Matchers::ContainsSubstring;
@@ -319,6 +321,12 @@ TEST_CASE("Force library: a limit stop holds a falling slider at m g / k past th
     sim.run(2.0, 1e-3);
     CHECK(std::abs(sim.q(0) - (-0.1 - m * g_accel / k)) < 1e-9);
     CHECK(std::abs(sim.v(0)) < 1e-6);
+
+    // Plan task 6.3: what its reproduction through Python must match
+    // (python/tests/test_parity.py).
+    mbd_test::parity("q", sim.q);
+    mbd_test::parity("v", sim.v);
+    mbd_test::parity("time", sim.time);
 }
 
 TEST_CASE("Force library: joint forces on missing bodies are reported and refused",

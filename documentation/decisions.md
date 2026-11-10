@@ -65,6 +65,7 @@ and the journal entry of the work refers to them by number
 | D52 | The Python interface: pybind11 3, one extension module inside a package, the C++ names, the state as views, errors and warnings with their codes | 9 Nov 2026 | In force, task 6.1 |
 | D53 | The Python package: scikit-build-core, only the module built, a build folder kept between installs, one compiler by default | 10 Nov 2026 | In force, task 6.2; amended 10 Nov 2026 (the build script's own folder) |
 | D54 | The Python interface tuned with the author: the C++ names kept, shorthands for frames and bodies, settings by keyword, objects that show what they hold | 10 Nov 2026 | In force, Phase 6 (plan amended) |
+| D55 | Parity tests: C++ test cases reproduced through Python, their numbers compared bit for bit in the same build | 10 Nov 2026 | In force, task 6.3 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -2188,3 +2189,84 @@ and the journal entry of the work refers to them by number
   `python/src/bind_*.cpp`, `python/multibody/`, `python/tests/test_shorthands.py`,
   `docs/python.md`, `docs/help/messages.md` (P008 to P010),
   `tests/core/test_message_catalogue.cpp`.
+
+## D55. Parity tests: C++ test cases reproduced through Python, their numbers compared bit for bit in the same build
+
+- **Context.** Task 6.3: "Ten C++ tests reproduced through Python. *Done
+  when the numbers are identical.*" The package calls the same compiled
+  library as the C++ tests; what could differ is what the bindings add: a
+  conversion, a default, a step done another way, a callback that sees
+  another state. The Python tests of task 6.1 check the package against
+  closed forms to tolerances, which such a difference can pass.
+- **Decision.**
+  - **Identical means the same double.** The numbers are compared as
+    hexadecimal, so that no tolerance enters and -0.0 differs from 0.0. Both
+    sides run the same machine code of the library on the same inputs, and
+    the code they compile themselves keeps MSVC's default floating point
+    (`/fp:precise`, SSE2: nothing fused or reordered; the project sets no
+    flag), so anything else is a difference to explain.
+  - **The C++ numbers come from the C++ test case itself, run then.**
+    `tests/support/parity.hpp` writes what a case records when
+    `MBD_PARITY_FILE` names a file, each number in hexadecimal floating
+    point; otherwise it does nothing. `python/tests/parity.py` runs the case
+    (it must pass, and run alone), reads the file, keeps the same names from
+    Python and compares. A name's numbers are kept in order, so a case that
+    runs several times (sections, step sizes) compares run by run.
+  - **In the suite's build only.** The C++ test executables and the module
+    are built together, with the same flags; CTest gives the Python tests
+    `MBD_TEST_BIN_DIR`. Against an installed package (CI's package job, an
+    author's environment) the tests are skipped: there are no C++ tests to
+    run, and a Release wheel is not the suite's build (D53).
+  - **Only the engine's numbers.** A case records what the engine computed
+    (states, reports, loads, modes, statistics), not its own arithmetic on
+    them (a speed along a slope, a spring's length), which Python would
+    redo in another order.
+  - **Setups copied expression for expression.** An input one rounding
+    apart moves almost every number after it: Eigen's norm of a short
+    vector is written as the root of the sum of squares in order, a vector
+    over a scalar entry by entry, and a frame from an axis and angle through
+    `Transform3.from_axis_angle`, which builds the quaternion as the C++
+    `Quat(AngleAxisd(...))` does.
+  - **The ten**, one or more per part of the interface: assembly of a
+    four-bar with a held crank; a limit stop; statics and linearisation of a
+    four-bar on a spring; a bouncing ball's events (their function and action
+    in Python); a lag written in Python pushing a mass through the force
+    callback (RK4 and semi-implicit Euler); a pendulum on a distance
+    constraint (projection, energies); a hinge's reaction (loads); a block on
+    an incline (contact with friction, two sections); springs with preloads
+    (nonlinear spring, energies); the bushed pendulum (bushings,
+    Dormand-Prince, generalised-alpha, Radau IIA). 516 numbers.
+  - **What the reproductions needed is bound:** `Simulator.last_projection()`
+    and `ProjectionInfo`. A test whose C++ case needs what is not bound was
+    not chosen: the heavy top (the kernel's algorithms), the driven pendulum
+    and the driven point (the solver's multipliers), the Radau oscillator
+    (a joint force written in C++; `JointForce` cannot be subclassed from
+    Python).
+- **Alternatives.**
+  - Reference numbers stored in the repository: they differ between
+    Windows and Linux in the last digits, as the regression harness's
+    annotations show; they would be refreshed by hand at every change of
+    the engine, and the comparison would be with an old run, not this
+    build's. Rejected.
+  - The Python test checking the C++ test's conclusions to its tolerances:
+    parity of conclusions, not numbers, and the plan asks for identical
+    numbers. Rejected.
+  - A tolerance of a few ulps: it would pass the differences the tests are
+    for, which begin that small and grow along a run. Two frames for the
+    same hinge, one from an axis and angle and one from the rotation matrix,
+    have quaternions one ulp apart in one coefficient; built from the second,
+    the hinge's case moved 48 of its 54 numbers, half of them by 1024 ulps
+    or more. Rejected.
+  - Parsing Catch2's output (`-s`): fragile, and decimal. Rejected.
+- **Consequences.** Ten C++ test cases call `parity()`; their checks are
+  unchanged and the calls do nothing without the variable. `test_parity.py`
+  runs in the suite on the laptop and in CI's Windows job (Linux CI builds
+  without the interface). A change to one of the ten cases, or to its
+  model, is made on both sides. The parity tests took 8 to 15 s in three
+  runs on the laptop (once 218 s, for a cause not found; the journal),
+  most of it the bushed pendulum's reference at tolerance 1e-12, run once
+  in C++ and once from Python (as fast from Python as from C++).
+- **Record.** Journal: Phase 6, parity tests; `tests/support/parity.hpp`,
+  `python/tests/parity.py`, `python/tests/test_parity.py`,
+  `python/CMakeLists.txt`, `python/src/bind_simulator.cpp`,
+  `docs/python.md`.

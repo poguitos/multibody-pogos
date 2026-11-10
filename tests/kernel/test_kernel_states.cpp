@@ -24,6 +24,8 @@
 #include "mbd/kernel/simulator.hpp"
 #include "mbd/kernel/state_element.hpp"
 
+#include "support/parity.hpp"
+
 using namespace mbd;
 using namespace mbd::kernel;
 using Catch::Matchers::ContainsSubstring;
@@ -72,6 +74,12 @@ struct PushedBlock {
         sim.force_callback = [this](Simulator&, Real, VecX& tau_) { tau_(0) += lag.force; };
         sim.run(T, dt);
         if (stats) *stats = sim.integrator_stats();
+        // Plan task 6.3: what the reproduction through Python of the first
+        // test below must match, run after run (python/tests/test_parity.py).
+        mbd_test::parity("q", sim.q);
+        mbd_test::parity("v", sim.v);
+        mbd_test::parity("x", sim.x);
+        mbd_test::parity("evaluations", sim.integrator_stats().evaluations);
         return sim.q(0);
     }
 

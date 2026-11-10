@@ -23,6 +23,8 @@
 #include "mbd/kernel/simulator.hpp"
 #include "mbd/kernel/statics.hpp"
 
+#include "support/parity.hpp"
+
 using namespace mbd;
 using namespace mbd::kernel;
 
@@ -198,14 +200,24 @@ TEST_CASE("Contact: a block on an incline creeps below the friction angle and sl
         const Vec3 n = R * Vec3::UnitZ(), downhill = R * Vec3::UnitX();
         const Real delta0 = m * g_accel * std::cos(th) / (4.0 * k);
         place(sim, block, (0.05 - delta0) * n, R);
+        // Plan task 6.3: what its reproduction through Python must match, in
+        // each section (python/tests/test_parity.py): the start, the block's
+        // velocity at each sample (the speeds are the test's own arithmetic),
+        // the end.
+        mbd_test::parity("q_start", sim.q);
         sim.initialize();
         const int steps = static_cast<int>(std::round(duration / 1e-4));
         const int every = static_cast<int>(std::round(dt_sample / 1e-4));
         speeds.clear();
         for (int i = 1; i <= steps; ++i) {
             sim.step(1e-4);
-            if (i % every == 0) speeds.push_back(sim.states()[static_cast<std::size_t>(block)].v_WB.dot(downhill));
+            if (i % every == 0) {
+                speeds.push_back(sim.states()[static_cast<std::size_t>(block)].v_WB.dot(downhill));
+                mbd_test::parity("v_WB", sim.states()[static_cast<std::size_t>(block)].v_WB);
+            }
         }
+        mbd_test::parity("q", sim.q);
+        mbd_test::parity("v", sim.v);
     };
 
     SECTION("1 degree below: it creeps at the regularisation's speed")

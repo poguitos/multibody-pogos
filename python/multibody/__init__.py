@@ -31,5 +31,19 @@ from ._errors import MbdError, MbdWarning
 from ._mbd import *  # noqa: F401,F403
 from ._mbd import __version__  # noqa: F401
 
-_display.install(_mbd)
-_settings.install(_mbd)
+
+def _install(module):
+    """The reprs and keyword constructors, on the classes of the compiled
+    module. An editable install reads these Python files from the repository
+    but its compiled module from its last install: after a change to the
+    bindings the files may name a class the module lacks."""
+    try:
+        _display.install(module)
+        _settings.install(module)
+    except AttributeError as missing:
+        raise ImportError(f"MBD-P011: multibody's compiled module ({getattr(module, '__file__', '?')}) is older than "
+                          f"its Python files ({missing}); install the package again (docs/python.md, \"After a "
+                          f"change\")") from missing
+
+
+_install(_mbd)

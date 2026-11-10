@@ -32,6 +32,7 @@
 #include "mbd/kernel/simulator.hpp"
 
 #include "kernel/four_bar.hpp"
+#include "support/parity.hpp"
 
 using namespace mbd;
 using namespace mbd::kernel;
@@ -115,6 +116,27 @@ TEST_CASE("Assembly: a four-bar given inconsistent values is assembled and repor
     const VecX f = rnea(model, data, sim.q, sim.v, r.loads.v_dot);
     CHECK(std::abs(sim.v.dot(f)) < 1e-10 * sim.v.norm() * f.norm());
     CHECK(f.norm() > 1.0);   // the loop does carry forces
+
+    // Plan task 6.3: what its reproduction through Python must match
+    // (python/tests/test_parity.py).
+    using mbd_test::parity;
+    parity("q", sim.q);
+    parity("v", sim.v);
+    parity("smallest_correction", r.smallest_correction);
+    parity("projection_iterations", r.projection_iterations);
+    parity("refinement_iterations", r.refinement_iterations);
+    parity("position_residual_given", r.position_residual_given);
+    parity("position_residual", r.position_residual);
+    parity("velocity_residual_given", r.velocity_residual_given);
+    parity("velocity_residual", r.velocity_residual);
+    parity("acceleration_residual", r.acceleration_residual);
+    parity("equations", r.equations);
+    parity("rank", r.rank);
+    parity("degrees_of_freedom", r.degrees_of_freedom);
+    parity("position_hold_rank", r.position_hold_rank);
+    parity("velocity_hold_rank", r.velocity_hold_rank);
+    parity("v_dot", r.loads.v_dot);
+    parity("lambda", r.loads.lambda);
 
     // The report names every coordinate.
     {

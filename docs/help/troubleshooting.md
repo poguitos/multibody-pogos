@@ -119,6 +119,33 @@ from the last install. Install again after a change to the C++ (on the
 author's laptop `scripts\build.ps1 -Install -Python <python.exe>`); only
 what changed compiles. *(Phase 6: packaging.)*
 
+**`import multibody` stops with MBD-P011.** An editable install keeps the
+compiled module of its last install while its Python files follow the
+repository; after a change to the bindings the files name something the old
+module lacks. Install again (`docs/python.md`, "After a change"). *(Phase 6:
+parity tests.)*
+
+**A parity test fails with numbers a few doubles apart.** `test_parity.py`
+compares a C++ test case's numbers with the package's bit for bit. Numbers
+apart by an ulp or two from the first one on mean an input differs: a setup
+not copied expression for expression (a frame from a rotation matrix where
+the C++ built it from an axis and angle, a power where it multiplied, a
+reordered sum), which the failure's first lines show. Apart from some later
+number on: the package did something else from there, such as another
+method, a setting not passed, or a callback reading the state at another
+moment. A count that differs (a name with more numbers on one side) means a
+different sequence of runs. The C++ test executables must be from the same
+build as the module. *(Phase 6: parity tests.)*
+
+**`scripts\build.ps1` stops at once, quoting a line of CMake's such as
+"-- GLOB mismatch!", when its output is captured with `*>`.** In Windows
+PowerShell 5.1 a native program's line on stderr, redirected inside
+PowerShell, becomes an error record, and the script stops at the first
+error. CMake writes that line when a new file appears in a folder it watches
+(a new test). Capture the output outside PowerShell instead: `cmd /c
+"powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Test
+> build.log 2>&1"`. *(Phase 6: parity tests.)*
+
 **`scripts\build.ps1` is refused: "running scripts is disabled on this
 system"** (on a Spanish Windows, "la ejecución de scripts está deshabilitada
 en este sistema"). Windows' default execution policy, Restricted, runs no
@@ -711,3 +738,4 @@ Before building on it (working rule 2):
 | Phase 6: packaging | The suite importing an installed package, an installed package running old C++ (Builds); a bound derived through a Jacobian that loses rank (Numerical traps); the Linux module needing position-independent code (fixed) |
 | Phase 6: the interface tuned | A misspelt setting, now refused (MBD-P010 in the catalogue); the package's example pendulum, which could not swing (corrected) |
 | Phase 6: the author's first install | A script refused by Windows' execution policy; pip and the build script failing in a folder configured by the other's generator (Builds) |
+| Phase 6: parity tests | An editable install older than its Python files (MBD-P011); a parity test's numbers apart; the build script stopped by a redirected stderr line (Builds) |

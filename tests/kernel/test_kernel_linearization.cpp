@@ -36,6 +36,7 @@
 #include "mbd/kernel/statics.hpp"
 
 #include "kernel/four_bar.hpp"
+#include "support/parity.hpp"
 
 using namespace mbd;
 using namespace mbd::kernel;
@@ -150,6 +151,21 @@ TEST_CASE("Linearisation: a four-bar on a spring oscillates at sqrt(V'' / M) alo
     n.cwiseAbs().maxCoeff(&big);
     const VecX n_scaled = n / n(big);
     CHECK((mode.shape - n_scaled.cast<std::complex<Real>>()).norm() < 1e-6);
+
+    // Plan task 6.3: what its reproduction through Python must match
+    // (python/tests/test_parity.py). The equilibrium is where statics left
+    // the simulator and linearize() kept it.
+    using mbd_test::parity;
+    parity("q", sim.q);
+    parity("residual", lm.residual);
+    parity("degrees_of_freedom", lm.degrees_of_freedom);
+    parity("basis", lm.basis);
+    parity("A", lm.A);
+    parity("eigenvalue", mode.eigenvalue);
+    parity("natural_frequency", mode.natural_frequency);
+    parity("damping_ratio", mode.damping_ratio);
+    parity("shape", mode.shape);
+    parity("energy_fraction", mode.energy_fraction);
 }
 
 TEST_CASE("Linearisation: an operating point off the constraints or out of equilibrium is reported",

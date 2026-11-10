@@ -122,6 +122,8 @@ kernel.
 - to the C++ (`include/`, `src/`, `python/src/`): steps 1 to 4 again. Only
   what changed compiles. A second install with nothing changed took 16 s
   (37 s on battery); one after a change to the eight binding files, 161 s.
+  Until then the Python files may name something the old compiled module
+  lacks, and `import multibody` stops with MBD-P011, which says so.
 
 **From PowerShell** instead (VS Code's terminal, for one), the activation is
 not needed; give the interpreter's full path:
@@ -223,6 +225,24 @@ an installed package with `python -m pytest python/tests` from the
 repository's folder; CI's package job does so with Python 3.11 and NumPy 2.0
 on Linux and Python 3.14 with the newest NumPy on Windows.
 
+**Parity with the C++ tests** (task 6.3, D55). `test_parity.py` reproduces
+ten C++ test cases through the package and requires their numbers to be
+identical, bit for bit: 516 numbers from assembly, statics, linearisation,
+events, a state element and a force callback written in Python, constraints,
+loads, contact with friction, nonlinear springs, bushings and five
+integrators (RK4, semi-implicit Euler, Dormand-Prince, generalised-alpha,
+Radau IIA). Each test runs its C++ case with `MBD_PARITY_FILE` set; the case
+writes what it computed through `tests/support/parity.hpp` (each number in
+hexadecimal, so that it reads back exactly), and the test records the same
+names from Python and compares (`python/tests/parity.py`). The C++ cases
+check their numbers against closed forms and independent methods; identical
+numbers carry those checks over to the package. The setups are copied
+expression for expression: an input one rounding apart changes nearly
+every number after it. The tests need the C++ test executables of the same
+build (`MBD_TEST_BIN_DIR`, set by CTest), so they run in the suite, on the
+laptop and in CI's Windows job; against an installed package they are
+skipped.
+
 ## Conventions
 
 **Names.** Classes, functions and members keep their C++ names
@@ -318,7 +338,7 @@ without a word; a tuple refuses the append.
 | The tree | `Model`, `RevoluteJointModel` and the seven other joint models |
 | Constraints | `Marker`, `TimeFunction`, `PointCoincidence`, `Dot1`, `Dot2`, `Distance`, `NoTwist`, `JointDriver`, the closures (`revolute_closure`, ...), `point_on_line`, `point_on_plane` |
 | Force elements | `Curve`, `LinearSpringDamper`, `SpringDamper`, `RotationalSpringDamper`, `Bushing`, `PlaneContact`, `UserForce`, `JointCoordinateForce`, with their parameter structs |
-| The simulator | `System`, `Simulator`, `Integrator`, `StepControl`, `ImplicitControl`, events, the force callback, state elements, the trace |
+| The simulator | `System`, `Simulator`, `Integrator`, `StepControl`, `ImplicitControl`, events, the force callback, state elements, the trace, the last projection onto the constraints (`last_projection()`, a `ProjectionInfo`) |
 | Analyses | `assemble`, `static_equilibrium`, `linearize`, `Kinematics`, `point_height_driver`, `compute_loads`, the energies |
 | Checks and output | `validate`, `describe`, `dump_state`, `Recorder`, `add_drift_channels` |
 
@@ -329,7 +349,11 @@ without a word; a tuple refuses the append.
 - The lap tools.
 - The kernel's `Data` and its algorithms (forward kinematics, inverse
   dynamics, the mass matrix, Jacobians).
-- The constraint solver itself.
+- The constraint solver itself (its multipliers and Jacobian; the
+  constraint forces are in `compute_loads`).
+- Joint forces written in Python: `JointForce` cannot be subclassed; a force
+  on joint coordinates goes through `JointCoordinateForce` or the force
+  callback.
 
 ## Python code that the engine calls
 

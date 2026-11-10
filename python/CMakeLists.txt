@@ -48,6 +48,9 @@ install(TARGETS _mbd LIBRARY DESTINATION multibody COMPONENT python)
 # MBD_TEST_PACKAGE_DIR names the package they must import: a package
 # installed with pip install -e into the same interpreter would be imported
 # first (its finder precedes PYTHONPATH), and python/tests/conftest.py stops.
+# MBD_TEST_BIN_DIR is where the C++ test executables are: the parity tests
+# (task 6.3, D55, test_parity.py) run C++ test cases and compare their numbers
+# with their own; without it (an installed package) they are skipped.
 if (BUILD_TESTING)
     execute_process(
         COMMAND "${Python_EXECUTABLE}" -c "import numpy, pytest"
@@ -62,7 +65,7 @@ if (BUILD_TESTING)
                 COMMAND "${Python_EXECUTABLE}" -B -m pytest -q -p no:cacheprovider "${test_file}"
                 WORKING_DIRECTORY "${MBD_PYTHON_DIR}")
             set_tests_properties("Python: ${test_name}" PROPERTIES
-                ENVIRONMENT "PYTHONPATH=${MBD_PYTHON_DIR};PYTHONNOUSERSITE=1;MBD_TEST_PACKAGE_DIR=${MBD_PYTHON_PACKAGE_DIR}")
+                ENVIRONMENT "PYTHONPATH=${MBD_PYTHON_DIR};PYTHONNOUSERSITE=1;MBD_TEST_PACKAGE_DIR=${MBD_PYTHON_PACKAGE_DIR};MBD_TEST_BIN_DIR=$<TARGET_FILE_DIR:test_kernel>")
         endforeach()
     else()
         message(STATUS "Python tests left out: ${Python_EXECUTABLE} lacks NumPy or pytest "

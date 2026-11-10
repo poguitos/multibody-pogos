@@ -28,6 +28,8 @@
 #include "mbd/kernel/outputs.hpp"
 #include "mbd/kernel/simulator.hpp"
 
+#include "support/parity.hpp"
+
 using namespace mbd;
 using namespace mbd::kernel;
 using Catch::Matchers::ContainsSubstring;
@@ -85,6 +87,12 @@ TEST_CASE("Outputs: a pendulum's hinge reaction is m a - m g, with no moment", "
     for (int k = 0; k < 6; ++k) {
         sim.run(0.137, 1e-3);   // states spread over a swing
         const Loads loads = compute_loads(sim);
+        // Plan task 6.3: what its reproduction through Python must match
+        // (python/tests/test_parity.py).
+        mbd_test::parity("q", sim.q);
+        mbd_test::parity("v", sim.v);
+        mbd_test::parity("v_dot", loads.v_dot);
+        mbd_test::parity("joint_reaction", loads.joint_reaction[1]);
         const Quat R_WJ = sim.data().oMi[1].q * sys.model.X_CJ[1].q;   // joint frame to world
         const Vec6& f = loads.joint_reaction[1];
         worst_force = std::max(worst_force, (R_WJ * Vec3(f.tail<3>()) - pivot_force(sim.q(0), sim.v(0))).norm());
@@ -208,6 +216,18 @@ TEST_CASE("Outputs: energy is conserved with springs and preloads", "[kernel][ou
         worst = std::max(worst, std::abs(energy() - E0));
     }
     CHECK(worst < 1e-9 * std::abs(E0));
+
+    // Plan task 6.3: what its reproduction through Python must match
+    // (python/tests/test_parity.py): the state, and the energies the engine
+    // gives at it. (The spring's length is the test's own arithmetic.)
+    using mbd_test::parity;
+    parity("q", sim.q);
+    parity("v", sim.v);
+    parity("time", sim.time);
+    parity("kinetic_energy", kinetic_energy(sys.model, sim.data()));
+    parity("potential_energy", potential_energy(sys.model, sim.data()));
+    parity("joint_spring_energy", jf->potential_energy(sim.q(0)));
+    parity("p_WB", sim.states()[1].p_WB);
 }
 
 TEST_CASE("Outputs: the recorder samples named channels and writes them", "[kernel][outputs]")

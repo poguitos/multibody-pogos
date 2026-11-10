@@ -35,7 +35,11 @@ in 8.1, 8.4, 9.1, 9.3 to 9.7 and 13.3), then Phase 6 (the Python
 interface): task 6.1, the bindings, is done (D52, `docs/python.md`), and
 6.2, packaging (D53, `pyproject.toml`), and the interface tuned with the
 author (D54: shorthands, settings by keyword, readable objects; the author's
-environment is conda `mbd-try`); 6.3, parity tests, is next. The nightly workflow runs on schedule from `main`.
+environment is conda `mbd-try`), and 6.3, parity tests (D55: ten C++ cases
+reproduced through Python, 516 numbers identical, `python/tests/test_parity.py`);
+6.4, files, is next. After a change to the bindings, reinstall `mbd-try`
+(an editable install whose module is older than its Python files stops with
+MBD-P011). The nightly workflow runs on schedule from `main`.
 
 **Not in the repository:** the textbooks and papers in `documentation/` (git
 ignores PDFs), and local copies of the reviewed sources (on the author's

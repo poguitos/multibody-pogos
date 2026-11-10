@@ -955,3 +955,15 @@ take without question.
   default in place without a word.
 - **What to do:** use a name from the list in the message; `repr()` of the
   class's default object lists them with their defaults.
+
+### MBD-P011
+
+`multibody's compiled module (<file>) is older than its Python files (<what is missing>); install the package again`
+
+- **Means:** `import multibody` found Python files that name a class or
+  function its compiled module `multibody._mbd` does not have. An editable
+  install (`pip install -e`) reads the Python files from the repository but
+  keeps the compiled module of its last install, so after a change to the
+  bindings the two disagree until the next install.
+- **What to do:** install again (`docs/python.md`, "After a change"; on the
+  author's laptop step 4 of the steps there).

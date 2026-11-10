@@ -158,6 +158,8 @@ def install(m):
                                   "jacobians", "state_evaluations"),
         m.ConstraintDrift: record("position", "velocity", "position_residual", "velocity_residual",
                                   "max_position", "max_velocity", "max_position_residual", "max_velocity_residual"),
+        m.ProjectionInfo: record("iterations", "initial_position_residual", "position_residual",
+                                 "initial_velocity_residual", "velocity_residual", "converged"),
         m.Simulator.FiredEvent: record("event", "time"),
         m.Simulator.StepRecord: record("time", "dt", "drift", "velocity_drift", "position_residual",
                                        "velocity_residual", "projection_iterations", "projection_converged",

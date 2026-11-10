@@ -94,6 +94,7 @@
 #include "mbd/kernel/simulator.hpp"
 
 #include "kernel/bushed_pendulum.hpp"
+#include "support/parity.hpp"
 
 using namespace mbd;
 using namespace mbd::kernel;
@@ -858,6 +859,16 @@ TEST_CASE("Radau IIA beats generalised-alpha on the bushed pendulum at tight tol
         sim.step_control.absolute_tolerance = tol;
         sim.run(T, h);
         evaluations = sim.integrator_stats().evaluations;
+        // Plan task 6.3: what its reproduction through Python must match, run
+        // after run (python/tests/test_parity.py).
+        const IntegratorStats& stats = sim.integrator_stats();
+        mbd_test::parity("q", sim.q);
+        mbd_test::parity("v", sim.v);
+        mbd_test::parity("steps", stats.steps);
+        mbd_test::parity("rejected", stats.rejected);
+        mbd_test::parity("evaluations", stats.evaluations);
+        mbd_test::parity("newton_iterations", stats.newton_iterations);
+        mbd_test::parity("jacobians", stats.jacobians);
         return bp.tip(sim);
     };
     long long reference_cost = 0, alpha_cost = -1, radau_cost = 0;

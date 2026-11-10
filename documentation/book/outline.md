@@ -283,7 +283,11 @@ what it does. *J: Phase 6, the interface tuned with the author. D54.*
 Instructions tried by the one they are for: the author's first install
 failed on a build folder two routes shared, and on steps written for the
 assistant's shell rather than the author's. *J: Phase 6, the author's first
-install. D53 (amended).*
+install. D53 (amended).* Parity as identity rather than agreement: why one
+library, the same inputs and IEEE arithmetic without contraction make it
+achievable, how an input one ulp apart breaks it, the C++ test writing its
+numbers for its reproduction to read, and mutations as the evidence that a
+comparison can fail. *J: Phase 6, parity tests. D55.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

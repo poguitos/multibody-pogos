@@ -94,6 +94,16 @@ void bind_simulator(py::module_& m)
         .def_readonly("jacobians", &IntegratorStats::jacobians)
         .def_readonly("state_evaluations", &IntegratorStats::state_evaluations);
 
+    py::class_<ProjectionInfo>(m, "ProjectionInfo", "How a projection onto the constraints went.")
+        .def_readonly("iterations", &ProjectionInfo::iterations, "Gauss-Newton steps taken.")
+        .def_readonly("initial_position_residual", &ProjectionInfo::initial_position_residual,
+                      "|phi| before: the drift it corrected.")
+        .def_readonly("position_residual", &ProjectionInfo::position_residual, "|phi| at the end.")
+        .def_readonly("initial_velocity_residual", &ProjectionInfo::initial_velocity_residual,
+                      "|J v - nu| before the velocities were moved, at the final positions.")
+        .def_readonly("velocity_residual", &ProjectionInfo::velocity_residual, "|J v - nu| at the end.")
+        .def_readonly("converged", &ProjectionInfo::converged);
+
     py::class_<ConstraintDrift>(m, "ConstraintDrift", "How far the state is from the loop constraints.")
         .def_readonly("position", &ConstraintDrift::position)
         .def_readonly("velocity", &ConstraintDrift::velocity)
@@ -168,6 +178,9 @@ void bind_simulator(py::module_& m)
         .def("projection_failures", &Simulator::projection_failures,
              "How many steps' projections onto the constraints did not converge (the first is reported as "
              "MBD-K051).")
+        .def("last_projection", [](const Simulator& s) { return s.last_projection(); },
+             "How the last projection onto the constraints went (a copy): iterations, residuals before and "
+             "after, converged.")
         .def(
             "interpolate",
             [](const Simulator& s, Real t) {

@@ -24,6 +24,7 @@
 #include "mbd/kernel/simulator.hpp"
 
 #include "kernel/kernel_helpers.hpp"
+#include "support/parity.hpp"
 
 using namespace mbd;
 using namespace mbd::kernel;
@@ -136,6 +137,12 @@ TEST_CASE("Kernel simulator: a constrained pendulum keeps its energy and its len
         return kinetic_energy(sys.model, sim.data()) + potential_energy(sys.model, sim.data());
     };
     const Real E0 = energy();
+    // Plan task 6.3: what its reproduction through Python must match, here
+    // and at the end (python/tests/test_parity.py).
+    using mbd_test::parity;
+    parity("q", sim.q);
+    parity("kinetic_energy", kinetic_energy(sys.model, sim.data()));
+    parity("potential_energy", potential_energy(sys.model, sim.data()));
     sim.run(2.0, 1e-3);
     // RK4 truncation and the projections, at 1 ms over 2 s: about 1e-9 J.
     CHECK(std::abs(energy() - E0) < 1e-8);
@@ -143,6 +150,20 @@ TEST_CASE("Kernel simulator: a constrained pendulum keeps its energy and its len
     CHECK(sim.projection_failures() == 0);
     CHECK(sim.last_projection().converged);
     CHECK(std::abs(sim.time - 2.0) < 1e-12);
+
+    parity("q", sim.q);
+    parity("v", sim.v);
+    parity("time", sim.time);
+    parity("kinetic_energy", kinetic_energy(sys.model, sim.data()));
+    parity("potential_energy", potential_energy(sys.model, sim.data()));
+    parity("projection_failures", sim.projection_failures());
+    const ProjectionInfo& last = sim.last_projection();
+    parity("last_projection.iterations", last.iterations);
+    parity("last_projection.initial_position_residual", last.initial_position_residual);
+    parity("last_projection.position_residual", last.position_residual);
+    parity("last_projection.initial_velocity_residual", last.initial_velocity_residual);
+    parity("last_projection.velocity_residual", last.velocity_residual);
+    parity("last_projection.converged", last.converged);
 }
 
 TEST_CASE("Kernel simulator: applied forces and the force callback", "[kernel][simulator]")
