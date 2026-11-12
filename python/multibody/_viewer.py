@@ -15,6 +15,10 @@ The scene is computed apart from the drawing (``_scene``), so that it can be
 checked against the engine without a viewer. rerun-sdk is needed here only.
 """
 
+import os
+import sys
+from pathlib import Path
+
 import numpy as np
 
 from ._errors import MbdError
@@ -189,12 +193,33 @@ def _scene(system, motion, fps=60.0):
 
 # --- Drawing -------------------------------------------------------------------
 
+def _viewer_executable():
+    """The viewer that came with the rerun-sdk package (its rerun_cli), as
+    Rerun's own launcher finds it; None if it is not there. A notebook's
+    kernel started by an editor may lack the environment's folders on its
+    PATH, where Rerun would otherwise look."""
+    try:
+        import rerun_cli
+    except ImportError:
+        return None
+    folder = Path(rerun_cli.__file__).parent
+    bundled = folder / "Rerun.app" / "Contents" / "MacOS" / "Rerun"
+    binary = bundled if sys.platform == "darwin" and bundled.exists() else folder / "rerun"
+    if os.name == "nt":
+        binary = binary.with_suffix(".exe")
+    return str(binary) if binary.is_file() else None
+
+
 def _stream(rr, name, path, spawn, blueprint):
-    recording = rr.RecordingStream("multibody", recording_id=name)
+    # A new recording at every call (Rerun draws a random id), under the
+    # application `name`: a notebook's cell run twice gives two recordings
+    # to choose between, where one id would merge both runs into one, and
+    # each model keeps the layout of its own blueprint (task 6.6, D58).
+    recording = rr.RecordingStream(name)
     if path is not None:
         recording.save(str(path), default_blueprint=blueprint)
     elif spawn:
-        recording.spawn(default_blueprint=blueprint)
+        rr.spawn(executable_path=_viewer_executable(), default_blueprint=blueprint, recording=recording)
     else:
         raise ValueError("give a path to save the recording to, or spawn=True to open the viewer")
     return recording

@@ -464,6 +464,11 @@ the time, play it, or pick a moment in a plot. The motion may be a run
 the frames drawn per second of motion (60 by default; the plots take every
 sample).
 
+Each call makes a recording of its own, listed on the viewer's left under the
+name given, so a notebook cell run twice gives two recordings to choose
+between (task 6.6, D58). The viewer is started from the copy in Rerun's
+package (`rerun_cli`), whatever the process's PATH.
+
 Rerun's viewer sends anonymous usage data (which features are used, not the
 data shown) unless told not to; its first run says so. To turn it off, once:
 `rerun analytics disable` in the environment's prompt.
@@ -479,6 +484,38 @@ Python (`UserForce`) have no points and are not drawn.
 and `replay_hmmwv.py`, the HMMWV of the benchmark over its bump, whose run is
 recorded in C++ (`mbd_hmmwv record <folder>`, `docs/hmmwv.md`) and played
 back from its model file and its CSV.
+
+## Notebooks
+
+(Task 6.6, decision D58.) Three worked examples in `python/notebooks/`, each
+a model built, run and checked against its closed forms, with plots and a
+playback in Rerun:
+
+| Notebook | What it shows |
+|---|---|
+| `pendulum.ipynb` | A large swing: its period from the elliptic integral, the speed and the rod's pull at the bottom, the period against the amplitude, how RK4, semi-implicit Euler and Dormand-Prince keep the energy, the linearised frequency; the run as a table |
+| `four_bar.ipynb` | A closed loop: the angles and rates over a full turn of the crank against the loop's geometry, where the rocker turns back, the rest on a spring, the frequency of small swings from Lagrange's equation; a swing with its energies |
+| `quarter_car.ipynb` | A quarter car on a shaker: the heights at rest, body bounce and wheel hop against the characteristic equation, the transmissibility from 0.5 to 20 Hz, a bump that throws the wheel off the road; the modes animated |
+
+Each check prints a result beside the value it should have and stops the
+notebook when they differ by more than the allowance derived beside it.
+`python/tests/test_notebooks.py` runs every notebook from top to bottom, in
+the suite and in CI: their code cells in order, in one namespace, with the
+plots drawn off screen and the replays written to recordings in a temporary
+folder. So the numbers in the notebooks are tested.
+
+**To run them in VS Code** (with its Jupyter extension): open a notebook,
+choose the kernel at the top right ("Select Kernel", "Python
+Environments", then `mbd-try`), and "Run All". The environment needs
+Jupyter's kernel, matplotlib, pandas and Rerun: `mbd-try` has them all, and
+on another machine `pip install -e ".[notebooks]"` installs them with the
+package. The plots appear below their cells, and each replay opens the Rerun
+viewer in a window of its own.
+
+The notebooks are stored without their outputs. Running one in place writes
+its outputs into the file, so git sees it changed: copy a notebook elsewhere
+to experiment with it, or put it back afterwards with
+`git restore python/notebooks`.
 
 ## A pendulum
 

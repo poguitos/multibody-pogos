@@ -20,6 +20,8 @@ dependencies:
   - pyarrow=26.0.1
   # Viewing (task 6.5, D57), added on 12 November 2026.
   - rerun-sdk=0.43.0
+  # The notebooks' plots (task 6.6, D58), added on 12 November 2026.
+  - matplotlib-base=3.11.2
   # NumPy with OpenBLAS, not MKL: the MKL build stopped Python with
   # 0xc06d007f in crosscheck/'s environment on this machine.
   - libblas=*=*openblas

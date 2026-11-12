@@ -687,6 +687,20 @@ mode of a line of masses); two correct shapes can then differ by a sign or a
 factor. Compare shapes up to a scalar: the part of one unit shape not along
 the other. *(Phase 5: analytic cases.)*
 
+**Semi-implicit Euler's energy grows, though the method is symplectic.** It
+keeps a nearby energy only when its steps are all the same length. An event
+cuts the step at its crossing, and with steps of uneven length the energy
+drifts. On the pendulum of `python/notebooks/` (h = 10 ms, 80 s), the largest
+error in each 20 s stayed at 0.060 J, as the modified energy predicts; with
+an event at each pass through the bottom it grew from 0.073 J in the first
+20 s to 0.120 J in the last. To measure an integrator's energy, run it
+without events. *(Phase 6: examples.)*
+
+**Two runs in one recording in Rerun.** Rerun merges what arrives under one
+recording id. Before task 6.6 the id was the name given to `replay`, so a
+notebook cell run twice showed both runs in one recording; each replay is now
+a recording of its own (fixed, D58).
+
 ## Checking a new joint, constraint or force
 
 Before building on it (working rule 2):
@@ -749,3 +763,4 @@ Before building on it (working rule 2):
 | Phase 6: parity tests | An editable install older than its Python files (MBD-P011); a parity test's numbers apart; the build script stopped by a redirected stderr line (Builds) |
 | Phase 6: files | A model file refused, or a model that cannot be written: each error names its place, area I of the catalogue; pandas or pyarrow missing (MBD-P012) |
 | Phase 6: viewing | Python stopping with 0xc06d007f on linear algebra (NumPy on MKL; Builds); Rerun missing (MBD-P015) |
+| Phase 6: examples | Semi-implicit Euler's energy growing when an event cuts its steps; two runs mixed in one recording (fixed) (Numerical traps) |

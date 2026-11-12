@@ -67,7 +67,8 @@ and the journal entry of the work refers to them by number
 | D54 | The Python interface tuned with the author: the C++ names kept, shorthands for frames and bodies, settings by keyword, objects that show what they hold | 10 Nov 2026 | In force, Phase 6 (plan amended) |
 | D55 | Parity tests: C++ test cases reproduced through Python, their numbers compared bit for bit in the same build | 10 Nov 2026 | In force, task 6.3 |
 | D56 | Model files in the C++ library (JSON, nlohmann/json), exact and strict; results as pandas tables with two column levels | 10 Nov 2026 | In force, task 6.4 |
-| D57 | Viewing with Rerun: a motion played back from the model's own parts, its channels plotted on the same time line | 12 Nov 2026 | In force, task 6.5 |
+| D57 | Viewing with Rerun: a motion played back from the model's own parts, its channels plotted on the same time line | 12 Nov 2026 | In force, task 6.5; amended 12 Nov 2026 by D58 (a recording per replay) |
+| D58 | Notebooks that check themselves: three worked examples, run as tests | 12 Nov 2026 | In force, task 6.6 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -2407,3 +2408,73 @@ and the journal entry of the work refers to them by number
   `python/tests/test_viewer.py`, `python/examples/`, `bench/hmmwv.cpp`
   (`record`), `python/src/bind_forces.cpp`, `python/src/bind_constraints.cpp`,
   `docs/python.md`, `docs/hmmwv.md`, `docs/help/messages.md` (P013, P015).
+
+## D58. Notebooks that check themselves: three worked examples, run as tests
+
+- **Context.** Task 6.6: "Pendulum, four-bar and quarter car as notebooks",
+  with no "done when". The author had seen 6.5's playback and asked to go on
+  in that direction. A notebook is read by people (the author, the book's
+  readers) and goes out of date unseen when the interface changes, unless
+  something runs it. Working rule 1: tests assert values derived
+  independently.
+- **Decision.**
+  - **Done when** (added here): each notebook runs from top to bottom in the
+    suite and in CI, its numbers checked against closed forms.
+  - **Three notebooks in `python/notebooks/`** (nbformat 4.5): the pendulum,
+    the four-bar linkage and the quarter car. Each says what it checks,
+    builds its model with the documented interface, prints each result
+    beside its closed form through a five-line `check`, which stops the
+    notebook past an allowance derived in the text above it, plots with
+    matplotlib, and plays its motion back in Rerun.
+  - **Run as tests without Jupyter** (`python/tests/test_notebooks.py`): the
+    code cells in order, in one namespace, the plots drawn off screen (Agg),
+    `replay` and `plot` redirected to recordings in a temporary folder, and
+    no warning from Rerun on the process's stderr. The notebooks therefore
+    use no magic commands and no IPython display calls; a cell's last
+    expression is shown by Jupyter and ignored by the test.
+  - **Stored without outputs.** The code is the source; outputs go stale with
+    any change and each figure adds 25 to 50 kB to a diff.
+  - **The quarter car is a shaker rig:** the road a plate on a driven
+    prismatic joint (a `TimeFunction` written in Python), the tyre a contact
+    sphere of exponent 1 against it. Linear while it touches, unilateral when
+    it does not, so one model serves the linear checks and the bump that
+    throws the wheel off.
+  - **Viewing amended (D57) for notebooks:** each `replay` and `plot` is a
+    recording of its own (Rerun draws its id) under an application named by
+    `name`. In 6.5 the name was the recording's id under one application,
+    `multibody`: Rerun merges what arrives under one id, so a cell run twice
+    showed both runs in one recording, and a later model would have kept an
+    earlier one's layout (blueprints are kept per application). The viewer
+    is started from the binary in Rerun's package (`rerun_cli`), not looked
+    for on the PATH, which a kernel started by an editor may not share.
+  - **matplotlib** (matplotlib-base 3.11.2) joins the suite's environment;
+    the extra `notebooks` lists pandas, pyarrow, rerun-sdk, matplotlib and
+    ipykernel; CI's Windows job installs matplotlib and the package jobs
+    `.[notebooks]`.
+- **Alternatives.**
+  - Running the notebooks through Jupyter in the tests (nbclient): it would
+    test the kernel too, at the cost of a kernel process and more packages in
+    the suite and CI, for the same code. Used once in the task's session,
+    through `jupyter_client`, to read the outputs and see the figures; not
+    kept.
+  - Storing the notebooks with their outputs, readable on GitHub without
+    running them: stale outputs, large diffs, and a check needed that the
+    outputs match the code. Rejected.
+  - Notebooks kept as scripts with cell markers (jupytext): one more tool for
+    the author, while VS Code opens `.ipynb` directly. Rejected.
+  - Rerun's viewer inside the notebook (`rerun-notebook`): on PyPI only, not
+    on conda-forge, and its rendering in VS Code cannot be checked without a
+    display. Left for the author to ask for.
+  - The tyre as a spring fixed to the road: linear throughout, but it cannot
+    leave the road.
+- **Consequences.** A change to the interface that breaks a notebook fails
+  the suite. Text in a notebook that quotes a number must stay within what
+  its checks hold. Running a notebook in place writes its outputs into the
+  file, which git then shows as changed (`docs/python.md` says how to put it
+  back). The notebooks' test skips without matplotlib, pandas or Rerun, as in
+  CI's wheel job.
+- **Record.** Journal: Phase 6, examples; `python/notebooks/`,
+  `python/tests/test_notebooks.py`, `python/multibody/_viewer.py`,
+  `python/tests/test_viewer.py`, `python/environment.yml`, `pyproject.toml`,
+  `.github/workflows/ci.yml`, `docs/python.md`,
+  `docs/help/troubleshooting.md`.

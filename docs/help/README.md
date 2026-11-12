@@ -23,7 +23,9 @@ task that adds or changes a message, an option or a behaviour updates it.
   models from an oscillator to the sedan, and what each is cheapest for.
 - [The Python interface](../python.md): building it, its conventions (the
   C++ names, the state as views, errors and warnings with their codes),
-  what is bound, and Python code the engine calls back.
+  what is bound, and Python code the engine calls back. Its notebooks
+  (`python/notebooks/`: a pendulum, a four-bar linkage, a quarter car) are
+  worked examples, each checked against closed forms.
 
 ## How-to guides
 

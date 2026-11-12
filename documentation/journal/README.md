@@ -99,3 +99,4 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 10 Nov 2026 | [Phase 6: parity tests](2026-11-10_phase-6-parity.md) | 6.3, D55 | see git log | At the time |
 | 10 Nov 2026 | [Phase 6: files](2026-11-10_phase-6-files.md) | 6.4, D56 | see git log | At the time |
 | 12 Nov 2026 | [Phase 6: viewing](2026-11-12_phase-6-viewing.md) | 6.5, D57 | see git log | At the time |
+| 12 Nov 2026 | [Phase 6: examples](2026-11-12_phase-6-examples.md) | 6.6, D58 | see git log | At the time |

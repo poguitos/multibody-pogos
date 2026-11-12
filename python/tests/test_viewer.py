@@ -6,6 +6,7 @@ Rerun; Rerun's own drawing of them is not tested here."""
 
 import sys
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -149,6 +150,29 @@ def test_the_four_bar_and_a_car_are_written_to_recordings(tmp_path, capfd):
     # read by guessing (a first version left a space unescaped in the
     # closures' and contacts' points); none may be left.
     assert "WARN" not in capfd.readouterr().err
+
+
+def test_every_replay_is_a_recording_of_its_own(tmp_path):
+    # Rerun merges what arrives under one recording id into one recording:
+    # with the id taken from the name (6.5), a notebook cell run twice sent
+    # both runs into one recording in the viewer. Two replays under one name
+    # are now two recordings, under the application of that name (task 6.6).
+    pytest.importorskip("rerun")
+    sim = mbd.Simulator(pendulum())
+    sim.q[0] = 0.5
+    sim.initialize()
+    run = sim.run_recorded(0.1, 1e-2)
+    first = mbd.replay(sim.system, run, name="pendulum", path=tmp_path / "1.rrd")
+    second = mbd.replay(sim.system, run, name="pendulum", path=tmp_path / "2.rrd")
+    assert first.get_recording_id() != second.get_recording_id()
+    assert first.get_application_id() == second.get_application_id() == "pendulum"
+    # The viewer is started from the package's own copy, found where Rerun's
+    # launcher (rerun_cli/__main__.py) looks: the PATH of a notebook's kernel
+    # may not reach the environment's scripts.
+    executable = _viewer._viewer_executable()
+    assert executable is not None
+    import rerun_cli
+    assert Path(executable).parent == Path(rerun_cli.__file__).parent and Path(executable).is_file()
 
 
 def test_viewing_says_what_is_wrong(monkeypatch):

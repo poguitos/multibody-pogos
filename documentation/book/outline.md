@@ -295,6 +295,11 @@ the test sees. *J: Phase 6, files. D56.* Showing a model that has no
 shapes: a body as the box of its inertia, its joints as lines; a viewer
 tested through what it is given to draw; a hidden library in an environment
 found only when new code first used it. *J: Phase 6, viewing. D57.*
+Notebooks that check themselves: worked examples run as tests; a symplectic
+integrator's modified energy as a check, and an event that broke it; a
+quarter car on a shaker, checked linearly by its transmissibility and
+nonlinearly by the momentum of a car in the air. *J: Phase 6, examples.
+D58.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,
