@@ -1071,11 +1071,16 @@ take without question.
 
 ### MBD-P013
 
-`the run has <n> values of <q or v> per sample; the model <m>: it is not this model's run`
+`the run has <n> values of <q or v> per sample; the model <m>: it is not this model's run` /
+`the motion has <n> values of q per sample (...); the model <m>: it is not this model's motion` /
+`the table has no column q[<k>]; a table of one level needs the columns q[0] to q[<n>]`
 
-- **Means:** `dataframe(run, sim)` was given a run recorded from another
-  model than the one its names are to come from.
-- **What to do:** give the simulator (or system, or model) that made the run.
+- **Means:** `dataframe(run, sim)` or `replay(system, motion)` was given a
+  run, a table or arrays from another model than the one given with it, or
+  a table of one level without the columns `q[0]`, `q[1]`, ... that name a
+  model's coordinates.
+- **What to do:** give the model (simulator, system) that made the run; a
+  table written by a C++ program names its columns `q[0]` to `q[n-1]`.
 
 ### MBD-P014
 
@@ -1084,3 +1089,13 @@ take without question.
 - **Means:** `write_results()` or `read_results()` chooses the format by the
   file's ending, and this one is neither.
 - **What to do:** end the name in `.parquet` or `.csv`.
+
+### MBD-P015
+
+`viewing needs Rerun (...)`
+
+- **Means:** `multibody.replay()` or `plot()` was called where Rerun's
+  package, rerun-sdk, is not installed. The rest of the package does not
+  need it.
+- **What to do:** install it (`pip install rerun-sdk`, or the package's
+  extra `pip install -e ".[view]"`; with conda, `conda install rerun-sdk`).

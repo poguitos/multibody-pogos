@@ -17,7 +17,15 @@ build\bench\mbd_hmmwv.exe              # the tables: about 45 minutes, most of i
 build\bench\mbd_hmmwv.exe quick        # without those
 build\bench\mbd_hmmwv.exe modes        # the modes at rest
 build\bench\mbd_hmmwv.exe calibrate    # the springs' free lengths
+build\bench\mbd_hmmwv.exe record <folder> [bushed]   # a run for playback (below)
 ```
+
+**Playback** (task 6.5): `record` runs the joint model (or with `bushed` the
+bushed one) for 5 s with the tyres' events, by Radau IIA at a tolerance of
+1e-6, and writes the model as a model file (`hmmwv.json`, without its tyres,
+which are forces written as code) and the coordinates every 10 ms
+(`hmmwv_run.csv`). `python/examples/replay_hmmwv.py <folder>` plays them back
+in Rerun (`docs/python.md`, "Viewing").
 
 The times are wall-clock times of the stepping alone, from one run pinned
 to one performance core at high priority (D21) on the development laptop

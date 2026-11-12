@@ -19,14 +19,15 @@ jobs:
       # The Python interface is built and tested with Python 3.11 here and
       # 3.12 on the laptop (python/environment.yml), so that two versions are
       # covered (D52). Its tests need NumPy and pytest; those of results as
-      # tables pandas and pyarrow (task 6.4, D56).
+      # tables pandas and pyarrow (task 6.4, D56); those of viewing Rerun
+      # (task 6.5, D57).
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
-      - name: Install NumPy, pytest, pandas and pyarrow
-        run: 'python -m pip install --only-binary=:all: numpy pytest pandas pyarrow'
+      - name: Install NumPy, pytest, pandas, pyarrow and Rerun
+        run: 'python -m pip install --only-binary=:all: numpy pytest pandas pyarrow rerun-sdk'
 
       - name: Configure, build and test
         shell: pwsh
@@ -91,7 +92,7 @@ jobs:
       # Each step through ci_annotate.sh, which turns a failure's error lines
       # and last lines into annotations, readable without logging in.
       - name: Install the package from the checkout
-        run: scripts/ci_annotate.sh "pip install (${{ matrix.os }})" python -m pip install -v -C cmake.define.MBD_COMPILE_JOBS=3 -e ".[results]" "${{ matrix.numpy }}" pytest
+        run: scripts/ci_annotate.sh "pip install (${{ matrix.os }})" python -m pip install -v -C cmake.define.MBD_COMPILE_JOBS=3 -e ".[results,view]" "${{ matrix.numpy }}" pytest
 
       - name: Test the installed package
         run: |

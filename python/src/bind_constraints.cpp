@@ -35,7 +35,9 @@ void bind_constraints(py::module_& m)
         .def_static("constant", &TimeFunction::constant, "value"_a)
         .def("value", &TimeFunction::value, "t"_a, "s(t).")
         .def("rate", &TimeFunction::rate, "t"_a, "ds/dt at t.")
-        .def("acceleration", &TimeFunction::acceleration, "t"_a, "d2s/dt2 at t.");
+        .def("acceleration", &TimeFunction::acceleration, "t"_a, "d2s/dt2 at t.")
+        .def("is_constant", &TimeFunction::is_constant, "True for a constant (made by constant() or by default).")
+        .def("constant_value", &TimeFunction::constant_value, "A constant's value.");
 
     py::classh<ConstraintModel>(m, "ConstraintModel", "A constraint: equations phi(q, t) = 0 between bodies.")
         .def("name", &ConstraintModel::name, "The constraint's kind, in words.")
@@ -47,33 +49,52 @@ void bind_constraints(py::module_& m)
 
     py::classh<PointCoincidence, ConstraintModel>(m, "PointCoincidence",
                                                    "The origins of two markers coincide: 3 equations.")
-        .def(py::init<Marker, Marker>(), "i"_a, "j"_a, "Marker j's origin held on marker i's.");
+        .def(py::init<Marker, Marker>(), "i"_a, "j"_a, "Marker j's origin held on marker i's.")
+        .def("i", &PointCoincidence::i, "Marker i.")
+        .def("j", &PointCoincidence::j, "Marker j.");
     py::classh<Dot1, ConstraintModel>(m, "Dot1",
                                       "Axis axis_i of marker i perpendicular to axis axis_j of marker j "
                                       "(axes 0, 1, 2 for X, Y, Z), or their dot product s(t).")
         .def(py::init<Marker, int, Marker, int, TimeFunction>(), "i"_a, "axis_i"_a, "j"_a, "axis_j"_a,
-             "s"_a = TimeFunction(), "a_i . a_j = s(t), the axes' dot product; s = 0 keeps them perpendicular.");
+             "s"_a = TimeFunction(), "a_i . a_j = s(t), the axes' dot product; s = 0 keeps them perpendicular.")
+        .def("i", &Dot1::i, "Marker i.")
+        .def("axis_i", &Dot1::axis_i, "Marker i's axis (0, 1, 2 for X, Y, Z).")
+        .def("j", &Dot1::j, "Marker j.")
+        .def("axis_j", &Dot1::axis_j, "Marker j's axis.")
+        .def("s", &Dot1::s, "The dot product's prescribed value.");
     py::classh<Dot2, ConstraintModel>(m, "Dot2",
                                       "Marker j's origin at signed distance s(t) (0 by default) from the plane "
                                       "through marker i's origin normal to its axis axis_i.")
         .def(py::init<Marker, int, Marker, TimeFunction>(), "i"_a, "axis_i"_a, "j"_a, "s"_a = TimeFunction(),
-             "a_i . (p_j - p_i) = s(t), with a_i axis axis_i of marker i (0, 1, 2 for X, Y, Z).");
+             "a_i . (p_j - p_i) = s(t), with a_i axis axis_i of marker i (0, 1, 2 for X, Y, Z).")
+        .def("i", &Dot2::i, "Marker i.")
+        .def("axis_i", &Dot2::axis_i, "Marker i's axis (0, 1, 2 for X, Y, Z).")
+        .def("j", &Dot2::j, "Marker j.")
+        .def("s", &Dot2::s, "The prescribed distance from the plane.");
     py::classh<Distance, ConstraintModel>(m, "Distance", "The markers' origins a fixed or prescribed distance apart.")
         .def(py::init<Marker, Marker, Real>(), "i"_a, "j"_a, "length"_a, "A fixed length [m].")
         .def(py::init<Marker, Marker, TimeFunction, Real>(), "i"_a, "j"_a, "length"_a, "nominal_length"_a,
-             "A prescribed length; nominal_length scales the equation.");
+             "A prescribed length; nominal_length scales the equation.")
+        .def("i", &Distance::i, "Marker i.")
+        .def("j", &Distance::j, "Marker j.")
+        .def("length", &Distance::length, "The length, a function of time (a constant for a fixed length).")
+        .def("nominal_length", &Distance::nominal_length, "The length that scales the equation [m].");
     py::classh<NoTwist, ConstraintModel>(m, "NoTwist",
                                          "The markers' relative rotation a pure bend, about an axis across their "
                                          "Z axes: the condition of a constant-velocity joint.")
         .def(py::init<Marker, Marker>(), "i"_a, "j"_a,
-             "x_i . y_j - y_i . x_j = 0, for markers whose Z axes are close to aligned.");
+             "x_i . y_j - y_i . x_j = 0, for markers whose Z axes are close to aligned.")
+        .def("i", &NoTwist::i, "Marker i.")
+        .def("j", &NoTwist::j, "Marker j.");
     py::classh<JointDriver, ConstraintModel>(m, "JointDriver",
                                              "Drives the coordinate of `body`'s joint (one coordinate) along s(t).")
         .def(py::init<const Model&, int, TimeFunction>(), "model"_a, "body"_a, "s"_a,
-             "The coordinate follows s(t); an angle is read on the branch nearest s(t).");
-    // Made by the closures below. Its constructor keeps the C pointer of its
-    // name, which a Python string would not keep alive, so it has none here.
-    py::classh<ConstraintSet, ConstraintModel>(m, "ConstraintSet", "Several constraints as one.");
+             "The coordinate follows s(t); an angle is read on the branch nearest s(t).")
+        .def("body", &JointDriver::body, "The body whose joint it drives.")
+        .def("s", &JointDriver::s, "The coordinate's prescribed value.");
+    // Made by the closures below, or read from a model file (task 6.4).
+    py::classh<ConstraintSet, ConstraintModel>(m, "ConstraintSet", "Several constraints as one.")
+        .def("parts", &ConstraintSet::parts, "The constraints it stacks, in order.");
 
     m.def("point_on_line", &point_on_line, "i"_a, "j"_a, "Marker j's origin on marker i's Z axis (2 equations).");
     m.def("point_on_plane", &point_on_plane, "i"_a, "j"_a,

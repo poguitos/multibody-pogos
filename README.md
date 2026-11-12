@@ -22,7 +22,7 @@ How the project has been developed, and why it is built the way it is, is record
 | `include/mbd/io` | Model files: a model as JSON and back ([docs/model-files.md](docs/model-files.md)) |
 | `tests` | One executable per folder above, `howto` for the how-to guides' examples, and `regression` for results compared with stored references ([its README](tests/regression/README.md)) |
 | `bench` | Built on request: the timings (`mbd_bench`, [performance](docs/performance.md)), the integrators' verification (`mbd_verify`, [the report](docs/integrators.md)) and the HMMWV benchmark (`mbd_hmmwv`, [the report](docs/hmmwv.md)) |
-| `python`, `pyproject.toml` | The Python interface: the package `multibody`, its bindings and its tests; `pip install -e .` installs it ([docs/python.md](docs/python.md)) |
+| `python`, `pyproject.toml` | The Python interface: the package `multibody`, its bindings, its tests and examples (`python/examples/`: playback in Rerun); `pip install -e .` installs it ([docs/python.md](docs/python.md)) |
 | `crosscheck` | Built on request: the comparison with independent codes, Pinocchio and Project Chrono (`mbd_crosscheck` and two Python scripts; [how to run it](crosscheck/README.md)) |
 | `documentation` | The plan, the development record (journal, decisions, book outline), review evidence, reference notes |
 | `docs` | Project documentation |

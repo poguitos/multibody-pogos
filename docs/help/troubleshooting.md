@@ -137,6 +137,14 @@ moment. A count that differs (a name with more numbers on one side) means a
 different sequence of runs. The C++ test executables must be from the same
 build as the module. *(Phase 6: parity tests.)*
 
+**Python stops with "Windows fatal exception: code 0xc06d007f"** in
+`numpy.linalg` (or anything that calls it, such as `multibody.replay`). The
+environment's NumPy uses Intel's MKL, whose build stops Python on this
+laptop at its first linear algebra. Switch it to OpenBLAS:
+`conda install -n <env> "libblas=*=*openblas"`, and make environments with
+that pin (`python/environment.yml` has it; `docs/python.md` gives the
+command). *(Phase 6: viewing.)*
+
 **`scripts\build.ps1` stops at once, quoting a line of CMake's such as
 "-- GLOB mismatch!", when its output is captured with `*>`.** In Windows
 PowerShell 5.1 a native program's line on stderr, redirected inside
@@ -740,3 +748,4 @@ Before building on it (working rule 2):
 | Phase 6: the author's first install | A script refused by Windows' execution policy; pip and the build script failing in a folder configured by the other's generator (Builds) |
 | Phase 6: parity tests | An editable install older than its Python files (MBD-P011); a parity test's numbers apart; the build script stopped by a redirected stderr line (Builds) |
 | Phase 6: files | A model file refused, or a model that cannot be written: each error names its place, area I of the catalogue; pandas or pyarrow missing (MBD-P012) |
+| Phase 6: viewing | Python stopping with 0xc06d007f on linear algebra (NumPy on MKL; Builds); Rerun missing (MBD-P015) |

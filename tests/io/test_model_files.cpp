@@ -41,6 +41,7 @@
 #include "mbd/kernel/simulator.hpp"
 
 #include "kernel/four_bar.hpp"
+#include "kernel/hmmwv.hpp"
 #include "kernel/kernel_helpers.hpp"
 
 using namespace mbd;
@@ -251,6 +252,40 @@ TEST_CASE("Model files: a four-bar on a spring, saved and loaded, runs exactly a
     CHECK(identical(original.q, copy.q));
     CHECK(identical(original.v, copy.v));
     CHECK(original.q(0) != mbd_test::FourBar::configuration(1.2)(0));   // it moved
+}
+
+TEST_CASE("Model files: the HMMWV, its tyres left out, survives a round trip", "[io]")
+{
+    // The car of the benchmark (task 5.4), with joints and with bushings,
+    // which task 6.5 plays back from a file. Its tyres are forces written as
+    // code: refused by name. Without them every part is in the format, and
+    // the car read back writes the same text and has the same accelerations,
+    // bit for bit, at its design position moving forward.
+    for (const bool bushed : {false, true}) {
+        INFO((bushed ? "with bushings" : "with joints"));
+        mbd_test::Hmmwv car(bushed);
+        try {
+            (void)io::model_to_json(car.sys);
+            FAIL("the tyres were written");
+        } catch (const MbdError& e) {
+            CHECK_THAT(std::string(e.what()), StartsWith("MBD-I008: force_elements[") && ContainsSubstring(" tyre')"));
+        }
+        System drawn = car.sys;
+        std::erase_if(drawn.force_elements, [](const std::shared_ptr<ForceElement>& e) {
+            return dynamic_cast<const UserForce*>(e.get()) != nullptr;
+        });
+        CHECK(drawn.force_elements.size() + 4 == car.sys.force_elements.size());
+        const std::string text = io::model_to_json(drawn);
+        System read = io::model_from_json(text);
+        CHECK(io::model_to_json(read) == text);
+        CHECK(read.model.nbodies() == 15);
+
+        Simulator a(drawn), b(read);
+        car.design(a);
+        VecX v = VecX::Zero(a.v.size());
+        v(drawn.model.idx_v[static_cast<std::size_t>(car.chassis)] + 3) = mbd_test::Hmmwv::kSpeed;
+        CHECK(identical(a.acceleration(a.q, v, 0.0), b.acceleration(a.q, v, 0.0)));
+    }
 }
 
 TEST_CASE("Model files: a small model's text is the documented format", "[io]")

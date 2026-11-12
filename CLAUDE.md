@@ -37,8 +37,11 @@ interface): task 6.1, the bindings, is done (D52, `docs/python.md`), and
 author (D54: shorthands, settings by keyword, readable objects; the author's
 environment is conda `mbd-try`), and 6.3, parity tests (D55: ten C++ cases
 reproduced through Python, 516 numbers identical, `python/tests/test_parity.py`),
-and 6.4, files (D56: model files as JSON in the C++ library,
-`docs/model-files.md`; results as pandas tables); 6.5, viewing, is next. After a change to the bindings, reinstall `mbd-try`
+6.4, files (D56: model files as JSON in the C++ library,
+`docs/model-files.md`; results as pandas tables), and 6.5, viewing (D57:
+`multibody.replay` and `plot` in Rerun; `python/examples/`); 6.6, the
+notebooks, is next. Conda environments for the project pin
+`"libblas=*=*openblas"` (MKL's NumPy crashes on this laptop). After a change to the bindings, reinstall `mbd-try`
 (an editable install whose module is older than its Python files stops with
 MBD-P011). The nightly workflow runs on schedule from `main`.
 

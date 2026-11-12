@@ -13,6 +13,8 @@
 //                         build\bench\mbd_hmmwv.exe quick      without the explicit runs on the bushed model
 //                         build\bench\mbd_hmmwv.exe calibrate  the springs' free lengths (kFreeLength)
 //                         build\bench\mbd_hmmwv.exe modes      the modes at rest of both variants
+//                         build\bench\mbd_hmmwv.exe record <folder> [bushed]
+//                                                    a run for playback (python/examples/replay_hmmwv.py)
 //
 // Run it pinned to a performance core at high priority (docs/performance.md)
 // for timings that compare.
@@ -26,6 +28,9 @@
 #include <string>
 #include <vector>
 
+#include "mbd/analysis/recorder.hpp"
+#include "mbd/forces/user_force.hpp"
+#include "mbd/io/model_file.hpp"
 #include "mbd/kernel/linearization.hpp"
 #include "mbd/kernel/simulator.hpp"
 #include "mbd/kernel/statics.hpp"
@@ -298,6 +303,44 @@ int benchmark(bool quick)
     return 0;
 }
 
+// --- A run recorded for playback (plan task 6.5, D57) ----------------------------
+
+/// The joint model's run (or the bushed model's), with the tyres' events, by
+/// Radau IIA at a tolerance of 1e-6, recorded for multibody.replay: the
+/// model as a model file, its tyres left out (forces written as code, which a
+/// file cannot hold and a playback does not need), and the coordinates every
+/// 10 ms as CSV (time, q[0], q[1], ...), which multibody.read_results reads.
+int record(const std::string& folder, bool bushed)
+{
+    Hmmwv car(bushed);
+    Simulator sim(car.sys);
+    (void)car.start(sim, 0.5, true);
+    sim.method = Integrator::RadauIIA;
+    sim.step_control.relative_tolerance = 1e-6;
+    sim.step_control.absolute_tolerance = 1e-6;
+    Recorder recorder;
+    for (Index i = 0; i < sim.q.size(); ++i) {
+        recorder.add("q[" + std::to_string(i) + "]", [&sim, i] { return sim.q(i); });
+    }
+    recorder.sample(sim.time);
+    for (int k = 0; k < kSamples; ++k) {
+        sim.run(kSample, kSample);
+        recorder.sample(sim.time);
+    }
+    System drawn = car.sys;
+    std::erase_if(drawn.force_elements,
+                  [](const std::shared_ptr<ForceElement>& e) { return dynamic_cast<const UserForce*>(e.get()) != nullptr; });
+    const std::string name = bushed ? "hmmwv_bushed" : "hmmwv";
+    io::save_model(drawn, folder + "/" + name + ".json");
+    recorder.write_csv(folder + "/" + name + "_run.csv");
+    std::printf("%s: %zu samples of %lld coordinates to %s/%s_run.csv; the model, without its %zu tyres, to "
+                "%s/%s.json; %lld steps, %zu events\n",
+                name.c_str(), recorder.samples(), static_cast<long long>(sim.q.size()), folder.c_str(), name.c_str(),
+                car.sys.force_elements.size() - drawn.force_elements.size(), folder.c_str(), name.c_str(),
+                sim.integrator_stats().steps, sim.event_log().size());
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -305,5 +348,12 @@ int main(int argc, char** argv)
     const std::string mode = argc > 1 ? argv[1] : "";
     if (mode == "calibrate") return calibrate();
     if (mode == "modes") return modes();
+    if (mode == "record") {
+        if (argc < 3) {
+            std::fprintf(stderr, "usage: mbd_hmmwv record <folder> [bushed]\n");
+            return 2;
+        }
+        return record(argv[2], argc > 3 && std::string(argv[3]) == "bushed");
+    }
     return benchmark(mode == "quick");
 }

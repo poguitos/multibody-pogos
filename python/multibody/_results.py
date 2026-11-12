@@ -31,18 +31,24 @@ def _pandas():
     return pandas
 
 
+def body_labels(model):
+    """Each body's label, index 0 the ground: its name, body<i> without one,
+    and <name>#<i> for a name several bodies share."""
+    names = [model.name[b] or f"body{b}" for b in range(model.nbodies())]
+    shared = {n for n in names[1:] if names[1:].count(n) > 1}
+    return ["ground"] + [f"{n}#{b}" if n in shared else n for b, n in enumerate(names) if b > 0]
+
+
 def coordinate_names(model, kind="q"):
     """The names of a model's coordinates (kind "q") or velocities ("v"), in
     the order of the state vectors; see the module's docstring."""
     if kind not in ("q", "v"):
         raise ValueError("kind is 'q' or 'v'")
-    names = [model.name[b] or f"body{b}" for b in range(model.nbodies())]
-    shared = {n for n in names[1:] if names[1:].count(n) > 1}
+    labels = body_labels(model)
     counts = model.nqs if kind == "q" else model.nvs
     out = []
     for b in range(1, model.nbodies()):
-        label = f"{names[b]}#{b}" if names[b] in shared else names[b]
-        out += [label] if counts[b] == 1 else [f"{label}[{k}]" for k in range(counts[b])]
+        out += [labels[b]] if counts[b] == 1 else [f"{labels[b]}[{k}]" for k in range(counts[b])]
     return out
 
 

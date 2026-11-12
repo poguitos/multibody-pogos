@@ -291,7 +291,10 @@ comparison can fail. *J: Phase 6, parity tests. D55.* A file format that
 is exact and strict: shortest round-trip numbers, every key checked and
 every error placed, what cannot be written refused by name; the round trip
 as its test, and a dropped setting or a one-ulp number as the evidence that
-the test sees. *J: Phase 6, files. D56.*
+the test sees. *J: Phase 6, files. D56.* Showing a model that has no
+shapes: a body as the box of its inertia, its joints as lines; a viewer
+tested through what it is given to draw; a hidden library in an environment
+found only when new code first used it. *J: Phase 6, viewing. D57.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

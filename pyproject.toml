@@ -21,6 +21,8 @@ dependencies = ["numpy>=2.0"]
 test = ["pytest"]
 # Results as tables (task 6.4, D56): pandas, and pyarrow for Parquet.
 results = ["pandas>=2.2.2", "pyarrow>=16"]
+# Viewing (task 6.5, D57): playback and plots in Rerun.
+view = ["rerun-sdk>=0.43"]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"

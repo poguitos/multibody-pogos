@@ -43,9 +43,17 @@ spdlog.
      build's own, so the suite would test the wrong one
      (`python/tests/conftest.py` then stops the suite's Python tests).
 
-   `mbd-try` was made with
-   `conda create -n mbd-try -c conda-forge python=3.14 numpy matplotlib ipykernel pytest`;
-   another environment is made the same way under another name.
+   An environment like `mbd-try` is made with
+
+   ```bat
+   conda create -n mbd-try -c conda-forge python=3.14 numpy matplotlib ipykernel pytest pandas pyarrow rerun-sdk "libblas=*=*openblas"
+   ```
+
+   under any name. The last item matters on this laptop: it gives NumPy the
+   OpenBLAS library, where conda would otherwise choose Intel's MKL, whose
+   build stops Python on its first linear algebra here (Windows error
+   0xc06d007f). `mbd-try` itself was made without it on 10 November and
+   switched to OpenBLAS on 12 November.
 
 3. **Go to the repository's folder:**
 
@@ -343,6 +351,7 @@ without a word; a tuple refuses the append.
 | Analyses | `assemble`, `static_equilibrium`, `linearize`, `Kinematics`, `point_height_driver`, `compute_loads`, the energies |
 | Checks and output | `validate`, `describe`, `dump_state`, `Recorder`, `add_drift_channels` |
 | Files | `save_model`, `load_model`, `model_to_json`, `model_from_json` (`docs/model-files.md`); `dataframe`, `write_results`, `read_results`, `coordinate_names` (results as tables) |
+| Viewing | `replay`, `plot` (Rerun) |
 
 **Not bound yet:**
 - The vehicle layer, with its tyre, aerodynamic and anti-roll-bar elements:
@@ -432,6 +441,40 @@ the names alone.
 Both formats keep every number exactly: Parquet in binary, CSV with each
 number in full and read back with pandas's exact parser. `read_results` also
 reads a `Recorder`'s own CSV (`recorder.write_csv`).
+
+## Viewing: playback and plots
+
+(Task 6.5, decision D57.) A motion played back in three dimensions with its
+channels plotted beside it, in Rerun (rerun.io; `conda install rerun-sdk`,
+or the package's extra `pip install -e ".[view]"`; the rest of the package
+does not need it):
+
+```python
+run = sim.run_recorded(3.0, 1e-3)
+mbd.replay(system, run)                         # opens the Rerun viewer
+mbd.replay(system, run, path="four_bar.rrd")    # or saves the recording; open it with: rerun four_bar.rrd
+mbd.replay(system, run, channels=mbd.dataframe(recorder))   # with a recorder's channels plotted too
+mbd.plot(mbd.dataframe(recorder))               # channels alone
+```
+
+The view is on the left and the plots on the right, on one time line: drag
+the time, play it, or pick a moment in a plot. The motion may be a run
+(`run_recorded`), a table (`dataframe`, `read_results`, or a CSV with columns
+`q[0]`, `q[1]`, ... as a C++ program writes it) or `(time, q)`. `fps=` sets
+the frames drawn per second of motion (60 by default; the plots take every
+sample).
+
+The model has no shapes of its own, so the view draws what it has: each
+body as the uniform box with its mass and moments of inertia (a point for a
+point mass), lines from its centre of mass to its joints, springs, dampers,
+bushings and distances as lines between their points, contact spheres and
+the markers of closures as points. Up is against gravity. Forces written in
+Python (`UserForce`) have no points and are not drawn.
+
+`python/examples/` has two: `replay_four_bar.py`, the four-bar on a spring;
+and `replay_hmmwv.py`, the HMMWV of the benchmark over its bump, whose run is
+recorded in C++ (`mbd_hmmwv record <folder>`, `docs/hmmwv.md`) and played
+back from its model file and its CSV.
 
 ## A pendulum
 

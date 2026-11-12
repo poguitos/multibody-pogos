@@ -67,6 +67,7 @@ and the journal entry of the work refers to them by number
 | D54 | The Python interface tuned with the author: the C++ names kept, shorthands for frames and bodies, settings by keyword, objects that show what they hold | 10 Nov 2026 | In force, Phase 6 (plan amended) |
 | D55 | Parity tests: C++ test cases reproduced through Python, their numbers compared bit for bit in the same build | 10 Nov 2026 | In force, task 6.3 |
 | D56 | Model files in the C++ library (JSON, nlohmann/json), exact and strict; results as pandas tables with two column levels | 10 Nov 2026 | In force, task 6.4 |
+| D57 | Viewing with Rerun: a motion played back from the model's own parts, its channels plotted on the same time line | 12 Nov 2026 | In force, task 6.5 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -2350,3 +2351,59 @@ and the journal entry of the work refers to them by number
   `python/src/bind_files.cpp`, `python/multibody/_results.py`,
   `python/tests/test_files.py`, `docs/model-files.md`, `docs/python.md`,
   `docs/help/messages.md` (area I, P012 to P014).
+
+## D57. Viewing with Rerun: a motion played back from the model's own parts, its channels plotted on the same time line
+
+- **Context.** Task 6.5: "Three-dimensional playback of recorded poses, and
+  channel plots. *Done when the four-bar and the car can be replayed.*" D8
+  named Rerun or Meshcat. The model has no geometry: bodies carry an
+  inertia, joints frames, elements points. The car of the project in the
+  kernel is the HMMWV of task 5.4, whose tyres are forces written in C++
+  against its road (`UserForce`), which no model file can hold (D56).
+- **Decision.**
+  - **Rerun, chosen by the author** (rerun-sdk 0.43.0, the extra `view`):
+    one viewer for the three-dimensional view and the plots, on one time
+    line; recordings saved as `.rrd` files or shown in the viewer. Imported
+    only by `multibody.replay` and `plot`.
+  - **Drawn from the model's own parts:** a body as the uniform box with its
+    mass and moments of inertia, on its principal axes at its centre of
+    mass (a point for a point mass); lines from the centre of mass to its
+    joints; springs, dampers, bushings and distances as lines between their
+    points; contact spheres and closures' markers as points. Up is against
+    gravity. What has no points (a `UserForce`) is not drawn.
+  - **A motion is its coordinates over time**, from a run, a table (two
+    levels, or one with columns `q[0]` ... as a C++ program writes them) or
+    arrays; poses come from the engine's kinematics at each frame drawn
+    (60 per second by default); the plots take every sample, q and v and
+    any channels given.
+  - **The scene is computed apart from the drawing,** so that tests check
+    what is drawn against closed forms, without a viewer; Rerun's own
+    rendering is not tested. The tests also require Rerun to print no
+    warning while recording.
+  - **Read accessors bound** for what is drawn: the elements' anchors,
+    markers and contact geometry, the constraints' markers, axes and time
+    functions, a set's parts, a time function's constant.
+  - **The car is recorded in C++ and replayed from Python:**
+    `mbd_hmmwv record <folder>` writes its model file, the tyres left out,
+    and its coordinates every 10 ms; `python/examples/replay_hmmwv.py` plays
+    them back. The four-bar is built, run and replayed in Python
+    (`python/examples/replay_four_bar.py`).
+- **Alternatives.**
+  - Meshcat: three-dimensional only, plots elsewhere; offered to the author
+    with Rerun; Rerun chosen.
+  - Shapes given by the user (meshes, cylinders): the format has none yet;
+    later, with the vehicle's geometry (Phase 7 and 8).
+  - Rebuilding the HMMWV's tyres in Python to run the car there: a second
+    copy of a model the benchmark owns, to replay what C++ already records.
+    Rejected.
+  - Reading the recording back in the tests: Rerun 0.43's package has no
+    `rerun.dataframe` any more, and no other reader of `.rrd` files was
+    found in it. The scene is tested instead.
+- **Consequences.** The suite's environment and the author's gain rerun-sdk
+  0.43.0; CI installs it. The viewer's tests skip without it. A new kind of
+  element with points is drawn once the viewer knows it; otherwise it is
+  left out of the view, not refused.
+- **Record.** Journal: Phase 6, viewing; `python/multibody/_viewer.py`,
+  `python/tests/test_viewer.py`, `python/examples/`, `bench/hmmwv.cpp`
+  (`record`), `python/src/bind_forces.cpp`, `python/src/bind_constraints.cpp`,
+  `docs/python.md`, `docs/hmmwv.md`, `docs/help/messages.md` (P013, P015).
