@@ -464,6 +464,10 @@ the time, play it, or pick a moment in a plot. The motion may be a run
 the frames drawn per second of motion (60 by default; the plots take every
 sample).
 
+Rerun's viewer sends anonymous usage data (which features are used, not the
+data shown) unless told not to; its first run says so. To turn it off, once:
+`rerun analytics disable` in the environment's prompt.
+
 The model has no shapes of its own, so the view draws what it has: each
 body as the uniform box with its mass and moments of inertia (a point for a
 point mass), lines from its centre of mass to its joints, springs, dampers,
