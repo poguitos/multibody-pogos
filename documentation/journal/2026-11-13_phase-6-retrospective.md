@@ -153,8 +153,11 @@ Chrono, and the package on Linux (Python 3.11, NumPy 2.0) and on Windows
 (Python 3.14), its wheels `multibody-0.7.0`. On the laptop 544 tests pass,
 and in the author's environment, reinstalled at 0.7.0, 72 with the ten
 parity tests skipped. With the author's go-ahead (13 November), `main` was
-fast-forwarded to the commit that adds this section and tagged `v0.7.0`. The
-nightly workflow, which runs on schedule from `main`, starts on this code.
+fast-forwarded to the commit that adds this section (`9419081`) and tagged
+`v0.7.0`. On `main`, CI run 43417536994 passed all seven jobs, and the push
+started the nightly, whose run 43417536924 passed both of its jobs: the long
+suite, and the mutation job, which caught all nine mutations again. The same
+commit on `phase-6` passed CI as well (run 43417487165).
 
 ## For the book
 

@@ -42,10 +42,12 @@ reproduced through Python, 516 numbers identical, `python/tests/test_parity.py`)
 `multibody.replay` and `plot` in Rerun; `python/examples/`), and 6.6,
 examples (D58: three notebooks in `python/notebooks/`, run as tests by
 `python/tests/test_notebooks.py`), and, at the author's request, Rerun's
-viewer inside notebooks (D59). The Phase 6 gate: the retrospective and the
-Python how-to guide (`docs/help/howto/python.md`, its examples in
-`python/tests/test_howto.py`); version 0.7.0, to be merged into `main` and
-tagged `v0.7.0` with the author's go-ahead (given 13 November). Conda environments for the project pin
+viewer inside notebooks (D59). The Phase 6 gate passed on 13 November 2026:
+the retrospective and the Python how-to guide (`docs/help/howto/python.md`,
+its examples in `python/tests/test_howto.py`); `main` fast-forwarded to it
+and tagged `v0.7.0` with the author's go-ahead, CI and the nightly green
+there. Branch `phase-7` starts from `v0.7.0`; Phase 7 (vehicle subsystems)
+is next. Conda environments for the project pin
 `"libblas=*=*openblas"` (MKL's NumPy crashes on this laptop). After a change to the bindings, reinstall `mbd-try`
 (an editable install whose module is older than its Python files stops with
 MBD-P011). The nightly workflow runs on schedule from `main`.
@@ -185,7 +187,7 @@ cloud machine are not comparable with the recorded ones.
    of what the phase delivered (H.6, examples run as tests), CI green.
    **Merging a phase into `main` and tagging needs the author's go-ahead,
    every time.**
-8. **Work on the phase's branch** (now `phase-5`); `main` stays green.
+8. **Work on the phase's branch** (now `phase-7`); `main` stays green.
    Commit and push each finished task; query the GitHub API sparingly.
 9. **Commit messages:** a summary line, then what was done and why, the test
    count, the records touched; written to a file and committed with
