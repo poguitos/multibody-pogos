@@ -4,6 +4,7 @@ forms without a viewer, and recordings written for the four-bar and a car.
 The scene (multibody._viewer._scene) holds every number replay() sends to
 Rerun; Rerun's own drawing of them is not tested here."""
 
+import inspect
 import sys
 import warnings
 from pathlib import Path
@@ -173,6 +174,43 @@ def test_every_replay_is_a_recording_of_its_own(tmp_path):
     assert executable is not None
     import rerun_cli
     assert Path(executable).parent == Path(rerun_cli.__file__).parent and Path(executable).is_file()
+
+
+def test_the_viewer_is_shown_in_a_notebook_and_in_a_window_elsewhere(monkeypatch):
+    # No viewer may open in a test: Rerun's notebook_show and spawn are
+    # replaced by recorders, each binding its call to the real function's
+    # signature, so that a call Rerun would refuse fails here. Which one
+    # replay() chose is then read from the recorders (D59).
+    rr = pytest.importorskip("rerun")
+    shown, spawned = [], []
+    show_signature = inspect.signature(rr.RecordingStream.notebook_show)
+    spawn_signature = inspect.signature(rr.spawn)
+    monkeypatch.setattr(rr.RecordingStream, "notebook_show",
+                        lambda self, **kwargs: shown.append(show_signature.bind(self, **kwargs).arguments))
+    monkeypatch.setattr(rr, "spawn", lambda **kwargs: spawned.append(spawn_signature.bind(**kwargs).arguments))
+    assert _viewer._in_notebook() is False                   # pytest is not a Jupyter kernel
+    sim = mbd.Simulator(pendulum())
+    sim.q[0] = 0.5
+    sim.initialize()
+    run = sim.run_recorded(0.1, 1e-2)
+
+    def replay(**kwargs):
+        shown.clear()
+        spawned.clear()
+        mbd.replay(sim.system, run, name="pendulum", **kwargs)
+        return len(shown), len(spawned)
+
+    assert replay() == (0, 1)                                # outside a notebook: a window
+    monkeypatch.setattr(_viewer, "_in_notebook", lambda: True)
+    monkeypatch.setattr(_viewer, "_notebook_viewer_available", lambda: True)
+    assert replay() == (1, 0)                                # in a notebook: below the cell
+    assert shown[0]["width"] == "auto" and shown[0]["height"] == "auto" and shown[0]["blueprint"] is not None
+    assert replay(spawn=True) == (0, 1)                      # a window when asked for
+    monkeypatch.setattr(_viewer, "_notebook_viewer_available", lambda: False)
+    with pytest.warns(mbd.MbdWarning) as caught:             # without rerun-notebook: a window, and why
+        assert replay() == (0, 1)
+    assert caught[0].message.code == "MBD-P016" and f"rerun-notebook=={rr.__version__}" in str(caught[0].message)
+    assert spawned[0]["executable_path"] == _viewer._viewer_executable()
 
 
 def test_viewing_says_what_is_wrong(monkeypatch):

@@ -41,7 +41,11 @@ reproduced through Python, 516 numbers identical, `python/tests/test_parity.py`)
 `docs/model-files.md`; results as pandas tables), and 6.5, viewing (D57:
 `multibody.replay` and `plot` in Rerun; `python/examples/`), and 6.6,
 examples (D58: three notebooks in `python/notebooks/`, run as tests by
-`python/tests/test_notebooks.py`); the Phase 6 gate is next. Conda environments for the project pin
+`python/tests/test_notebooks.py`), and, at the author's request, Rerun's
+viewer inside notebooks (D59). The Phase 6 gate: the retrospective and the
+Python how-to guide (`docs/help/howto/python.md`, its examples in
+`python/tests/test_howto.py`); version 0.7.0, to be merged into `main` and
+tagged `v0.7.0` with the author's go-ahead (given 13 November). Conda environments for the project pin
 `"libblas=*=*openblas"` (MKL's NumPy crashes on this laptop). After a change to the bindings, reinstall `mbd-try`
 (an editable install whose module is older than its Python files stops with
 MBD-P011). The nightly workflow runs on schedule from `main`.

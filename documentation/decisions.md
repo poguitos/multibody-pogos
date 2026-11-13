@@ -69,6 +69,7 @@ and the journal entry of the work refers to them by number
 | D56 | Model files in the C++ library (JSON, nlohmann/json), exact and strict; results as pandas tables with two column levels | 10 Nov 2026 | In force, task 6.4 |
 | D57 | Viewing with Rerun: a motion played back from the model's own parts, its channels plotted on the same time line | 12 Nov 2026 | In force, task 6.5; amended 12 Nov 2026 by D58 (a recording per replay) |
 | D58 | Notebooks that check themselves: three worked examples, run as tests | 12 Nov 2026 | In force, task 6.6 |
+| D59 | Rerun's viewer inside notebooks, where rerun-notebook is installed | 13 Nov 2026 | In force, Phase 6 (added at the author's request) |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -2478,3 +2479,51 @@ and the journal entry of the work refers to them by number
   `python/tests/test_viewer.py`, `python/environment.yml`, `pyproject.toml`,
   `.github/workflows/ci.yml`, `docs/python.md`,
   `docs/help/troubleshooting.md`.
+
+## D59. Rerun's viewer inside notebooks, where rerun-notebook is installed
+
+- **Context.** After task 6.6 the author asked for the viewer inside the
+  notebook (13 Nov 2026), instead of in a window of its own. Rerun shows its
+  viewer in a notebook through `rerun-notebook` (0.43.0, matching rerun-sdk
+  0.43.0), a package on PyPI only, not on conda-forge. Its widget loads the
+  viewer, a WebAssembly program of 70 MB, from `app.rerun.io` by default,
+  or from a server on the machine with `RERUN_NOTEBOOK_ASSET=serve-local`.
+  `notebook_show` waits up to 10 s for the viewer to report ready; data
+  sent before that is queued.
+- **Decision.**
+  - **Where the viewer appears, with no new parameter:** with `path`, a
+    recording file, as before; else, in a Jupyter kernel (IPython's
+    `ZMQInteractiveShell`: JupyterLab, VS Code's notebooks) with
+    `rerun-notebook` installed, below the cell, as wide as the cell at 16:9
+    (`notebook_show(width="auto", height="auto")`); else, or with
+    `spawn=True`, in a window of its own. In a notebook without
+    `rerun-notebook` the window opens with the warning MBD-P016, which says
+    what to install. Each call in a notebook shows a viewer of its own.
+  - **Rerun's default source for the viewer** (`app.rerun.io`), the one
+    Rerun maintains; `serve-local` documented for offline use.
+  - **`rerun-notebook` in the author's environment** (`mbd-try`, by pip, the
+    documented command tried as written) and in the extra `notebooks` as
+    `rerun-sdk[notebook]`, which pins it to Rerun's version. Not in the
+    suite's environment: the tests replace Rerun's `notebook_show` and
+    `spawn` with recorders bound to their real signatures, and check which
+    was called.
+- **Alternatives.**
+  - A parameter (`notebook=True`): one more choice to make in every call,
+    where the place the code runs already says it. Rejected; `spawn=True`
+    keeps the window.
+  - `serve-local` by default (nothing fetched from Rerun's site): it starts
+    a web server at the package's import, and whether VS Code's notebook
+    view loads from it could not be checked here. Rejected as the default.
+  - `inline` (the viewer sent through the notebook's connection, compressed
+    and encoded: 23.7 MB, measured from the package): heavy, and it may be
+    stored in the notebook. Rejected.
+- **Consequences.** The viewer's drawing in VS Code is not tested; in a
+  kernel without a front end (the session's check), the cell shows the
+  widgets and goes on after the 10 s wait. A notebook needs the network the
+  first time a viewer is shown, unless `serve-local` is set. A notebook
+  stored with its outputs would hold the viewer's widgets; the project's are
+  stored without outputs (D58).
+- **Record.** Journal: Phase 6, the viewer in notebooks;
+  `python/multibody/_viewer.py`, `python/tests/test_viewer.py`,
+  `python/notebooks/` (text), `pyproject.toml`, `docs/python.md`,
+  `docs/help/messages.md` (P016), `docs/help/troubleshooting.md`.

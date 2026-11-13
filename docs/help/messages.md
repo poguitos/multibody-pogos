@@ -1099,3 +1099,16 @@ take without question.
   need it.
 - **What to do:** install it (`pip install rerun-sdk`, or the package's
   extra `pip install -e ".[view]"`; with conda, `conda install rerun-sdk`).
+
+### MBD-P016
+
+`the Rerun viewer opens in a window of its own: showing it in the notebook needs rerun-notebook at Rerun's version (...)` (warning)
+
+- **Means:** `multibody.replay()` or `plot()` was called in a notebook
+  where Rerun's notebook package, `rerun-notebook`, is not installed, so
+  the viewer opened in a window instead of below the cell (D59).
+- **What to do:** install it at the version the message gives, which is
+  Rerun's own (`pip install rerun-notebook==0.43.0` for Rerun 0.43.0; it is
+  on PyPI only, not on conda-forge), or the package's extra `pip install -e
+  ".[notebooks]"`. Then restart the notebook's kernel. To keep the window,
+  pass `spawn=True`, which gives no warning.

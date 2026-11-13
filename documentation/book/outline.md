@@ -299,7 +299,11 @@ Notebooks that check themselves: worked examples run as tests; a symplectic
 integrator's modified energy as a check, and an event that broke it; a
 quarter car on a shaker, checked linearly by its transmissibility and
 nonlinearly by the momentum of a car in the air. *J: Phase 6, examples.
-D58.*
+D58.* A viewer that is a web program inside the notebook: a 70 MB
+download, a network dependency, a wait for readiness. *J: Phase 6, the
+viewer in notebooks. D59.* The phase in review, and its case study: the
+author's first install, instructions that passed in one shell and failed in
+another. *J: Phase 6 retrospective.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

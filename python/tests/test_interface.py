@@ -20,7 +20,7 @@ def one_body_system():
 
 
 def test_the_version_is_the_last_release():
-    assert mbd.__version__ == "0.6.0"
+    assert mbd.__version__ == "0.7.0"
 
 
 def test_an_installed_package_states_the_modules_version():

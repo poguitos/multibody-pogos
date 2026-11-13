@@ -1,9 +1,12 @@
 // The how-to guides quote their examples from the tests that run them (task
 // H.6): every code block marked <!-- example: name --> in docs/help/howto/
 // must equal, line for line once a common indentation is removed, the code
-// between "// [example: name]" and "// [end example]" in tests/howto/, and
-// every example in the tests must be quoted somewhere. A guide whose code is
-// changed without its test, or a test changed without its guide, fails here.
+// between "// [example: name]" and "// [end example]" in tests/howto/, or,
+// for the Python interface (Phase 6), between "# [example: name]" and
+// "# [end example]" in python/tests/test_howto*.py; its block's language
+// (```cpp or ```python) must be its source's. Every example in the tests must
+// be quoted somewhere. A guide whose code is changed without its test, or a
+// test changed without its guide, fails here.
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -65,6 +68,11 @@ std::vector<fs::path> files_in(const fs::path& dir, const std::string& extension
     return files;
 }
 
+struct Example {
+    std::string language;             // of the guide's code block: "cpp" or "python"
+    std::vector<std::string> lines;   // dedented
+};
+
 std::string joined(const std::vector<std::string>& lines)
 {
     std::ostringstream o;
@@ -77,13 +85,13 @@ std::string joined(const std::vector<std::string>& lines)
 TEST_CASE("How-to guides: every example is quoted exactly from the test that runs it", "[howto]")
 {
     const fs::path root = repository_root();
-    const std::regex begin(R"(^\s*// \[example: ([a-z0-9-]+)\]\s*$)");
-    const std::regex end(R"(^\s*// \[end example\]\s*$)");
     const std::regex marker(R"(^<!-- example: ([a-z0-9-]+) -->\s*$)");
 
     // The examples in the tests.
-    std::map<std::string, std::vector<std::string>> examples;
-    for (const fs::path& file : files_in(root / "tests" / "howto", ".cpp")) {
+    std::map<std::string, Example> examples;
+    const auto collect = [&](const fs::path& file, const std::string& comment, const std::string& language) {
+        const std::regex begin(R"(^\s*)" + comment + R"( \[example: ([a-z0-9-]+)\]\s*$)");
+        const std::regex end(R"(^\s*)" + comment + R"( \[end example\]\s*$)");
         const auto lines = read_lines(file);
         for (std::size_t i = 0; i < lines.size(); ++i) {
             std::smatch m;
@@ -94,9 +102,17 @@ TEST_CASE("How-to guides: every example is quoted exactly from the test that run
             INFO(file.filename().string() << ": example " << m[1]);
             REQUIRE(j < lines.size());   // closed
             CHECK(examples.count(m[1]) == 0);   // names unique
-            examples[m[1]] = dedent(body);
+            examples[m[1]] = Example{language, dedent(body)};
         }
+    };
+    for (const fs::path& file : files_in(root / "tests" / "howto", ".cpp")) collect(file, "//", "cpp");
+    std::size_t python_files = 0;
+    for (const fs::path& file : files_in(root / "python" / "tests", ".py")) {
+        if (file.filename().string().rfind("test_howto", 0) != 0) continue;
+        collect(file, "#", "python");
+        ++python_files;
     }
+    REQUIRE(python_files == 1);   // python/tests/test_howto.py
     REQUIRE(!examples.empty());
 
     // The quotations in the guides.
@@ -111,13 +127,13 @@ TEST_CASE("How-to guides: every example is quoted exactly from the test that run
             const std::string name = m[1];
             INFO(page.filename().string() << ", line " << i + 1 << ": example " << name);
             REQUIRE(i + 1 < lines.size());
-            REQUIRE(lines[i + 1] == "```cpp");
+            REQUIRE(examples.count(name) == 1);
+            REQUIRE(lines[i + 1] == "```" + examples.at(name).language);
             std::vector<std::string> block;
             std::size_t j = i + 2;
             while (j < lines.size() && lines[j] != "```") block.push_back(lines[j++]);
             REQUIRE(j < lines.size());
-            REQUIRE(examples.count(name) == 1);
-            const auto expected = examples.at(name);
+            const auto expected = examples.at(name).lines;
             INFO("the test's code:\n" << joined(expected) << "the guide's:\n" << joined(dedent(block)));
             CHECK(dedent(block) == expected);
             quoted.insert(name);

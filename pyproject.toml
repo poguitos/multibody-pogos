@@ -23,9 +23,10 @@ test = ["pytest"]
 results = ["pandas>=2.2.2", "pyarrow>=16"]
 # Viewing (task 6.5, D57): playback and plots in Rerun.
 view = ["rerun-sdk>=0.43"]
-# The notebooks (task 6.6, D58): the two above, matplotlib for their plots, and
-# a Jupyter kernel to run them in.
-notebooks = ["pandas>=2.2.2", "pyarrow>=16", "rerun-sdk>=0.43", "matplotlib>=3.8", "ipykernel>=6"]
+# The notebooks (task 6.6, D58): the two above, with Rerun's viewer for
+# notebooks (D59; rerun-sdk's extra pins rerun-notebook to its own version),
+# matplotlib for their plots, and a Jupyter kernel to run them in.
+notebooks = ["pandas>=2.2.2", "pyarrow>=16", "rerun-sdk[notebook]>=0.43", "matplotlib>=3.8", "ipykernel>=6"]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"

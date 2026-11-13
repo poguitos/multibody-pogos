@@ -17,11 +17,12 @@ checked against the engine without a viewer. rerun-sdk is needed here only.
 
 import os
 import sys
+import warnings
 from pathlib import Path
 
 import numpy as np
 
-from ._errors import MbdError
+from ._errors import MbdError, MbdWarning
 from ._results import body_labels, coordinate_names
 
 
@@ -210,15 +211,42 @@ def _viewer_executable():
     return str(binary) if binary.is_file() else None
 
 
+def _in_notebook():
+    """True in a Jupyter kernel (JupyterLab, VS Code's notebooks): IPython's
+    kernel shell is running. An IPython console in a terminal is not one."""
+    ipython = sys.modules.get("IPython")
+    shell = ipython.get_ipython() if ipython is not None else None
+    return type(shell).__name__ == "ZMQInteractiveShell"
+
+
+def _notebook_viewer_available():
+    """Whether Rerun's viewer can be shown inside a notebook: its package
+    rerun-notebook, which pip installs with rerun-sdk[notebook]."""
+    try:
+        import rerun_notebook  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def _stream(rr, name, path, spawn, blueprint):
     # A new recording at every call (Rerun draws a random id), under the
     # application `name`: a notebook's cell run twice gives two recordings
     # to choose between, where one id would merge both runs into one, and
     # each model keeps the layout of its own blueprint (task 6.6, D58).
     recording = rr.RecordingStream(name)
+    in_notebook = spawn is None and path is None and _in_notebook()
     if path is not None:
         recording.save(str(path), default_blueprint=blueprint)
-    elif spawn:
+    elif in_notebook and _notebook_viewer_available():
+        # The viewer below the cell (D59), filling the cell's width at 16:9;
+        # what is logged from here on streams into it.
+        recording.notebook_show(width="auto", height="auto", blueprint=blueprint)
+    elif spawn is None or spawn:
+        if in_notebook:
+            warnings.warn(MbdWarning(
+                f"MBD-P016: the Rerun viewer opens in a window of its own: showing it in the notebook needs "
+                f"rerun-notebook at Rerun's version (pip install rerun-notebook=={rr.__version__})"), stacklevel=3)
         rr.spawn(executable_path=_viewer_executable(), default_blueprint=blueprint, recording=recording)
     else:
         raise ValueError("give a path to save the recording to, or spawn=True to open the viewer")
@@ -239,8 +267,10 @@ def replay(system, motion, *, name="multibody", fps=60.0, path=None, spawn=None,
 
     `fps` frames per second of motion are drawn (None: every sample); the
     plots take every sample. With `path` the recording is saved to that .rrd
-    file (open it with `rerun <file>`); otherwise, or with spawn=True, the
-    Rerun viewer opens. Returns the recording stream."""
+    file (open it with `rerun <file>`). Otherwise the viewer is shown below
+    the cell in a notebook (with rerun-notebook installed), or opens in a
+    window of its own elsewhere or with spawn=True. Returns the recording
+    stream."""
     rr, rrb = _rerun()
     scene = _scene(system, motion, fps)
     plots = [rrb.TimeSeriesView(origin="plots/q", name="q"), rrb.TimeSeriesView(origin="plots/v", name="v")]
@@ -250,7 +280,7 @@ def replay(system, motion, *, name="multibody", fps=60.0, path=None, spawn=None,
         plots.append(rrb.TimeSeriesView(origin="plots/channels", name="channels"))
     blueprint = rrb.Blueprint(rrb.Horizontal(rrb.Spatial3DView(origin="world", name=name), rrb.Vertical(*plots),
                                              column_shares=[3, 2]))
-    recording = _stream(rr, name, path, path is None if spawn is None else spawn, blueprint)
+    recording = _stream(rr, name, path, spawn, blueprint)
     esc = rr.escape_entity_path_part
     size = scene["size"]
     frame_time = [rr.TimeColumn("time", duration=scene["frame_time"])]
@@ -293,11 +323,12 @@ def replay(system, motion, *, name="multibody", fps=60.0, path=None, spawn=None,
 def plot(table, *, name="multibody", path=None, spawn=None):
     """Plot every column of a table indexed by time (dataframe(run, sim),
     dataframe(recorder), read_results(...)) in Rerun, one time line. Saved
-    to `path` (.rrd) if given, otherwise shown in the viewer. Returns the
-    recording stream."""
+    to `path` (.rrd) if given, otherwise shown as replay() shows it (below
+    the cell in a notebook, else in a window). Returns the recording
+    stream."""
     rr, rrb = _rerun()
     blueprint = rrb.Blueprint(rrb.TimeSeriesView(origin="plots", name=name))
-    recording = _stream(rr, name, path, path is None if spawn is None else spawn, blueprint)
+    recording = _stream(rr, name, path, spawn, blueprint)
     _plot(rr, recording, "plots", table.index.to_numpy(), table.to_numpy(),
           [" ".join(map(str, c)) if isinstance(c, tuple) else c for c in table.columns])
     recording.flush()

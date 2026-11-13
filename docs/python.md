@@ -47,9 +47,13 @@ spdlog.
 
    ```bat
    conda create -n mbd-try -c conda-forge python=3.14 numpy matplotlib ipykernel pytest pandas pyarrow rerun-sdk "libblas=*=*openblas"
+   conda activate mbd-try
+   pip install rerun-notebook==0.43.0
    ```
 
-   under any name. The last item matters on this laptop: it gives NumPy the
+   under any name. The `pip` line adds Rerun's viewer for notebooks, which
+   conda-forge does not have; its version must be Rerun's (0.43.0 here;
+   `python -c "import rerun; print(rerun.__version__)"` says which). The last item matters on this laptop: it gives NumPy the
    OpenBLAS library, where conda would otherwise choose Intel's MKL, whose
    build stops Python on its first linear algebra here (Windows error
    0xc06d007f). `mbd-try` itself was made without it on 10 November and
@@ -93,7 +97,7 @@ spdlog.
    second with the laptop on battery. The last line says
 
    ```
-   Successfully installed multibody-0.6.0
+   Successfully installed multibody-0.7.0
    ```
 
    with NumPy added if the environment lacked it. The prompt then shows
@@ -110,11 +114,13 @@ spdlog.
    repository itself:
 
    ```
-   0.6.0 C:\dev\multibody\python\multibody\__init__.py
+   0.7.0 C:\dev\multibody\python\multibody\__init__.py
    ```
 
-   The second runs the package's tests and ends with `43 passed in 0.37s`
-   (the count grows with the package, the time varies).
+   The second runs the package's tests and ends with `72 passed, 10
+   skipped` (13 s on 13 November 2026; the count grows with the package, the
+   time varies). The ten skipped are the parity tests, which need the
+   suite's own build.
 
 **Using it in VS Code:** choose the environment as the interpreter
 (Ctrl+Shift+P, "Python: Select Interpreter", then `mbd-try`; if it is not
@@ -451,7 +457,7 @@ does not need it):
 
 ```python
 run = sim.run_recorded(3.0, 1e-3)
-mbd.replay(system, run)                         # opens the Rerun viewer
+mbd.replay(system, run)                         # shows the Rerun viewer: below the cell in a notebook, else in a window
 mbd.replay(system, run, path="four_bar.rrd")    # or saves the recording; open it with: rerun four_bar.rrd
 mbd.replay(system, run, channels=mbd.dataframe(recorder))   # with a recorder's channels plotted too
 mbd.plot(mbd.dataframe(recorder))               # channels alone
@@ -464,10 +470,26 @@ the time, play it, or pick a moment in a plot. The motion may be a run
 the frames drawn per second of motion (60 by default; the plots take every
 sample).
 
-Each call makes a recording of its own, listed on the viewer's left under the
-name given, so a notebook cell run twice gives two recordings to choose
-between (task 6.6, D58). The viewer is started from the copy in Rerun's
-package (`rerun_cli`), whatever the process's PATH.
+**Where the viewer appears** (D59). In a notebook, with Rerun's notebook
+package installed (`rerun-notebook`, at Rerun's own version: `pip install
+rerun-notebook==0.43.0`, or `pip install -e ".[notebooks]"`), the viewer is
+shown below the cell, as wide as the cell. Elsewhere, or with `spawn=True`,
+it opens in a window of its own. In a notebook without `rerun-notebook` it
+opens in a window, with a warning that says what to install (MBD-P016).
+
+- The first viewer shown in a notebook is loaded from Rerun's site
+  (`app.rerun.io`; the viewer is a WebAssembly program of 70 MB). The cell
+  waits up to 10 s for it, then goes on, and the data follows when the
+  viewer is ready. Offline,
+  set `RERUN_NOTEBOOK_ASSET=serve-local` before starting the notebook's
+  kernel: the viewer is then served from the installed package, on this
+  machine.
+- Each call makes a recording of its own, under the name given: in a window,
+  the viewer lists them on its left, so a cell run twice gives two
+  recordings to choose between (task 6.6, D58); in a notebook, each call
+  shows a viewer of its own.
+- The window's viewer is started from the copy in Rerun's package
+  (`rerun_cli`), whatever the process's PATH.
 
 Rerun's viewer sends anonymous usage data (which features are used, not the
 data shown) unless told not to; its first run says so. To turn it off, once:
@@ -509,8 +531,10 @@ choose the kernel at the top right ("Select Kernel", "Python
 Environments", then `mbd-try`), and "Run All". The environment needs
 Jupyter's kernel, matplotlib, pandas and Rerun: `mbd-try` has them all, and
 on another machine `pip install -e ".[notebooks]"` installs them with the
-package. The plots appear below their cells, and each replay opens the Rerun
-viewer in a window of its own.
+package. The plots appear below their cells, and so do the replays, each in
+a viewer of its own (with `rerun-notebook` installed: see "Where the viewer
+appears" above). If a viewer stays blank, `spawn=True` in the replay's call
+opens it in a window instead.
 
 The notebooks are stored without their outputs. Running one in place writes
 its outputs into the file, so git sees it changed: copy a notebook elsewhere

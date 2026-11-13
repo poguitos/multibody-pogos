@@ -30,8 +30,9 @@ task that adds or changes a message, an option or a behaviour updates it.
 ## How-to guides
 
 Written at each phase's gate (task H.6); every example in them is compiled
-and run as a test (`tests/howto/`), and a test checks that the guide quotes
-that code exactly:
+and run as a test (`tests/howto/`; the Python examples in
+`python/tests/test_howto.py`), and a test checks that the guide quotes that
+code exactly:
 
 - [Forces and drives](howto/forces-and-drives.md) (Phase 3): springs,
   dampers and stops between two points, a spring, damper, friction or limit
@@ -50,6 +51,10 @@ that code exactly:
   that contradict each other, named; where a mode's energy is; static
   equilibrium of parts that differ greatly in stiffness. What the program's
   results have been checked against: [the validation report](../validation.md).
+- [The Python interface](howto/python.md) (Phase 6): a model built and run
+  from Python, its rest and its modes, a force written in Python, a model
+  and a run saved and read back, a run played back in Rerun, the engine's
+  errors and warnings caught.
 
 By task, with the tests as further worked examples:
 
@@ -81,6 +86,10 @@ By task, with the tests as further worked examples:
 | Check a model before simulating it | [Guide](howto/outputs-contact-events.md#check-a-model-and-find-what-went-wrong); [The kernel, checks](../kernel.md#checks); `validate()` |
 | See a model as text: bodies, joints, constraints, forces, counts | [Guide](howto/outputs-contact-events.md#check-a-model-and-find-what-went-wrong); `describe(system)` or `describe(system, q)`; `tests/kernel/test_kernel_debugging.cpp` |
 | Record how every step went (projection, residuals, rank, energy, events) and find what went wrong | [Guide](howto/outputs-contact-events.md#check-a-model-and-find-what-went-wrong); `Simulator::trace_steps`, `write_trace(path)`, `dump_state(sim)`; [the kernel, checks](../kernel.md#checks); `tests/kernel/test_kernel_debugging.cpp` |
+| Use the engine from Python: build a model, run it, analyse it | [Guide](howto/python.md); [the Python interface](../python.md); the notebooks in `python/notebooks/` (a pendulum, a four-bar, a quarter car) |
+| Write a force in Python | [Guide](howto/python.md#write-a-force-in-python); `UserForce`, `sim.force_callback`; `python/tests/test_analyses.py` |
+| Save a model to a file, or a run as a table (pandas, Parquet, CSV) | [Guide](howto/python.md#save-a-model-and-a-run); [model files](../model-files.md); `python/tests/test_files.py` |
+| Play a run back in three dimensions, or plot channels | [Guide](howto/python.md#play-a-run-back); `mbd.replay`, `mbd.plot`; `python/tests/test_viewer.py` |
 | Build and run a vehicle | `tests/vehicle/test_vehicle_template_dynamic.cpp`, `bench/bench_dynamics.cpp` |
 | Sweep a suspension through bump travel | `tests/test_suspension_kinematics.cpp` |
 | Measure performance | [Performance, task 2.10](../performance.md#task-210-the-sedan-step-5-october-2026) |
