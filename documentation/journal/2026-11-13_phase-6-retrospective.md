@@ -140,7 +140,21 @@ and that an event's cut steps make semi-implicit Euler's energy drift.
 
 ## Gate
 
-GATE_RESULT
+The gate's conditions hold. The retrospective is this entry. The how-to
+guide of the phase is [the Python interface's](../../docs/help/howto/python.md):
+seven examples run and checked against closed forms in
+`python/tests/test_howto.py`, quoted exactly; the page check now reads
+Python examples too, and was shown to fail on a changed quote. On `241c5a9`,
+which carries the phase's work, the guide and the version 0.7.0, CI run
+43414670199 passed all seven jobs: Windows (the suite, eleven Python test
+files with Python 3.11), Linux with the sanitizers, Linux Debug with no
+allocation in a step, the API reference, the comparison with Pinocchio and
+Chrono, and the package on Linux (Python 3.11, NumPy 2.0) and on Windows
+(Python 3.14), its wheels `multibody-0.7.0`. On the laptop 544 tests pass,
+and in the author's environment, reinstalled at 0.7.0, 72 with the ten
+parity tests skipped. With the author's go-ahead (13 November), `main` was
+fast-forwarded to the commit that adds this section and tagged `v0.7.0`. The
+nightly workflow, which runs on schedule from `main`, starts on this code.
 
 ## For the book
 
