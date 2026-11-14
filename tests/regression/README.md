@@ -15,6 +15,8 @@ do that), it says the result has not changed.
 | `hmmwv-bushings` | The same with the paper's bushings, generalised-alpha at 1 ms | Stiff spring-dampers |
 | `sedan-drive` | The double-wishbone sedan at rest, accelerating, steering; RK4 at 1 ms, 2.3 s | Pacejka tyres, drivetrain, steering, state elements |
 | `sedan-modes` | The sedan's static equilibrium and modes at rest | Statics, linearisation |
+| `sports-car-turn` | The double-wishbone sports car with anti-roll bars and downforce, accelerating, turning left; RK4 at 1 ms, 2 s | Linkage corners steered through a rack, anti-roll bars, ride-height-sensitive downforce; each tyre's forces, toe and camber |
+| `hatchback-brake` | The front-wheel-drive McPherson hatchback, accelerating, braking in a right turn; RK4 at 1 ms, 2 s | McPherson struts, front-wheel drive, brakes |
 | `wishbone-sweep` | The sports car's front double wishbone over +-0.05 m | Kinematic analysis |
 | `lap-oval` | The lap speed profile of an oval | The lap model |
 | `hmmwv-joints-5s`, `hmmwv-bushings-5s`, `sedan-slalom` | The paper's 5 s; a 20 s slalom | The long suite (nightly) |
@@ -23,7 +25,8 @@ do that), it says the result has not changed.
 
 Every channel is held to 1e-8 of its largest magnitude in the reference. The
 hidden case `[sensitivity]` measures where that sits (9 November 2026, the
-author's laptop, MSVC):
+author's laptop, MSVC; the sports car and the hatchback, added for task 7.1,
+on 14 November):
 
 | Scenario | 1e-12 change, over the tolerance | 1e-6 change, over the tolerance |
 |---|---|---|
@@ -34,6 +37,8 @@ author's laptop, MSVC):
 | hmmwv-bushings | 2.4e-4 | 60 |
 | sedan-drive | 1.0e-3 | 997 |
 | sedan-modes | 5.1e-3 | 26 |
+| sports-car-turn | 5.0e-4 | 500 |
+| hatchback-brake | 2.3e-4 | 234 |
 | wishbone-sweep | 6.8e-4 | 682 |
 | lap-oval | 4.2e-5 | 41 |
 

@@ -86,6 +86,8 @@ TEST_CASE("Regression: the HMMWV with joints", "[regression]") { check("hmmwv-jo
 TEST_CASE("Regression: the HMMWV with bushings", "[regression]") { check("hmmwv-bushings"); }
 TEST_CASE("Regression: the sedan driving", "[regression]") { check("sedan-drive"); }
 TEST_CASE("Regression: the sedan's modes at rest", "[regression]") { check("sedan-modes"); }
+TEST_CASE("Regression: the sports car turning", "[regression]") { check("sports-car-turn"); }
+TEST_CASE("Regression: the hatchback braking in a turn", "[regression]") { check("hatchback-brake"); }
 TEST_CASE("Regression: a double wishbone's kinematics", "[regression]") { check("wishbone-sweep"); }
 TEST_CASE("Regression: a lap of an oval", "[regression]") { check("lap-oval"); }
 

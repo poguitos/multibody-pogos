@@ -210,6 +210,105 @@ Record sedan_slalom(Real scale)
     return r;
 }
 
+/// The chassis's placement and velocities, then for each corner (FL, FR, RL,
+/// RR) its tyre's vertical and lateral forces at the last evaluation and its
+/// upright's toe and camber, then the state elements' states.
+std::vector<Real> car_channels(const Simulator& sim, const VehicleHandle& vh)
+{
+    const auto& s = sim.states()[static_cast<std::size_t>(vh.chassis_body)];
+    std::vector<Real> c{s.p_WB.x(), s.p_WB.y(), s.p_WB.z(), s.v_WB.x(), s.v_WB.y(), s.v_WB.z(),
+                        s.w_WB.x(), s.w_WB.y(), s.w_WB.z()};
+    for (int k = 0; k < 4; ++k) {
+        const RigidBodyState& w = sim.states()[static_cast<std::size_t>(vh.wheel(k))];
+        c.insert(c.end(), {vh.tire(k)->get_vertical_force(), vh.tire(k)->get_Fy(), extract_toe(w),
+                           extract_camber(w)});
+    }
+    for (Index k = 0; k < sim.x.size(); ++k) c.push_back(sim.x(k));
+    return c;
+}
+
+Record car_record(const Simulator& sim)
+{
+    Record r = sedan_record(sim);
+    std::vector<std::string> names(r.channels.begin(), r.channels.begin() + 9);
+    for (const char* corner : {"FL", "FR", "RL", "RR"}) {
+        for (const char* q : {" Fz [N]", " Fy [N]", " toe [rad]", " camber [rad]"}) {
+            names.push_back(std::string(corner) + q);
+        }
+    }
+    names.insert(names.end(), r.channels.begin() + 9, r.channels.end());
+    r.channels = names;
+    return r;
+}
+
+/// The sports car (double wishbones, the front steered through its rack) with
+/// anti-roll bars and downforce that grows as the ride height falls, its
+/// centre of pressure off the centre line: 0.3 s at rest, 0.7 s at 0.6
+/// throttle, 1 s steering 0.05 rad to the left. RK4 at 1 ms. Added before
+/// task 7.1 moved the vehicle layer to ISO 8855, to compare the two.
+Record sports_car_turn(Real scale)
+{
+    VehicleTemplate tmpl = VehicleTemplate::SportsCar();
+    tmpl.front_axle.k_arb = 30000.0;
+    tmpl.front_axle.c_arb = 500.0;
+    tmpl.rear_axle.k_arb = 15000.0;
+    tmpl.chassis.ClA = 1.2;
+    tmpl.chassis.aero_h_ref = 0.6;
+    tmpl.chassis.aero_dClA_dh = 3.0;
+    tmpl.chassis.aero_cop_offset = Vec3(0.2, 0.05, 0.03);   // forward, up, left (the legacy axes)
+    System sys;
+    VehicleHandle vh = build_vehicle(sys, tmpl);
+    sys.model.gravity *= scale;
+    Simulator sim(sys);
+    sim.method = Integrator::RK4;
+    set_vehicle_equilibrium(sim, vh);
+    vh.install_anti_roll_bars(sys, sim.states());
+    vh.install_aerodynamics(sys);
+    sim.initialize();
+    Drivetrain dt(tmpl.drivetrain);
+    dt.initialize(sim, vh);
+    dt.connect(sim, vh);
+    Record r = car_record(sim);
+    for (int k = 0; k < 40; ++k) {
+        if (k == 6) dt.throttle = 0.6;
+        if (k == 20) vh.set_steering(0.05);
+        sim.run(0.05, 1e-3);
+        r.add(sim.time, car_channels(sim, vh));
+    }
+    return r;
+}
+
+/// The front-wheel-drive hatchback (McPherson struts in front, steered
+/// through their rack; simple corners behind): 0.3 s at rest, 0.7 s at half
+/// throttle, then 1 s braking at 0.3 while steering 0.04 rad to the right.
+/// RK4 at 1 ms. Added before task 7.1, as above.
+Record hatchback_brake(Real scale)
+{
+    const VehicleTemplate tmpl = VehicleTemplate::FWDHatchback();
+    System sys;
+    VehicleHandle vh = build_vehicle(sys, tmpl);
+    sys.model.gravity *= scale;
+    Simulator sim(sys);
+    sim.method = Integrator::RK4;
+    set_vehicle_equilibrium(sim, vh);
+    sim.initialize();
+    Drivetrain dt(tmpl.drivetrain);
+    dt.initialize(sim, vh);
+    dt.connect(sim, vh);
+    Record r = car_record(sim);
+    for (int k = 0; k < 40; ++k) {
+        if (k == 6) dt.throttle = 0.5;
+        if (k == 20) {
+            dt.throttle = 0.0;
+            dt.brake = 0.3;
+            vh.set_steering(-0.04);
+        }
+        sim.run(0.05, 1e-3);
+        r.add(sim.time, car_channels(sim, vh));
+    }
+    return r;
+}
+
 /// The sedan's static equilibrium (to 1e-9) and its modes at rest: every
 /// mode faster than 1e-3 rad/s (the three neutral directions excluded).
 Record sedan_modes(Real scale)
@@ -288,6 +387,14 @@ const std::vector<Scenario>& scenarios()
          "gravity", 1e-8, false, sedan_drive},
         {"sedan-modes", "The sedan's static equilibrium and its modes at rest.", "gravity", 1e-8, false,
          sedan_modes},
+        {"sports-car-turn",
+         "The double-wishbone sports car with anti-roll bars and downforce, accelerating, then turning left; "
+         "RK4 at 1 ms for 2 s.",
+         "gravity", 1e-8, false, sports_car_turn},
+        {"hatchback-brake",
+         "The front-wheel-drive McPherson hatchback, accelerating, then braking in a right turn; RK4 at 1 ms "
+         "for 2 s.",
+         "gravity", 1e-8, false, hatchback_brake},
         {"wishbone-sweep", "The sports car's front double wishbone over +-0.05 m of travel.",
          "the upper ball joint's hardpoint", 1e-8, false, wishbone_sweep},
         {"lap-oval", "The lap speed profile of an oval of 200 m straights and 60 m turns.", "the friction",
