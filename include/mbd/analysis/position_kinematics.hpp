@@ -21,11 +21,12 @@ namespace mbd {
 // Geometric extraction from wheel body pose
 // ============================================================================
 
-/// Extract camber angle from a wheel body state.
+/// Extract camber angle from a wheel body state (ISO 8855 axes).
 ///
-/// Camber: inclination of the wheel spin axis (body Y) from vertical (world Y),
-/// measured in the frontal plane (YZ).
-///   Positive = top of wheel tilts toward +Z (outward for left-side wheel).
+/// Camber: inclination of the wheel's vertical axis (body Z) from vertical
+/// (world Z), measured in the frontal plane (YZ).
+///   Positive = top of wheel tilts toward +Y, to the left (outward for a
+///   left-side wheel, inward for a right-side one).
 ///   Zero = wheel perfectly vertical.
 ///
 /// \param state  The wheel body's state (after FK).
@@ -34,8 +35,9 @@ Real extract_camber(const RigidBodyState& state);
 /// Extract toe angle from a wheel body state.
 ///
 /// Toe: yaw of the wheel forward direction (body X) relative to world X,
-/// measured in the ground plane (XZ).
-///   Positive = wheel points toward +Z.
+/// measured in the ground plane (XY).
+///   Positive = wheel points toward +Y, to the left (counter-clockwise from
+///   above, as a steering angle).
 ///   For a left wheel: positive toe = toe-out.
 ///   For a right wheel: positive toe = toe-in.
 ///
@@ -51,7 +53,7 @@ struct KinematicSweepPoint {
     Real bump{0.0};     ///< Vertical travel [m], positive = compression (wheel up)
     Real camber{0.0};   ///< [rad]
     Real toe{0.0};      ///< [rad]
-    Real wheel_y{0.0};  ///< Wheel center height [m]
+    Real wheel_height{0.0};  ///< Wheel center height (world Z) [m]
     bool converged{false};
 };
 

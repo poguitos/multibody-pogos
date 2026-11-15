@@ -102,3 +102,4 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 12 Nov 2026 | [Phase 6: examples](2026-11-12_phase-6-examples.md) | 6.6, D58 | see git log | At the time |
 | 13 Nov 2026 | [Phase 6: Rerun's viewer inside notebooks](2026-11-13_phase-6-notebook-viewer.md) | Phase 6 gate, D59 | see git log | At the time |
 | 13 Nov 2026 | [Phase 6 retrospective](2026-11-13_phase-6-retrospective.md) | Phase 6 gate; H.6 for Phase 6 | see git log | At the time |
+| 15 Nov 2026 | [Phase 7: the vehicle layer in ISO 8855 axes](2026-11-15_phase-7-axes.md) | 7.1, F11, D60 | `d9f9466`, then see git log | At the time |

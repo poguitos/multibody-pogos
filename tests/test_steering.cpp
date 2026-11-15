@@ -166,15 +166,15 @@ TEST_CASE("Steering: vehicle turns left with positive steering angle",
     sim.run(0.5, 0.001);
 
     vm.set_front_steering(delta_steer);
-    const Real z_before = sim.states()[vm.chassis_body].p_WB.z();
+    const Real y_before = sim.states()[vm.chassis_body].p_WB.y();
     sim.run(3.0, 0.001);
-    const Real z_after = sim.states()[vm.chassis_body].p_WB.z();
+    const Real y_after = sim.states()[vm.chassis_body].p_WB.y();
 
-    // Vehicle should have moved LEFT (positive Z)
-    REQUIRE(z_after - z_before > 0.05);
+    // Vehicle should have moved LEFT (positive Y)
+    REQUIRE(y_after - y_before > 0.05);
 
     // Vehicle should still be near ground
-    REQUIRE_THAT(sim.states()[vm.chassis_body].p_WB.y(),
+    REQUIRE_THAT(sim.states()[vm.chassis_body].p_WB.z(),
                  WithinAbs(params.chassis_height_eq(), 0.05));
 }
 
@@ -208,12 +208,12 @@ TEST_CASE("Steering: vehicle turns right with negative steering angle",
     sim.run(0.5, 0.001);
 
     vm.set_front_steering(delta_steer);
-    const Real z_before = sim.states()[vm.chassis_body].p_WB.z();
+    const Real y_before = sim.states()[vm.chassis_body].p_WB.y();
     sim.run(3.0, 0.001);
-    const Real z_after = sim.states()[vm.chassis_body].p_WB.z();
+    const Real y_after = sim.states()[vm.chassis_body].p_WB.y();
 
-    // Vehicle should have moved RIGHT (negative Z)
-    REQUIRE(z_after - z_before < -0.05);
+    // Vehicle should have moved RIGHT (negative Y)
+    REQUIRE(y_after - y_before < -0.05);
 }
 
 // ============================================================================
@@ -252,11 +252,11 @@ TEST_CASE("Steering: zero steering produces straight-line motion",
     REQUIRE(sim.states()[vm.chassis_body].p_WB.x() > 10.0);
 
     // No lateral displacement
-    REQUIRE_THAT(sim.states()[vm.chassis_body].p_WB.z(), WithinAbs(0.0, 0.02));
+    REQUIRE_THAT(sim.states()[vm.chassis_body].p_WB.y(), WithinAbs(0.0, 0.02));
 
     // No yaw
     const Vec3 fwd_W = sim.states()[vm.chassis_body].q_WB * Vec3::UnitX();
-    REQUIRE_THAT(fwd_W.z(), WithinAbs(0.0, 0.005));
+    REQUIRE_THAT(fwd_W.y(), WithinAbs(0.0, 0.005));
 }
 
 // ============================================================================
@@ -301,7 +301,7 @@ TEST_CASE("Steering: low-speed turn radius approximately matches kinematic predi
     const Real R_kinematic = L / std::tan(delta);
 
     // Measure actual turn radius from yaw rate
-    const Real omega_yaw = sim.states()[vm.chassis_body].w_WB.y();
+    const Real omega_yaw = sim.states()[vm.chassis_body].w_WB.z();   // about the vertical, ISO Z
     const Vec3 fwd_W = sim.states()[vm.chassis_body].q_WB * Vec3::UnitX();
     const Real V_actual = sim.states()[vm.chassis_body].v_WB.dot(fwd_W);
 

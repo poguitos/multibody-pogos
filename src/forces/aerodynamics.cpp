@@ -15,9 +15,9 @@ void AerodynamicForce::apply(const std::vector<RigidBodyState>& states,
 {
     const auto& chassis = states[chassis_idx];
 
-    // Horizontal velocity of chassis CG (zero out vertical component)
-    Vec3 v_horiz = chassis.v_WB;
-    v_horiz.y() = 0.0;
+    // Velocity of chassis CG along the ground (its normal component removed)
+    const Vec3& n = params.ground_normal_W;
+    const Vec3 v_horiz = chassis.v_WB - n.dot(chassis.v_WB) * n;
     const Real V = v_horiz.norm();
 
     if (V < Real(1e-6)) return; // No aero at zero speed
@@ -32,14 +32,14 @@ void AerodynamicForce::apply(const std::vector<RigidBodyState>& states,
 
     // --- Downforce ---
     // Effective ClA based on ride height
-    const Real h = chassis.p_WB.y();
+    const Real h = n.dot(chassis.p_WB);
     Real ClA_eff = params.ClA;
     if (params.dClA_dh != Real(0.0) && h < params.h_ref) {
         ClA_eff += params.dClA_dh * (params.h_ref - h);
     }
     ClA_eff = std::max(ClA_eff, Real(0.0));
 
-    const Vec3 F_lift = Vec3(0.0, -q_dyn * ClA_eff, 0.0); // -Y direction
+    const Vec3 F_lift = -q_dyn * ClA_eff * n; // down, against the normal
 
     // --- Total force at CoP ---
     const Vec3 F_total = F_drag + F_lift;

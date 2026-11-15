@@ -2,9 +2,10 @@
 
 // Anti-roll bar (ARB): torsion spring coupling two wheels on an axle.
 //
-// Measures vertical displacement (in chassis frame) of each wheel center
-// from reference, and applies restoring forces proportional to the
-// difference. Opposes roll without affecting symmetric bounce.
+// Measures vertical displacement (along the chassis's Z axis, up in ISO 8855
+// vehicle axes) of each wheel center from reference, and applies restoring
+// forces proportional to the difference. Opposes roll without affecting
+// symmetric bounce.
 
 #include "mbd/core/core.hpp"
 #include "mbd/forces/force_element.hpp"
@@ -24,11 +25,11 @@ public:
     /// Roll damping [Ns/m] per unit travel difference velocity.
     Real c_arb{0.0};
 
-    /// Reference Y coordinate of left wheel in chassis frame.
+    /// Reference Z coordinate (height) of left wheel in chassis frame.
     /// Usually set automatically from initial configuration.
     Real z_L_ref{0.0};
 
-    /// Reference Y coordinate of right wheel in chassis frame.
+    /// Reference Z coordinate (height) of right wheel in chassis frame.
     Real z_R_ref{0.0};
 
     AntiRollBar(BodyIndex chassis,

@@ -196,7 +196,7 @@ TEST_CASE("DWB steering: the rack's toe matches its calibration on a pinned chas
         "chassis");
     auto rack = std::make_shared<SteeringRack>();
     const BodyIndex rack_body = detail::add_steering_rack(pinned, chassis, rack, "rack");
-    const Vec3 wheel_center(tmpl.front_axle_x, 0.0, tmpl.front_axle.half_track);
+    const Vec3 wheel_center(tmpl.front_axle_x, tmpl.front_axle.half_track, 0.0);
     const auto p = detail::make_dwb_params_for_corner(wheel_center, tmpl.front_axle.dwb, false,
                                                       tmpl.front_axle.arm_mass,
                                                       tmpl.front_axle.upright_mass);

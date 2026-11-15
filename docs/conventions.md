@@ -61,27 +61,29 @@ Spatial vectors are ordered `[angular; linear]` everywhere (decision D1).
 
 ## World axes and vehicle axes
 
-**Decided on 2 October 2026: ISO 8855.**
+**ISO 8855** (decided on 2 October 2026, D3; the vehicle layer moved to it by task 7.1, D60).
 
-| | ISO 8855 (target) | Code today |
-|---|---|---|
-| X | forward | forward |
-| Y | left | up |
-| Z | up | labelled "left" |
-| Gravity | along −Z | along −Y |
+| | World and vehicle axes |
+|---|---|
+| X | forward |
+| Y | left |
+| Z | up |
+| Gravity | along −Z |
 
-With X forward and Y up, a right-handed frame has +Z pointing to the right of the vehicle. The present code calls +Z "left", so it is a mirror image of the physical car: internally consistent, but wrong the moment real hardpoints, track data or CFD results are imported.
+The core (joints, constraints, dynamics, integration) assumes no axes: it takes gravity as a vector, `(0, 0, −9.81)` by default. The vehicle layer's axes are decided in one place, `mbd/vehicle/axes.hpp`: the builders set gravity from `iso_gravity()`, and give the elements that need the ground's normal (the tyres, the aerodynamics) `ground_up(gravity)`, the unit vector against gravity. No element assumes a world axis is up. The vehicle's own up is its chassis's Z axis (the anti-roll bar measures wheel travel along it).
 
-Until task 7.1 of the master plan is done, the vehicle layer (tyre, aerodynamics, anti-roll bar, vehicle builders, equilibrium, and their tests) still uses the legacy frame, and "up is world Y" is written into those files. The core (joints, constraints, dynamics, integration) assumes nothing: it takes gravity as a vector.
+Hardpoints are given for a left corner (Y outboard); the right side mirrors Y.
 
-Signs in the ISO 8855 frame, which the migration will establish:
+Before task 7.1 the vehicle layer used X forward, Y up and called +Z "left", which with Y up is geometrically the right: the mirror image of the car its labels described. The move kept every label (left stays left) and so changed no result read through them; the comparison is in the journal (Phase 7, axes).
+
+Signs in the ISO 8855 frame, as the code uses them:
 
 - Steering angle, yaw angle and yaw rate are positive counter-clockwise seen from above, that is, for a left turn.
 - Lateral acceleration is positive to the left.
 - Roll is positive when the right side goes down. Pitch is positive nose down.
 - The wheel frame has X along the intersection of the wheel plane with the road, Z along the road normal, Y to the left.
 - Longitudinal slip is positive under traction. The slip angle is defined as `alpha = -atan(v_y / |v_x|)`, with `v_y` the lateral velocity of the contact point, so that a positive slip angle produces a positive (leftward) lateral force. This is Pacejka's sign convention, not the ISO 8855 one, and matches the tyre model.
-- Camber is positive when the top of the wheel leans outward from the car.
+- Camber is positive when the top of the wheel leans outward from the car. `extract_camber` and `extract_toe` return the angle toward +Y (the left) whatever the side: for a right wheel, ISO camber is the negative of `extract_camber`, and positive toe is toe-in.
 
 ## Naming in code
 
@@ -95,7 +97,7 @@ Signs in the ISO 8855 frame, which the migration will establish:
 |---|---|---|
 | D1 | One kinematics kernel based on spatial vectors | Adopted, Phase 2 |
 | D2 | Quaternion coordinates for free and spherical joints | Adopted, Phase 2 |
-| D3 | ISO 8855 axes | **Decided 2 Oct 2026.** Migration is task 7.1 |
+| D3 | ISO 8855 axes | Decided 2 Oct 2026; the vehicle layer moved by task 7.1 (D60) |
 | D4 | Wheels as rotating bodies with a spin joint | Adopted, Phase 7 |
 | D5 | Compiled library instead of header-only | Done, task 2.8 |
 | D6 | CFD by coupling to OpenFOAM | **Decided 2 Oct 2026.** A CFD solver written from scratch is a stated goal for later, tracked as task 11.12 |

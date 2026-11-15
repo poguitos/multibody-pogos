@@ -46,8 +46,9 @@ viewer inside notebooks (D59). The Phase 6 gate passed on 13 November 2026:
 the retrospective and the Python how-to guide (`docs/help/howto/python.md`,
 its examples in `python/tests/test_howto.py`); `main` fast-forwarded to it
 and tagged `v0.7.0` with the author's go-ahead, CI and the nightly green
-there. Branch `phase-7` starts from `v0.7.0`; Phase 7 (vehicle subsystems)
-is next. Conda environments for the project pin
+there. Branch `phase-7` starts from `v0.7.0`. Phase 7 (vehicle subsystems):
+task 7.1 is done (D60: the vehicle layer in ISO 8855 axes, X forward, Y left,
+Z up, decided in `mbd/vehicle/axes.hpp`); 7.2, the road, is next. Conda environments for the project pin
 `"libblas=*=*openblas"` (MKL's NumPy crashes on this laptop). After a change to the bindings, reinstall `mbd-try`
 (an editable install whose module is older than its Python files stops with
 MBD-P011). The nightly workflow runs on schedule from `main`.

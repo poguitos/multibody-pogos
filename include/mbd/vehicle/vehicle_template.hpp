@@ -46,28 +46,29 @@ enum class SuspensionType {
 // Per-corner hardpoint configuration
 // ============================================================================
 
-/// DWB hardpoints expressed relative to the wheel center.
+/// DWB hardpoints expressed relative to the wheel center, for a left corner.
 /// These are transformed to world coordinates by the builder using
-/// the corner's position on the vehicle.
+/// the corner's position on the vehicle; a right corner mirrors Y.
 struct DwbHardpoints {
-    // Offsets from wheel center (positive X = forward, Y = up, Z = outboard)
-    Vec3 lca_pivot_offset{0.0, -0.05, -0.40};
-    Vec3 lca_outer_offset{0.0, -0.10, -0.08};
-    Vec3 uca_pivot_offset{0.0, 0.13, -0.33};
-    Vec3 uca_outer_offset{0.0, 0.10, -0.10};
-    Vec3 tierod_inner_offset{0.10, -0.03, -0.42};
-    Vec3 tierod_outer_offset{0.10, -0.05, -0.08};
+    // Offsets from wheel center (ISO 8855: X forward, Y to the left, which is
+    // outboard for a left corner, Z up)
+    Vec3 lca_pivot_offset{0.0, -0.40, -0.05};
+    Vec3 lca_outer_offset{0.0, -0.08, -0.10};
+    Vec3 uca_pivot_offset{0.0, -0.33, 0.13};
+    Vec3 uca_outer_offset{0.0, -0.10, 0.10};
+    Vec3 tierod_inner_offset{0.10, -0.42, -0.03};
+    Vec3 tierod_outer_offset{0.10, -0.08, -0.05};
     Vec3 arm_axis{Vec3::UnitX()};
 };
 
-/// McPherson hardpoints expressed relative to the wheel center.
+/// McPherson hardpoints expressed relative to the wheel center, as above.
 struct McPhersonHardpoints {
-    Vec3 lca_pivot_offset{0.0, -0.05, -0.40};
+    Vec3 lca_pivot_offset{0.0, -0.40, -0.05};
     Vec3 lca_outer_offset{0.0, -0.10, -0.10};
-    Vec3 strut_top_offset{0.0, 0.40, -0.20};
-    Vec3 strut_lower_offset{0.0, 0.13, -0.03};
-    Vec3 tierod_inner_offset{0.10, -0.03, -0.42};
-    Vec3 tierod_outer_offset{0.10, -0.05, -0.07};
+    Vec3 strut_top_offset{0.0, -0.20, 0.40};
+    Vec3 strut_lower_offset{0.0, -0.03, 0.13};
+    Vec3 tierod_inner_offset{0.10, -0.42, -0.03};
+    Vec3 tierod_outer_offset{0.10, -0.07, -0.05};
     Vec3 arm_axis{Vec3::UnitX()};
 };
 
@@ -127,7 +128,7 @@ struct SteeringConfig {
 
 struct ChassisConfig {
     Real mass{1400.0};
-    Vec3 half_extents{1.5, 0.3, 0.8};
+    Vec3 half_extents{1.5, 0.8, 0.3};
     Vec3 cg_offset{0.0, 0.0, 0.0};  ///< CG offset from geometric center [m]
 
     // Aerodynamics (optional)
@@ -255,9 +256,9 @@ struct VehicleHandle {
 
 namespace detail {
 
-/// Mirror hardpoint Z coordinate for the right side of the vehicle.
-/// Our convention: +Z = left. Right side hardpoints have Z negated.
-inline Vec3 mirror_z(const Vec3& v) { return Vec3(v.x(), v.y(), -v.z()); }
+/// Mirror a hardpoint for the right side of the vehicle: ISO 8855 has +Y to
+/// the left, so right side hardpoints have Y negated.
+inline Vec3 mirror_y(const Vec3& v) { return Vec3(v.x(), -v.y(), v.z()); }
 
 /// Build a simple (prismatic) corner.
 CornerHandle build_simple_corner(
@@ -309,8 +310,9 @@ CornerHandle build_mcpherson_corner(
     bool is_right_side,
     BodyIndex tierod_body);
 
-/// A steering rack: a light bar sliding along the chassis Z (lateral) axis,
-/// its frame the chassis frame at zero travel, driven to rack->travel.
+/// A steering rack: a light bar sliding along the chassis Y (lateral) axis,
+/// positive travel to the left, its frame the chassis frame at zero travel,
+/// driven to rack->travel.
 BodyIndex add_steering_rack(kernel::System& sys, BodyIndex chassis_body,
                                    const std::shared_ptr<SteeringRack>& rack,
                                    const std::string& name);
@@ -334,8 +336,9 @@ Real calibrate_rack(const VehicleTemplate& tmpl, const AxleConfig& ax,
 ///   - A steering rack for each steered axle with linkage suspension
 ///   - 4 corners with suspension, springs, dampers, and tires
 ///
-/// The vehicle layer is still Y-up with +Z to the left (ISO 8855 is plan
-/// task 7.1), so the model's gravity is set to -Y.
+/// The vehicle layer uses ISO 8855 axes (X forward, Y left, Z up; plan task
+/// 7.1, mbd/vehicle/axes.hpp): the model's gravity is set to -Z, and the
+/// tyres' ground normal against it.
 ///
 /// Returns a VehicleHandle with convenient accessors.
 VehicleHandle build_vehicle(kernel::System& sys,
@@ -348,9 +351,9 @@ VehicleHandle build_vehicle(kernel::System& sys,
 /// Place a template-built vehicle near its static equilibrium, at rest: the
 /// simulator's state is set and its kinematics refreshed.
 ///
-/// For Simple corners: chassis_y = wheel_y + spring_equilibrium_length.
+/// For Simple corners: chassis_z = wheel_z + spring_equilibrium_length.
 /// For DWB/McPherson corners: the mechanism at its reference puts the wheel
-/// centre at the chassis origin's height, so chassis_y is the loaded wheel
+/// centre at the chassis origin's height, so chassis_z is the loaded wheel
 /// centre height.
 void set_vehicle_equilibrium(kernel::Simulator& sim, const VehicleHandle& vh);
 

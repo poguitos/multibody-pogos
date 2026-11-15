@@ -70,6 +70,7 @@ and the journal entry of the work refers to them by number
 | D57 | Viewing with Rerun: a motion played back from the model's own parts, its channels plotted on the same time line | 12 Nov 2026 | In force, task 6.5; amended 12 Nov 2026 by D58 (a recording per replay) |
 | D58 | Notebooks that check themselves: three worked examples, run as tests | 12 Nov 2026 | In force, task 6.6 |
 | D59 | Rerun's viewer inside notebooks, where rerun-notebook is installed | 13 Nov 2026 | In force, Phase 6 (added at the author's request) |
+| D60 | The vehicle layer in ISO 8855 axes, its labels kept; up decided in one place | 15 Nov 2026 | In force, task 7.1 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -2527,3 +2528,65 @@ and the journal entry of the work refers to them by number
   `python/multibody/_viewer.py`, `python/tests/test_viewer.py`,
   `python/notebooks/` (text), `pyproject.toml`, `docs/python.md`,
   `docs/help/messages.md` (P016), `docs/help/troubleshooting.md`.
+
+## D60. The vehicle layer in ISO 8855 axes, its labels kept; up decided in one place
+
+- **Context.** Task 7.1 (finding F11): "Move the vehicle layer to ISO 8855.
+  Remove every hard-coded 'up'. *Done when the same manoeuvre gives the same
+  physical result before and after.*" The layer used X forward, Y up, and
+  called +Z "left", which with Y up is geometrically the right: the mirror
+  image of the car its labels described, consistent with itself. World Y as
+  up was written into the tyres, the aerodynamics, the anti-roll bar, the
+  builders and the equilibrium. D3 had decided ISO 8855 and the signs to use
+  (docs/conventions.md).
+- **Decision.**
+  - **Keep every label:** a left corner stays left, a positive steer stays a
+    left turn. Data given in the legacy axes (x, up, left) is converted to
+    ISO (x, left, up) by swapping its last two components: hardpoints,
+    inertia boxes in frames aligned with the chassis (the chassis, the
+    uprights, the arms, the rack), offsets. That swap is a reflection, so
+    the new model is the mirror image of the old one, which is the car the
+    old labels described. Every element of the layer is mirror-symmetric
+    (rigid bodies, springs, the tyre's law odd in its slip angle and even in
+    its combined-slip weights), so every result read through the labels is
+    unchanged: positions and velocities with their last two components
+    swapped, angular velocities swapped and of opposite sign (axial
+    vectors), a tyre's lateral force of opposite sign (its lateral axis is
+    now the left), toe, camber, loads, frequencies and states unchanged.
+  - **Up in one place:** `mbd/vehicle/axes.hpp` gives `iso_gravity()` and
+    `ground_up(gravity)`. The builders set the model's gravity from the
+    first and give the tyres and the aerodynamics the ground's normal from
+    the second; those elements hold the normal as a setting (default +Z)
+    and measure penetration, vertical speed, ride height and horizontal
+    speed along it. The anti-roll bar measures along the chassis's own Z,
+    the vehicle's up. Task 7.2 replaces the flat ground with a road.
+  - **Proof by the regression scenarios:** two scenarios were added before
+    the move, with references from the legacy code (`d9f9466`): the
+    double-wishbone sports car with anti-roll bars and off-centre downforce
+    turning left, and the McPherson hatchback braking in a right turn. After
+    the move, every vehicle scenario's new results were compared with the
+    legacy references through the mapping above (a script, in the task's
+    journal data).
+- **Alternatives.**
+  - Keep the physical car (a rotation of the old frame about X by 90
+    degrees, under which the old "left" wheels become ISO's right ones):
+    exact for any data, but every label would change meaning (the old left
+    front wheel becomes the right front). Rejected: the labels are what
+    users and tests read.
+  - Take up from gravity inside each element: the elements see only body
+    states, not the model; and a flat road's normal is not gravity's
+    direction on a slope. Rejected for a setting given by the builder.
+  - A world constant for up used directly in the elements: the hard-coded
+    up the task removes. Rejected.
+- **Consequences.** A model or test written for the legacy axes must be
+  converted (x, y, z) -> (x, z, y), with rotations about the old axes
+  replaced by their ISO counterparts (a positive steer is now a positive
+  rotation about Z). The kinematic helpers keep their names and signs:
+  `extract_toe` and `extract_camber` return the angle toward +Y (the left),
+  as they returned it toward the old "left". `VehicleModel::chassis_ty_idx`
+  is now `chassis_tz_idx`; `KinematicSweepPoint::wheel_y` is `wheel_height`.
+- **Record.** Journal: Phase 7, axes; `include/mbd/vehicle/axes.hpp`, the
+  tyre, aerodynamic and anti-roll-bar elements, the builders and suspension
+  corners, `position_kinematics`, the lap vehicle; the vehicle tests;
+  `tests/regression/` (two scenarios, four references written again);
+  `docs/conventions.md`.

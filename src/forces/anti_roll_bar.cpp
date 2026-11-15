@@ -24,8 +24,8 @@ void AntiRollBar::capture_reference(const std::vector<RigidBodyState>& states)
     const auto& R = states[right_wheel_idx];
 
     const Transform3 T_CW = chassis.pose_WB().inverse();
-    z_L_ref = T_CW.apply(L.p_WB).y();
-    z_R_ref = T_CW.apply(R.p_WB).y();
+    z_L_ref = T_CW.apply(L.p_WB).z();
+    z_R_ref = T_CW.apply(R.p_WB).z();
 }
 
 void AntiRollBar::apply(const std::vector<RigidBodyState>& states,
@@ -41,8 +41,8 @@ void AntiRollBar::apply(const std::vector<RigidBodyState>& states,
     const Vec3 p_R_C = T_CW.apply(R_state.p_WB);
 
     // Displacement from reference (positive = wheel moved up in chassis frame)
-    const Real dz_L = p_L_C.y() - z_L_ref;
-    const Real dz_R = p_R_C.y() - z_R_ref;
+    const Real dz_L = p_L_C.z() - z_L_ref;
+    const Real dz_R = p_R_C.z() - z_R_ref;
     const Real delta = dz_L - dz_R;
 
     // Velocity of wheel centers in chassis frame.
@@ -53,19 +53,19 @@ void AntiRollBar::apply(const std::vector<RigidBodyState>& states,
     const Vec3 r_R = R_state.p_WB - chassis.p_WB;
     const Vec3 v_L_rel_W = L_state.v_WB - chassis.v_WB - chassis.w_WB.cross(r_L);
     const Vec3 v_R_rel_W = R_state.v_WB - chassis.v_WB - chassis.w_WB.cross(r_R);
-    const Real dz_L_dot = (R_CW * v_L_rel_W).y();
-    const Real dz_R_dot = (R_CW * v_R_rel_W).y();
+    const Real dz_L_dot = (R_CW * v_L_rel_W).z();
+    const Real dz_R_dot = (R_CW * v_R_rel_W).z();
     const Real delta_dot = dz_L_dot - dz_R_dot;
 
     // Force magnitude (opposes delta)
     const Real F_mag = k_arb * delta + c_arb * delta_dot;
 
-    // Apply in chassis Y direction, expressed in world frame
-    const Vec3 chassis_Y_W = chassis.q_WB * Vec3::UnitY();
+    // Apply along the chassis Z (up) direction, expressed in world frame
+    const Vec3 chassis_Z_W = chassis.q_WB * Vec3::UnitZ();
 
-    // Left wheel: force in -chassis_Y direction when delta > 0 (L is up)
-    const Vec3 F_L = -F_mag * chassis_Y_W;
-    const Vec3 F_R = +F_mag * chassis_Y_W;
+    // Left wheel: force in -chassis_Z direction when delta > 0 (L is up)
+    const Vec3 F_L = -F_mag * chassis_Z_W;
+    const Vec3 F_R = +F_mag * chassis_Z_W;
 
     // Apply at wheel body origin (no torque arm, so no moment)
     forces[left_wheel_idx].f_W  += F_L;

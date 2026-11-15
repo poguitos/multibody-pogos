@@ -107,7 +107,7 @@ TEST_CASE("DWB: Newton-Raphson converges for 20mm bump",
     REQUIRE(k.solve());
 
     // Wheel center at target height, all constraints satisfied
-    REQUIRE_THAT(k.state(dwb.upright_body).p_WB.y(), WithinAbs(p.wheel_center.y() + 0.02, 1e-8));
+    REQUIRE_THAT(k.state(dwb.upright_body).p_WB.z(), WithinAbs(p.wheel_center.z() + 0.02, 1e-8));
     REQUIRE_THAT(k.phi().norm(), WithinAbs(0.0, 1e-8));
 }
 
@@ -124,7 +124,7 @@ TEST_CASE("DWB: Newton-Raphson converges for 20mm droop",
     k.t = -0.02;
     REQUIRE(k.solve());
 
-    REQUIRE_THAT(k.state(dwb.upright_body).p_WB.y(), WithinAbs(p.wheel_center.y() - 0.02, 1e-8));
+    REQUIRE_THAT(k.state(dwb.upright_body).p_WB.z(), WithinAbs(p.wheel_center.z() - 0.02, 1e-8));
 }
 
 // ============================================================================
@@ -151,7 +151,7 @@ TEST_CASE("DWB: negative camber gain in bump (unequal-length arms)",
     REQUIRE(k.solve());
     const Real camber_bump = extract_camber(k.state(dwb.upright_body));
 
-    // Negative camber in bump: top of wheel tilts inward (-Z for left wheel)
+    // Negative camber in bump: top of wheel tilts inward (-Y for left wheel)
     REQUIRE(camber_bump < -0.1 * deg);
 
     // --- Droop: 30mm extension, from the reference ---
@@ -242,10 +242,10 @@ TEST_CASE("Camber extraction: 5 deg tilt gives correct camber",
 {
     using namespace mbd;
 
-    // Tilt wheel 5 degrees: rotate body frame about X by 5 deg
-    // This tilts body Y toward +Z (positive camber for left wheel)
+    // Tilt wheel 5 degrees: rotate body frame about X by -5 deg
+    // This tilts body Z (up) toward +Y (positive camber for left wheel)
     RigidBodyState s;
-    s.q_WB = Quat(Eigen::AngleAxisd(5.0 * deg, Vec3::UnitX()));
+    s.q_WB = Quat(Eigen::AngleAxisd(-5.0 * deg, Vec3::UnitX()));
 
     Real camber = extract_camber(s);
     REQUIRE_THAT(camber, WithinAbs(5.0 * deg, 0.01 * deg));
@@ -265,10 +265,10 @@ TEST_CASE("Toe extraction: 2 deg yaw gives correct toe",
 {
     using namespace mbd;
 
-    // Ry(-2 deg) rotates body X toward +Z, giving positive toe.
-    // (Ry(+2 deg) would rotate body X toward -Z, giving negative toe.)
+    // Rz(+2 deg) rotates body X toward +Y (to the left), giving positive toe.
+    // (Rz(-2 deg) would rotate body X toward -Y, giving negative toe.)
     RigidBodyState s;
-    s.q_WB = Quat(Eigen::AngleAxisd(-2.0 * deg, Vec3::UnitY()));
+    s.q_WB = Quat(Eigen::AngleAxisd(2.0 * deg, Vec3::UnitZ()));
 
     Real toe = extract_toe(s);
     REQUIRE_THAT(toe, WithinAbs(2.0 * deg, 0.01 * deg));
@@ -330,9 +330,9 @@ TEST_CASE("Kinematic analysis: a sweep gives the configurations of solving with 
 
     kernel::System edited;
     build_double_wishbone_corner(edited, p);
-    Real target = p.wheel_center.y();
+    Real target = p.wheel_center.z();
     edited.constraints[dwb.bump_constraint_idx] = std::make_shared<kernel::Dot2>(
-        kernel::Marker{0, Transform3::Identity()}, 1,
+        kernel::Marker{0, Transform3::Identity()}, 2,
         kernel::Marker{dwb.upright_body, Transform3::Identity()},
         kernel::TimeFunction([&target](Real) { return target; },
                              [](Real) { return 0.0; },
@@ -347,7 +347,7 @@ TEST_CASE("Kinematic analysis: a sweep gives the configurations of solving with 
         k.q = q_start;
         REQUIRE(k.solve());
 
-        target = p.wheel_center.y() + bump;
+        target = p.wheel_center.z() + bump;
         old_way.q = q_start;
         REQUIRE(old_way.solve());
 
@@ -382,8 +382,8 @@ TEST_CASE("Kinematic analysis: velocities and accelerations along the bump motio
     kernel::forward_kinematics(sys.model, data, q_mid, v, a);
     const Vec6 wheel_velocity = kernel::body_velocity_world(data, dwb.upright_body);
     const Vec6 wheel_acceleration = kernel::body_acceleration_world(data, dwb.upright_body);
-    CHECK(std::abs(wheel_velocity(4) - 1.0) < 1e-9);    // world Y, linear part
-    CHECK(std::abs(wheel_acceleration(4)) < 1e-8);
+    CHECK(std::abs(wheel_velocity(5) - 1.0) < 1e-9);    // world Z, linear part
+    CHECK(std::abs(wheel_acceleration(5)) < 1e-8);
 
     k.t = t0 + h;
     REQUIRE(k.solve(100, 1e-14));

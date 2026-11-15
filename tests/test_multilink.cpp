@@ -79,7 +79,7 @@ TEST_CASE("Multilink: Newton-Raphson converges for 20mm bump", "[multilink][solv
     k.t = 0.02;
     REQUIRE(k.solve());
 
-    REQUIRE_THAT(k.state(ml.upright_body).p_WB.y(), WithinAbs(p.wheel_center.y() + 0.02, 1e-8));
+    REQUIRE_THAT(k.state(ml.upright_body).p_WB.z(), WithinAbs(p.wheel_center.z() + 0.02, 1e-8));
     REQUIRE_THAT(k.phi().norm(), WithinAbs(0.0, 1e-8));
 }
 
@@ -95,7 +95,7 @@ TEST_CASE("Multilink: converges for 20mm droop", "[multilink][solver]")
     k.t = -0.02;
     REQUIRE(k.solve());
 
-    REQUIRE_THAT(k.state(ml.upright_body).p_WB.y(), WithinAbs(p.wheel_center.y() - 0.02, 1e-8));
+    REQUIRE_THAT(k.state(ml.upright_body).p_WB.z(), WithinAbs(p.wheel_center.z() - 0.02, 1e-8));
 }
 
 TEST_CASE("Multilink: kinematic sweep converges over full range",
@@ -175,8 +175,8 @@ TEST_CASE("Multilink: different link lengths produce different camber behavior",
 
     // Config B: make upper links longer by moving inner points outward
     MultilinkParams p_b = p_a;
-    p_b.inner[2] = Vec3( 0.15, 0.42, 0.50);  // upper front inner moved outboard
-    p_b.inner[3] = Vec3(-0.15, 0.42, 0.50);  // upper rear inner moved outboard
+    p_b.inner[2] = Vec3( 0.15, 0.50, 0.42);  // upper front inner moved outboard
+    p_b.inner[3] = Vec3(-0.15, 0.50, 0.42);  // upper rear inner moved outboard
 
     kernel::System sys_b;
     auto ml_b = build_multilink_corner(sys_b, p_b);

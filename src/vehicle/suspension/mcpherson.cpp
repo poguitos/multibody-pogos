@@ -10,8 +10,8 @@ McPhersonCorner build_mcpherson_corner(
     McPhersonCorner mc;
     mc.params = p;
     const Mat3 R_arm = detail::rotation_align_z_to(p.arm_axis);
-    const auto I_arm = RigidBodyInertia::from_solid_box(p.arm_mass, Vec3(0.02, 0.02, 0.2));
-    const auto I_upright = RigidBodyInertia::from_solid_box(p.upright_mass, Vec3(0.05, 0.1, 0.05));
+    const auto I_arm = RigidBodyInertia::from_solid_box(p.arm_mass, Vec3(0.02, 0.2, 0.02));
+    const auto I_upright = RigidBodyInertia::from_solid_box(p.upright_mass, Vec3(0.05, 0.05, 0.1));
 
     mc.lca_body = sys.model.add_body(0, std::make_shared<RevoluteJointModel>(),
                                      Transform3(R_arm, p.lca_pivot),
@@ -39,7 +39,7 @@ McPhersonCorner build_mcpherson_corner(
         (p.tierod_outer - p.tierod_inner).norm()));
 
     mc.bump_constraint_idx = sys.constraints.size();
-    sys.constraints.push_back(point_height_driver(mc.upright_body, Vec3::Zero(), 1, p.wheel_center.y()));
+    sys.constraints.push_back(point_height_driver(mc.upright_body, Vec3::Zero(), 2, p.wheel_center.z()));
     return mc;
 }
 
@@ -54,8 +54,8 @@ McPhersonCorner build_mcpherson_corner_dynamic(
     McPhersonCorner mc;
     mc.params = p;
     const Mat3 R_arm = detail::rotation_align_z_to(p.arm_axis);
-    const auto I_arm = RigidBodyInertia::from_solid_box(p.arm_mass, Vec3(0.02, 0.02, 0.2));
-    const auto I_upright = RigidBodyInertia::from_solid_box(p.upright_mass, Vec3(0.05, 0.1, 0.05));
+    const auto I_arm = RigidBodyInertia::from_solid_box(p.arm_mass, Vec3(0.02, 0.2, 0.02));
+    const auto I_upright = RigidBodyInertia::from_solid_box(p.upright_mass, Vec3(0.05, 0.05, 0.1));
 
     mc.lca_body = sys.model.add_body(chassis_body, std::make_shared<RevoluteJointModel>(),
                                      Transform3(R_arm, p.lca_pivot),

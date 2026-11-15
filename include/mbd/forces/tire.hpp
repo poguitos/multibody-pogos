@@ -3,10 +3,11 @@
 // Tire vertical contact force model.
 //
 // Monitors a contact point on a wheel body. When the contact point
-// penetrates the ground plane, applies a vertical spring-damper force.
-// The tire only pushes (lifts off when no contact).
+// penetrates the ground plane, applies a spring-damper force along the
+// plane's normal. The tire only pushes (lifts off when no contact).
 //
-// Ground plane: y = road_height (default 0).
+// Ground plane: the points p with ground_normal_W . p = road_height; the
+// normal is ISO 8855's up, +Z, unless set otherwise (mbd/vehicle/axes.hpp).
 //
 // This is L2.3.1: the simplest tire model — vertical forces only,
 // no slip, no lateral dynamics. Suitable for quarter-car validation,
@@ -22,21 +23,21 @@ class TireContactForce : public ForceElement {
 public:
     BodyIndex wheel_body_idx;
 
-    /// Contact point in the wheel body frame.
-    /// For a wheel whose origin is at the axle center and Y is up,
-    /// this is typically (0, -R_free, 0).
+    /// Contact point in the wheel body frame: (0, 0, -R_free), the bottom of
+    /// a wheel whose origin is at the axle centre and whose Z is up.
     Vec3 contact_point_B;
 
     Real k_z;        ///< Vertical stiffness [N/m]
     Real c_z;        ///< Vertical damping [N·s/m]
     Real R_free;     ///< Unloaded tire radius [m]
-    Real road_height; ///< Ground plane height [m]
+    Real road_height; ///< Ground plane height along its normal [m]
+    Vec3 ground_normal_W{Vec3::UnitZ()};  ///< The ground plane's unit normal, up
 
     TireContactForce(BodyIndex wheel_idx,
                      Real free_radius,
                      Real stiffness,
                      Real damping,
-                     Real ground_y = 0.0);
+                     Real ground_height = 0.0);
 
     const char* name() const override { return "tyre contact"; }
     std::vector<BodyIndex> bodies() const override { return {wheel_body_idx}; }
@@ -58,11 +59,14 @@ public:
 // Combines vertical spring-damper contact with Pacejka Magic Formula
 // lateral and longitudinal forces computed from slip kinematics.
 //
-// Wheel body frame convention:
+// Wheel body frame convention (ISO 8855, docs/conventions.md):
 //   X: forward (travel direction)
-//   Y: up (axle direction, left side)
-//   Z: lateral (to the right)
-//   Contact point at (0, -R_free, 0) in body frame.
+//   Y: to the left (the spin axis)
+//   Z: up
+//   Contact point at (0, 0, -R_free) in body frame.
+// The tyre's lateral direction is the ground normal crossed with its heading,
+// to the left; a positive slip angle gives a positive lateral force, to the
+// left.
 
 class FullTireForce : public ForceElement {
 public:
@@ -75,7 +79,8 @@ public:
     // Vertical contact
     Real k_z;             ///< Vertical stiffness [N/m]
     Real c_z;             ///< Vertical damping [Ns/m]
-    Real road_height;     ///< Ground plane Y coordinate [m]
+    Real road_height;     ///< Ground plane height along its normal [m]
+    Vec3 ground_normal_W{Vec3::UnitZ()};  ///< The ground plane's unit normal, up
 
     // Pacejka model
     PacejkaTire pacejka;
@@ -91,8 +96,8 @@ public:
     /// (free-rolling assumption: zero drive/brake torque). When false, the
     /// externally-set omega_wheel value is used.
     bool auto_free_roll{true};
-    /// Steering angle applied to this tire [rad].
-    /// Positive = wheel heading rotates toward +Z (left in vehicle frame).
+    /// Steering angle applied to this tire [rad], about the wheel's Z axis.
+    /// Positive = the heading turns to the left (counter-clockwise from above).
     Real steer_angle{0.0};
 
     // --- Cached output (updated each apply() call) ---
@@ -101,7 +106,7 @@ public:
     mutable Real last_deflection{0.0};
     mutable Vec3 last_contact_pos_W{Vec3::Zero()};
     mutable Vec3 last_forward_W{Vec3::UnitX()};
-    mutable Vec3 last_lateral_W{Vec3::UnitZ()};
+    mutable Vec3 last_lateral_W{Vec3::UnitY()};
     mutable Real last_V_abs{1.0};   ///< Speed used to normalize slip [m/s]
     mutable Real last_R_eff{0.0};   ///< Rolling radius used for slip [m]
 
@@ -110,7 +115,7 @@ public:
                   Real vert_stiffness,
                   Real vert_damping,
                   const PacejkaTireParams& tire_params,
-                  Real ground_y = 0.0);
+                  Real ground_height = 0.0);
 
     const char* name() const override { return "tyre"; }
     std::vector<BodyIndex> bodies() const override { return {wheel_body_idx}; }

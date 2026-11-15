@@ -22,19 +22,19 @@ namespace mbd {
 
 struct McPhersonParams {
     // Lower control arm
-    Vec3 lca_pivot{0.0, 0.20, 0.25};
-    Vec3 lca_outer{0.0, 0.15, 0.65};
+    Vec3 lca_pivot{0.0, 0.25, 0.20};
+    Vec3 lca_outer{0.0, 0.65, 0.15};
 
     // Strut
-    Vec3 strut_top_mount{0.0, 0.65, 0.55};
-    Vec3 strut_lower{0.0, 0.38, 0.72};
+    Vec3 strut_top_mount{0.0, 0.55, 0.65};
+    Vec3 strut_lower{0.0, 0.72, 0.38};
 
     // Tie rod
-    Vec3 tierod_inner{0.10, 0.22, 0.25};
-    Vec3 tierod_outer{0.10, 0.20, 0.68};
+    Vec3 tierod_inner{0.10, 0.25, 0.22};
+    Vec3 tierod_outer{0.10, 0.68, 0.20};
 
     // Wheel
-    Vec3 wheel_center{0.0, 0.25, 0.75};
+    Vec3 wheel_center{0.0, 0.75, 0.25};
 
     // LCA pivot axis
     Vec3 arm_axis{Vec3::UnitX()};
@@ -70,11 +70,11 @@ struct McPhersonCorner {
 // the lower ball joint. Loop closures: the strut's top mount held on the
 // strut axis, a line fixed in the upright (2 equations), and the tie rod
 // (1). The kinematic corner hangs from ground and adds a bump driver
-// (wheel-centre height = wheel_center.y() + t); the dynamic corner hangs from
+// (wheel-centre height = wheel_center.z() + t); the dynamic corner hangs from
 // a chassis body, which carries the top mount.
 
 /// Kinematic McPherson corner on ground, with its bump driver: wheel-centre
-/// height = wheel_center.y() + t (see Kinematics).
+/// height = wheel_center.z() + t (see Kinematics).
 McPhersonCorner build_mcpherson_corner(
     kernel::System& sys,
     const McPhersonParams& p = McPhersonParams{});

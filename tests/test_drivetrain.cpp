@@ -730,16 +730,16 @@ TEST_CASE("Drivetrain: RWD vehicle corners under power", "[drivetrain][cornering
 
     // Apply steering
     vm.set_front_steering(0.02);
-    const Real z_before = sim.states()[vm.chassis_body].p_WB.z();
+    const Real y_before = sim.states()[vm.chassis_body].p_WB.y();
 
     sim.run(3.0, 0.001);
-    const Real z_after = sim.states()[vm.chassis_body].p_WB.z();
+    const Real y_after = sim.states()[vm.chassis_body].p_WB.y();
 
-    // Vehicle should turn left (positive Z)
-    REQUIRE(z_after - z_before > 0.05);
+    // Vehicle should turn left (positive Y)
+    REQUIRE(y_after - y_before > 0.05);
 
     // Vehicle should still be on the ground
-    REQUIRE_THAT(sim.states()[vm.chassis_body].p_WB.y(),
+    REQUIRE_THAT(sim.states()[vm.chassis_body].p_WB.z(),
                  WithinAbs(vp.chassis_height_eq(), 0.05));
 }
 

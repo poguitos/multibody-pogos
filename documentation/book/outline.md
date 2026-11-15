@@ -305,6 +305,12 @@ viewer in notebooks. D59.* The phase in review, and its case study: the
 author's first install, instructions that passed in one shell and failed in
 another. *J: Phase 6 retrospective.*
 
+Already marked for vehicle subsystems (7): a frame that was a mirror image of
+the car its labels named, and why keeping the labels made the move to ISO
+8855 exact; a regression harness used as a before-and-after instrument for a
+change of coordinates, and the one data error it caught that no test could.
+*J: Phase 7, axes. D60.*
+
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,
 with the axodes as the figure; points with distance residuals against joint

@@ -28,7 +28,7 @@ struct VehicleParams {
     // --- Chassis ---
     Real chassis_mass{1400.0};       ///< [kg]
     Vec3 chassis_half_extents{       ///< For inertia computation
-        1.5, 0.3, 0.8};             ///< [m] (half-length, half-height, half-width)
+        1.5, 0.8, 0.3};             ///< [m] (half-length, half-width, half-height)
 
     // --- Geometry ---
     Real front_axle_x{1.35};         ///< Distance from CG to front axle [m]
@@ -123,8 +123,8 @@ struct VehicleModel {
     std::array<FullTireForce*, 4> tires{};
     VehicleParams params;
 
-    /// Index of the chassis height (ty) in q.
-    int chassis_ty_idx() const { return 1; }
+    /// Index of the chassis height (tz, ISO 8855's up) in q.
+    int chassis_tz_idx() const { return 2; }
 
     /// Index of a wheel's suspension coordinate in q.
     int susp_q_idx(Corner c) const { return susp_q[static_cast<std::size_t>(c)]; }
@@ -152,8 +152,9 @@ struct VehicleModel {
 // ============================================================================
 
 /// Build a simplified vehicle on a kernel system. Returns a VehicleModel
-/// with indices for easy access. The vehicle layer is still Y-up with +Z to
-/// the left (ISO 8855 is plan task 7.1), so the model's gravity is set to -Y.
+/// with indices for easy access. The vehicle layer uses ISO 8855 axes (X
+/// forward, Y left, Z up; mbd/vehicle/axes.hpp): the model's gravity is set
+/// to -Z, and the tyres' ground normal against it.
 VehicleModel build_simple_vehicle(kernel::System& sys,
                                          const VehicleParams& p = VehicleParams{});
 

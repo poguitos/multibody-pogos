@@ -1,5 +1,7 @@
 #include "mbd/vehicle/vehicle_template.hpp"
 
+#include "mbd/vehicle/axes.hpp"
+
 namespace mbd {
 
 VehicleTemplate VehicleTemplate::DefaultSedan()
@@ -34,7 +36,7 @@ VehicleTemplate VehicleTemplate::SportsCar()
     t.name = "sports_car";
 
     t.chassis.mass = 1200.0;
-    t.chassis.half_extents = Vec3(1.4, 0.25, 0.75);
+    t.chassis.half_extents = Vec3(1.4, 0.75, 0.25);
 
     t.front_axle_x = 1.25;
     t.rear_axle_x  = 1.45;
@@ -65,7 +67,7 @@ VehicleTemplate VehicleTemplate::FWDHatchback()
     t.name = "fwd_hatchback";
 
     t.chassis.mass = 1100.0;
-    t.chassis.half_extents = Vec3(1.2, 0.28, 0.72);
+    t.chassis.half_extents = Vec3(1.2, 0.72, 0.28);
 
     t.front_axle_x = 1.0;
     t.rear_axle_x  = 1.5;
@@ -169,6 +171,7 @@ AerodynamicForce* VehicleHandle::install_aerodynamics(kernel::System& sys)
     p.cop_offset_chassis = tmpl.chassis.aero_cop_offset;
     p.h_ref = tmpl.chassis.aero_h_ref;
     p.dClA_dh = tmpl.chassis.aero_dClA_dh;
+    p.ground_normal_W = ground_up(sys.model.gravity);
 
     auto aero = std::make_shared<AerodynamicForce>(chassis_body, p);
     AerodynamicForce* ptr = aero.get();
@@ -186,8 +189,9 @@ CornerHandle detail::build_simple_corner(
     CornerHandle ch;
     ch.type = SuspensionType::Simple;
 
-    // Prismatic joint: chassis → wheel, axis = chassis -Y (downward)
-    const Mat3 R_susp = Eigen::AngleAxisd(pi / 2.0, Vec3::UnitX()).toRotationMatrix();
+    // Prismatic joint: chassis → wheel, axis = chassis -Z (downward): Rx(pi)
+    // maps the joint's Z to -Z, so a positive coordinate moves the wheel down.
+    const Mat3 R_susp = Eigen::AngleAxisd(pi, Vec3::UnitX()).toRotationMatrix();
     ch.wheel_body = sys.model.add_body(
         chassis_body, std::make_shared<kernel::PrismaticJointModel>(),
         Transform3(R_susp, mount_pos_chassis), Transform3::FromRotation(R_susp),
@@ -217,7 +221,7 @@ DoubleWishboneParams detail::make_dwb_params_for_corner(
     Real upright_mass)
 {
     auto offset = [&](const Vec3& v) -> Vec3 {
-        Vec3 world = wheel_center_chassis + (is_right_side ? mirror_z(v) : v);
+        Vec3 world = wheel_center_chassis + (is_right_side ? mirror_y(v) : v);
         return world;
     };
 
@@ -266,7 +270,7 @@ CornerHandle detail::build_dwb_corner(
     // Spring-damper: from chassis mount (above LCA outer) to LCA outer point.
     // This models a coil-over-arm spring layout. The LCA body frame has the
     // chassis axes at the reference, origin at lca_pivot.
-    const Vec3 spring_chassis_mount = p.lca_outer + Vec3(0.0, 0.30, 0.0);
+    const Vec3 spring_chassis_mount = p.lca_outer + Vec3(0.0, 0.0, 0.30);
     const Vec3 spring_lca_attach_body = p.lca_outer - p.lca_pivot;
     const Real ref_distance = (spring_chassis_mount - p.lca_outer).norm();
 
@@ -298,7 +302,7 @@ McPhersonParams detail::make_mcpherson_params_for_corner(
     Real upright_mass)
 {
     auto offset = [&](const Vec3& v) -> Vec3 {
-        Vec3 world = wheel_center_chassis + (is_right_side ? mirror_z(v) : v);
+        Vec3 world = wheel_center_chassis + (is_right_side ? mirror_y(v) : v);
         return world;
     };
 
@@ -367,10 +371,13 @@ BodyIndex detail::add_steering_rack(kernel::System& sys, BodyIndex chassis_body,
                                     const std::shared_ptr<SteeringRack>& rack,
                                     const std::string& name)
 {
+    // Rx(-pi/2) maps the joint's Z (the sliding axis) to the chassis's Y; the
+    // same rotation on both sides keeps the rack's frame along the chassis's.
+    const Mat3 R_rack = Eigen::AngleAxisd(-pi / 2.0, Vec3::UnitX()).toRotationMatrix();
     const BodyIndex body = sys.model.add_body(
         chassis_body, std::make_shared<kernel::PrismaticJointModel>(),
-        Transform3::Identity(), Transform3::Identity(),
-        RigidBodyInertia::from_solid_box(1.0, Vec3(0.02, 0.02, 0.4)), name);
+        Transform3::FromRotation(R_rack), Transform3::FromRotation(R_rack),
+        RigidBodyInertia::from_solid_box(1.0, Vec3(0.02, 0.4, 0.02)), name);
     sys.constraints.push_back(std::make_shared<kernel::JointDriver>(
         sys.model, body,
         kernel::TimeFunction([rack](Real) { return rack->travel; },
@@ -407,7 +414,7 @@ Real detail::calibrate_rack(const VehicleTemplate& tmpl, const AxleConfig& ax,
     if (!k.solve(50, 1e-10)) return 0.0;
     const Real toe_ref = extract_toe(k.state(upright));
 
-    const Real rack_step = 0.005;   // +5 mm toward +Z (left)
+    const Real rack_step = 0.005;   // +5 mm toward +Y (left)
     rack->travel = rack_step;
     if (!k.solve(50, 1e-10)) return 0.0;
     const Real dtoe = extract_toe(k.state(upright)) - toe_ref;
@@ -419,7 +426,7 @@ VehicleHandle build_vehicle(kernel::System& sys,
 {
     VehicleHandle vh;
     vh.tmpl = tmpl;
-    sys.model.gravity = Vec3(0.0, -g_accel, 0.0);
+    sys.model.gravity = iso_gravity();
 
     // --- Chassis (body 1) ---
     vh.chassis_body = sys.model.add_body(
@@ -448,10 +455,10 @@ VehicleHandle build_vehicle(kernel::System& sys,
     };
 
     const std::array<CornerDef, 4> corner_defs = {{
-        {Vec3( tmpl.front_axle_x, 0.0,  tmpl.front_axle.half_track), tmpl.front_axle, false, "FL"},
-        {Vec3( tmpl.front_axle_x, 0.0, -tmpl.front_axle.half_track), tmpl.front_axle, true,  "FR"},
-        {Vec3(-tmpl.rear_axle_x,  0.0,  tmpl.rear_axle.half_track),  tmpl.rear_axle,  false, "RL"},
-        {Vec3(-tmpl.rear_axle_x,  0.0, -tmpl.rear_axle.half_track),  tmpl.rear_axle,  true,  "RR"},
+        {Vec3( tmpl.front_axle_x,  tmpl.front_axle.half_track, 0.0), tmpl.front_axle, false, "FL"},
+        {Vec3( tmpl.front_axle_x, -tmpl.front_axle.half_track, 0.0), tmpl.front_axle, true,  "FR"},
+        {Vec3(-tmpl.rear_axle_x,   tmpl.rear_axle.half_track,  0.0), tmpl.rear_axle,  false, "RL"},
+        {Vec3(-tmpl.rear_axle_x,  -tmpl.rear_axle.half_track,  0.0), tmpl.rear_axle,  true,  "RR"},
     }};
 
     for (int c = 0; c < 4; ++c) {
@@ -473,6 +480,11 @@ VehicleHandle build_vehicle(kernel::System& sys,
                     sys, vh.chassis_body, cd.mount_pos, cd.axle, cd.is_right, tierod_body);
                 break;
         }
+    }
+
+    // --- The tyres' ground: the plane normal to gravity ---
+    for (auto& corner : vh.corners) {
+        if (corner.tire) corner.tire->ground_normal_W = ground_up(sys.model.gravity);
     }
 
     // --- Calibrate rack travel per radian of toe, corner by corner ---
@@ -500,31 +512,31 @@ void set_vehicle_equilibrium(kernel::Simulator& sim, const VehicleHandle& vh)
     const Real W_front_per = W_total * t.rear_axle_x / L * 0.5;
     const Real W_rear_per  = W_total * t.front_axle_x / L * 0.5;
 
-    // Per-corner world-frame wheel center height (contact at y=0)
-    const Real wheel_y_front_world =
+    // Per-corner world-frame wheel center height (contact at z=0)
+    const Real wheel_z_front_world =
         t.front_axle.tire_free_radius - W_front_per / t.front_axle.tire_k_z;
-    const Real wheel_y_rear_world =
+    const Real wheel_z_rear_world =
         t.rear_axle.tire_free_radius - W_rear_per / t.rear_axle.tire_k_z;
 
-    auto chassis_height = [](const CornerHandle& corner, const AxleConfig& ax, Real wheel_y, Real W_per) {
+    auto chassis_height = [](const CornerHandle& corner, const AxleConfig& ax, Real wheel_z, Real W_per) {
         if (corner.type == SuspensionType::Simple) {
             const Real spring_compr = W_per / ax.k_spring;
-            return wheel_y + (ax.spring_rest_length - spring_compr);
+            return wheel_z + (ax.spring_rest_length - spring_compr);
         }
-        return wheel_y;
+        return wheel_z;
     };
-    const Real chassis_y_front = chassis_height(vh.corners[0], t.front_axle, wheel_y_front_world, W_front_per);
-    const Real chassis_y_rear  = chassis_height(vh.corners[2], t.rear_axle, wheel_y_rear_world, W_rear_per);
-    const Real chassis_y = 0.5 * (chassis_y_front + chassis_y_rear);
+    const Real chassis_z_front = chassis_height(vh.corners[0], t.front_axle, wheel_z_front_world, W_front_per);
+    const Real chassis_z_rear  = chassis_height(vh.corners[2], t.rear_axle, wheel_z_rear_world, W_rear_per);
+    const Real chassis_z = 0.5 * (chassis_z_front + chassis_z_rear);
 
-    // The free joint's coordinates start with the translation.
-    sim.q(model.idx_q[vh.chassis_body] + 1) = chassis_y;
+    // The free joint's coordinates start with the translation (x, y, z).
+    sim.q(model.idx_q[vh.chassis_body] + 2) = chassis_z;
 
     // Simple corners: the prismatic coordinate is the suspension travel.
     for (int c = 0; c < 4; ++c) {
         if (vh.corners[c].type != SuspensionType::Simple) continue;
-        const Real wheel_y = (c < 2) ? wheel_y_front_world : wheel_y_rear_world;
-        sim.q(model.idx_q[vh.corners[c].wheel_body]) = chassis_y - wheel_y;
+        const Real wheel_z = (c < 2) ? wheel_z_front_world : wheel_z_rear_world;
+        sim.q(model.idx_q[vh.corners[c].wheel_body]) = chassis_z - wheel_z;
     }
 
     sim.refresh();
@@ -538,9 +550,9 @@ std::pair<DoubleWishboneCorner, std::size_t> build_dwb_for_analysis(
     const auto& ax = (corner_idx < 2) ? tmpl.front_axle : tmpl.rear_axle;
     const bool is_right = (corner_idx % 2 == 1);
     const Real axle_x = (corner_idx < 2) ? tmpl.front_axle_x : -tmpl.rear_axle_x;
-    const Real track_z = is_right ? -ax.half_track : ax.half_track;
+    const Real track_y = is_right ? -ax.half_track : ax.half_track;
 
-    const Vec3 wheel_center(axle_x, 0.25, track_z);
+    const Vec3 wheel_center(axle_x, track_y, 0.25);
 
     auto p = detail::make_dwb_params_for_corner(
         wheel_center, ax.dwb, is_right, ax.arm_mass, ax.upright_mass);
@@ -557,9 +569,9 @@ std::pair<McPhersonCorner, std::size_t> build_mcpherson_for_analysis(
     const auto& ax = (corner_idx < 2) ? tmpl.front_axle : tmpl.rear_axle;
     const bool is_right = (corner_idx % 2 == 1);
     const Real axle_x = (corner_idx < 2) ? tmpl.front_axle_x : -tmpl.rear_axle_x;
-    const Real track_z = is_right ? -ax.half_track : ax.half_track;
+    const Real track_y = is_right ? -ax.half_track : ax.half_track;
 
-    const Vec3 wheel_center(axle_x, 0.25, track_z);
+    const Vec3 wheel_center(axle_x, track_y, 0.25);
 
     auto p = detail::make_mcpherson_params_for_corner(
         wheel_center, ax.mcpherson, is_right, ax.arm_mass, ax.upright_mass);

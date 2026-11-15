@@ -208,6 +208,16 @@ all its iterations, and a residual equal to the conflict (0.2 for targets at
 0.1 and 0.3). Remove one of the two. *(Debugging aids; Phase 2: library and
 checks.)*
 
+**A vehicle sinks through the ground, or its "height" reads sideways.** The
+vehicle layer uses ISO 8855 axes since task 7.1: X forward, Y left, Z up,
+gravity along -Z (`docs/conventions.md`). A model, hardpoint table or test
+written for the earlier axes (Y up, Z to the left) must be converted by
+swapping the last two components, (x, y, z) -> (x, z, y), and a rotation
+about the old up axis becomes one about Z with the opposite angle (a
+positive steer is a positive rotation about Z). In the free joint's
+coordinates the height is now `q(2)`, and in its velocities the yaw rate is
+the third and the vertical velocity the sixth. *(Phase 7: axes, D60.)*
+
 ## Initial conditions, statics and linearisation
 
 **`assemble()` reports MBD-K063 (and MBD-K062).** The held coordinates fix
@@ -779,3 +789,4 @@ Before building on it (working rule 2):
 | Phase 6: viewing | Python stopping with 0xc06d007f on linear algebra (NumPy on MKL; Builds); Rerun missing (MBD-P015) |
 | Phase 6: examples | Semi-implicit Euler's energy growing when an event cuts its steps (Numerical traps); two runs mixed in one recording (fixed) (Viewing) |
 | Phase 6: the viewer in notebooks | A blank viewer below a cell (Viewing); the viewer in a window instead (MBD-P016 for a missing rerun-notebook) |
+| Phase 7: axes | A model written for the earlier axes (Models) |

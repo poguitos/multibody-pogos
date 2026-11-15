@@ -94,7 +94,7 @@ TEST_CASE("Template: DefaultSedan reaches static equilibrium", "[template][equil
     kernel::Simulator sim(sys);
     sim.method = kernel::Integrator::RK4;
     set_vehicle_equilibrium(sim, vh);
-    sim.q(1) += 0.02; // Small perturbation
+    sim.q(2) += 0.02; // Small perturbation of the chassis height (ISO Z)
     sim.initialize();
 
     sim.run(5.0, 0.001);
@@ -308,12 +308,12 @@ TEST_CASE("Template: vehicle corners with steering", "[template][cornering]")
 
     // Steer left and drive
     vh.set_steering(0.03);
-    const Real z_before = sim.states()[static_cast<std::size_t>(vh.chassis_body)].p_WB.z();
+    const Real y_before = sim.states()[static_cast<std::size_t>(vh.chassis_body)].p_WB.y();
     sim.run(3.0, 0.001);
-    const Real z_after = sim.states()[static_cast<std::size_t>(vh.chassis_body)].p_WB.z();
+    const Real y_after = sim.states()[static_cast<std::size_t>(vh.chassis_body)].p_WB.y();
 
-    // Should turn left (positive Z)
-    REQUIRE(z_after - z_before > 0.05);
+    // Should turn left (positive Y)
+    REQUIRE(y_after - y_before > 0.05);
 }
 
 // ============================================================================
@@ -389,7 +389,7 @@ TEST_CASE("Template: symmetric bounce keeps corners equal",
     kernel::Simulator sim(sys);
     sim.method = kernel::Integrator::RK4;
     set_vehicle_equilibrium(sim, vh);
-    sim.q(1) += 0.015; // Pure heave
+    sim.q(2) += 0.015; // Pure heave (the chassis height, ISO Z)
     sim.initialize();
 
     sim.run(0.5, 0.001);

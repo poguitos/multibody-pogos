@@ -31,13 +31,13 @@ namespace
     constexpr mbd::Real L0_s   = 0.30;    // suspension spring free length [m]
 
     // Static equilibrium heights
-    mbd::Real y_w_eq()
+    mbd::Real z_w_eq()
     {
         return R_free - (m_s + m_u) * mbd::g_accel / k_t;
     }
-    mbd::Real y_c_eq()
+    mbd::Real z_c_eq()
     {
-        return y_w_eq() + L0_s - m_s * mbd::g_accel / k_s;
+        return z_w_eq() + L0_s - m_s * mbd::g_accel / k_s;
     }
 
     // Analytical undamped natural frequencies (rad/s) from eigenvalue problem:
@@ -62,20 +62,20 @@ namespace
         return {std::sqrt(omega1_sq), std::sqrt(omega2_sq)};
     }
 
-    /// The two bodies on prismatic joints along the world Y axis: the wheel
-    /// (body 1, coordinate 0) and the chassis (body 2, coordinate 1).
+    /// The two bodies on prismatic joints along the world Z axis (up, ISO
+    /// 8855): the wheel (body 1, coordinate 0) and the chassis (body 2,
+    /// coordinate 1).
     void add_quarter_car_bodies(mbd::kernel::System& sys)
     {
         using namespace mbd;
-        sys.model.gravity = Vec3(0.0, -g_accel, 0.0);
-        // Joint frame rotation: Rx(-pi/2) maps joint Z to world +Y
-        const Transform3 X_prismatic_Y = Transform3::FromRotation(
-            Mat3(Eigen::AngleAxisd(-pi / 2.0, Vec3::UnitX()).toRotationMatrix()));
+        sys.model.gravity = Vec3(0.0, 0.0, -g_accel);
+        // The joint's sliding axis, its Z, is the world's Z: identity frames
+        const Transform3 X_vertical = Transform3::Identity();
         const auto prismatic = std::make_shared<kernel::PrismaticJointModel>();
-        sys.model.add_body(0, prismatic, X_prismatic_Y, X_prismatic_Y,
+        sys.model.add_body(0, prismatic, X_vertical, X_vertical,
                            RigidBodyInertia::from_solid_box(m_u, Vec3(0.15, 0.15, 0.15)), "wheel");
-        sys.model.add_body(0, prismatic, X_prismatic_Y, X_prismatic_Y,
-                           RigidBodyInertia::from_solid_box(m_s, Vec3(0.5, 0.2, 0.4)), "chassis");
+        sys.model.add_body(0, prismatic, X_vertical, X_vertical,
+                           RigidBodyInertia::from_solid_box(m_s, Vec3(0.5, 0.4, 0.2)), "chassis");
     }
 
     /// The quarter car with its suspension spring-damper and tyre.
@@ -94,16 +94,16 @@ namespace
         return sys;
     }
 
-    void set_heights(mbd::kernel::Simulator& sim, mbd::Real y_wheel, mbd::Real y_chassis)
+    void set_heights(mbd::kernel::Simulator& sim, mbd::Real z_wheel, mbd::Real z_chassis)
     {
-        sim.q(0) = y_wheel;
-        sim.q(1) = y_chassis;
+        sim.q(0) = z_wheel;
+        sim.q(1) = z_chassis;
         sim.v.setZero();
         sim.initialize();
     }
 
     struct Sample {
-        mbd::Real time, y_chassis, v_chassis;
+        mbd::Real time, z_chassis, v_chassis;
     };
 
     /// Chassis height and velocity at the start and after every step.
@@ -133,14 +133,14 @@ TEST_CASE("Quarter-car: settles to static equilibrium",
     sim.method = kernel::Integrator::RK4;
 
     // Start slightly above equilibrium
-    set_heights(sim, y_w_eq() + 0.02, y_c_eq() + 0.05);
+    set_heights(sim, z_w_eq() + 0.02, z_c_eq() + 0.05);
 
     // Simulate long enough for damping to settle (5 seconds)
     sim.run(5.0, 0.001);
 
     // Should settle near analytical equilibrium
-    REQUIRE_THAT(sim.q(0), WithinAbs(y_w_eq(), 0.002));
-    REQUIRE_THAT(sim.q(1), WithinAbs(y_c_eq(), 0.002));
+    REQUIRE_THAT(sim.q(0), WithinAbs(z_w_eq(), 0.002));
+    REQUIRE_THAT(sim.q(1), WithinAbs(z_c_eq(), 0.002));
 
     // Velocities should be near zero
     REQUIRE_THAT(sim.v(0), WithinAbs(0.0, 0.01));
@@ -161,7 +161,7 @@ TEST_CASE("Quarter-car: undamped natural frequencies match analytical",
     sim.method = kernel::Integrator::RK4;
 
     // Start at equilibrium with a small chassis perturbation (excites body bounce mode)
-    set_heights(sim, y_w_eq(), y_c_eq() + 0.01);  // 10mm bump
+    set_heights(sim, z_w_eq(), z_c_eq() + 0.01);  // 10mm bump
 
     // Simulate 3 seconds
     const auto history = record(sim, 3.0, 0.001);
@@ -172,12 +172,12 @@ TEST_CASE("Quarter-car: undamped natural frequencies match analytical",
     const Real f1_theory = omega1 / (2.0 * pi);
 
     // Measure body bounce frequency from chassis displacement history.
-    // Count zero crossings of (y_c - y_c_eq).
-    const Real y_c_0 = y_c_eq();
+    // Count zero crossings of (y_c - z_c_eq).
+    const Real y_c_0 = z_c_eq();
     std::vector<Real> cross_times;
     for (size_t k = 1; k < history.size(); ++k) {
-        const Real dy_prev = history[k - 1].y_chassis - y_c_0;
-        const Real dy_curr = history[k].y_chassis - y_c_0;
+        const Real dy_prev = history[k - 1].z_chassis - y_c_0;
+        const Real dy_curr = history[k].z_chassis - y_c_0;
 
         // Negative-going crossing
         if (dy_prev > 0.0 && dy_curr <= 0.0) {
@@ -213,8 +213,8 @@ TEST_CASE("Quarter-car: linearised frequencies and shapes match the analytical o
     using namespace mbd;
     auto sys = make_quarter_car(0.0);
     kernel::Simulator sim(sys);
-    sim.q(0) = y_w_eq();
-    sim.q(1) = y_c_eq();
+    sim.q(0) = z_w_eq();
+    sim.q(1) = z_c_eq();
 
     const kernel::LinearModel lm = kernel::linearize(sim);
     INFO(lm.summary(sys.model));
@@ -248,8 +248,8 @@ TEST_CASE("Quarter-car: linearised damped eigenvalues are the roots of det(l^2 M
     using namespace mbd;
     auto sys = make_quarter_car(c_s);
     kernel::Simulator sim(sys);
-    sim.q(0) = y_w_eq();
-    sim.q(1) = y_c_eq();
+    sim.q(0) = z_w_eq();
+    sim.q(1) = z_c_eq();
 
     const kernel::LinearModel lm = kernel::linearize(sim);
     INFO(lm.summary(sys.model));
@@ -280,7 +280,7 @@ TEST_CASE("Quarter-car: undamped energy conservation",
     sim.method = kernel::Integrator::RK4;
 
     // Start at equilibrium with perturbation
-    set_heights(sim, y_w_eq() + 0.005, y_c_eq() + 0.01);
+    set_heights(sim, z_w_eq() + 0.005, z_c_eq() + 0.01);
 
     auto compute_energy = [&]() -> Real {
         // Kinetic and gravitational energy of the bodies
@@ -322,17 +322,17 @@ TEST_CASE("Quarter-car: damped oscillation decays",
     kernel::Simulator sim(sys);
     sim.method = kernel::Integrator::RK4;
 
-    set_heights(sim, y_w_eq(), y_c_eq() + 0.03);  // 30mm perturbation
+    set_heights(sim, z_w_eq(), z_c_eq() + 0.03);  // 30mm perturbation
 
     const auto history = record(sim, 3.0, 0.001);
 
     // Measure peak chassis displacement over time
-    const Real y_eq = y_c_eq();
+    const Real y_eq = z_c_eq();
     Real max_disp_first_half = 0.0;
     Real max_disp_second_half = 0.0;
 
     for (const auto& rec : history) {
-        const Real disp = std::abs(rec.y_chassis - y_eq);
+        const Real disp = std::abs(rec.z_chassis - y_eq);
         if (rec.time < 1.5) {
             max_disp_first_half = std::max(max_disp_first_half, disp);
         } else {
@@ -365,8 +365,8 @@ TEST_CASE("Quarter-car: force projection gives same result as manual force callb
     auto sys1 = make_quarter_car(c_s);
     kernel::Simulator sim1(sys1);
     sim1.method = kernel::Integrator::RK4;
-    sim1.q(0) = y_w_eq() + 0.01;
-    sim1.q(1) = y_c_eq() + 0.02;
+    sim1.q(0) = z_w_eq() + 0.01;
+    sim1.q(1) = z_c_eq() + 0.02;
     sim1.v(0) = 0.1;
     sim1.v(1) = -0.05;
     sim1.initialize();
@@ -391,8 +391,8 @@ TEST_CASE("Quarter-car: force projection gives same result as manual force callb
     REQUIRE_THAT(qdd1(1), WithinAbs(qdd2(1), 1e-10));
 
     // For two vertical sliders, the generalized forces are the vertical body forces
-    REQUIRE_THAT(tau_projected(0), WithinAbs(sim1.forces()[1].f_W.y(), 1e-9));
-    REQUIRE_THAT(tau_projected(1), WithinAbs(sim1.forces()[2].f_W.y(), 1e-9));
+    REQUIRE_THAT(tau_projected(0), WithinAbs(sim1.forces()[1].f_W.z(), 1e-9));
+    REQUIRE_THAT(tau_projected(1), WithinAbs(sim1.forces()[2].f_W.z(), 1e-9));
 }
 
 // ============================================================================
@@ -405,11 +405,10 @@ TEST_CASE("Quarter-car: tire lifts off when wheel is above free radius",
     using namespace mbd;
 
     kernel::System sys;
-    sys.model.gravity = Vec3(0.0, -g_accel, 0.0);
-    const Transform3 X_prismatic_Y = Transform3::FromRotation(
-        Mat3(Eigen::AngleAxisd(-pi / 2.0, Vec3::UnitX()).toRotationMatrix()));
-    sys.model.add_body(0, std::make_shared<kernel::PrismaticJointModel>(), X_prismatic_Y,
-                       X_prismatic_Y, RigidBodyInertia::from_solid_box(m_u, Vec3(0.15, 0.15, 0.15)),
+    sys.model.gravity = Vec3(0.0, 0.0, -g_accel);
+    const Transform3 X_vertical = Transform3::Identity();   // the joint's Z is the world's, up
+    sys.model.add_body(0, std::make_shared<kernel::PrismaticJointModel>(), X_vertical,
+                       X_vertical, RigidBodyInertia::from_solid_box(m_u, Vec3(0.15, 0.15, 0.15)),
                        "wheel");
 
     auto tire = std::make_shared<TireContactForce>(1, R_free, k_t, 0.0);
@@ -417,13 +416,13 @@ TEST_CASE("Quarter-car: tire lifts off when wheel is above free radius",
     sys.force_elements.push_back(std::move(tire));
 
     kernel::Simulator sim(sys);
-    auto apply_at = [&](Real y_wheel) {
-        sim.q(0) = y_wheel;
+    auto apply_at = [&](Real z_wheel) {
+        sim.q(0) = z_wheel;
         sim.v.setZero();
         sim.acceleration(sim.q, sim.v, 0.0);   // states and forces at this height
     };
 
-    // Wheel at exactly free radius: contact point at y=0, no penetration
+    // Wheel at exactly free radius: contact point at z=0, no penetration
     apply_at(R_free);
     REQUIRE_THAT(tire_ptr->get_vertical_force(sim.states()), WithinAbs(0.0, 1e-9));
     REQUIRE_THAT(sim.forces()[1].f_W.norm(), WithinAbs(0.0, 1e-9));
@@ -436,5 +435,5 @@ TEST_CASE("Quarter-car: tire lifts off when wheel is above free radius",
     apply_at(R_free - 0.01);  // 10mm compression
     const Real expected_force = k_t * 0.01; // 200000 * 0.01 = 2000 N
     REQUIRE_THAT(tire_ptr->get_vertical_force(sim.states()), WithinAbs(expected_force, 1.0));
-    REQUIRE(sim.forces()[1].f_W.y() > 0.0); // Pushes up
+    REQUIRE(sim.forces()[1].f_W.z() > 0.0); // Pushes up
 }

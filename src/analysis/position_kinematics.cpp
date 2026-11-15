@@ -4,27 +4,27 @@ namespace mbd {
 
 Real extract_camber(const RigidBodyState& state)
 {
-    const Vec3 spin_axis_W = state.q_WB * Vec3::UnitY();
-    return std::atan2(spin_axis_W.z(), spin_axis_W.y());
+    const Vec3 vertical_axis_W = state.q_WB * Vec3::UnitZ();
+    return std::atan2(vertical_axis_W.y(), vertical_axis_W.z());
 }
 
 Real extract_toe(const RigidBodyState& state)
 {
     const Vec3 fwd_W = state.q_WB * Vec3::UnitX();
-    return std::atan2(fwd_W.z(), fwd_W.x());
+    return std::atan2(fwd_W.y(), fwd_W.x());
 }
 
 void KinematicSweepResult::export_csv(const std::string& filename) const
 {
     std::ofstream file(filename);
     file << std::fixed << std::setprecision(6);
-    file << "bump_mm,camber_deg,toe_deg,wheel_center_y_mm,converged\n";
+    file << "bump_mm,camber_deg,toe_deg,wheel_center_height_mm,converged\n";
 
     for (const auto& p : points) {
         file << p.bump * 1000.0 << ","
              << p.camber * 180.0 / 3.14159265358979323846 << ","
              << p.toe * 180.0 / 3.14159265358979323846 << ","
-             << p.wheel_y * 1000.0 << ","
+             << p.wheel_height * 1000.0 << ","
              << (p.converged ? 1 : 0) << "\n";
     }
 }
@@ -102,7 +102,7 @@ KinematicSweepResult sweep_bump_travel(Kinematics& k, int upright_body,
         pt.bump = bump;
         pt.converged = ok;
         const RigidBodyState s = k.state(upright_body);
-        pt.wheel_y = s.p_WB.y();
+        pt.wheel_height = s.p_WB.z();
         pt.camber = extract_camber(s);
         pt.toe = extract_toe(s);
         result.points.push_back(pt);

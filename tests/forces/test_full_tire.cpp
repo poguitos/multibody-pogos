@@ -73,8 +73,8 @@ TEST_CASE("FullTireForce: no contact when wheel above ground",
 
     auto [sys, tire] = make_free_wheel(40.0, 0.35, 200000.0, 500.0);
 
-    // Wheel at y = 0.5 (well above R_free = 0.35 + ground at 0)
-    sys.q << 0.0, 0.5, 0.0, 0.0, 0.0, 0.0;
+    // Wheel at z = 0.5 (well above R_free = 0.35 + ground at 0)
+    sys.q << 0.0, 0.0, 0.5, 0.0, 0.0, 0.0;
     sys.q_dot.setZero();
     sys.compute_kinematics();
 
@@ -98,7 +98,7 @@ TEST_CASE("FullTireForce: vertical force at static deflection",
     auto [sys, tire] = make_free_wheel(mass, R_free, k_z, 500.0);
 
     // Wheel at R_free - 0.01 (10mm compression)
-    sys.q << 0.0, R_free - 0.01, 0.0, 0.0, 0.0, 0.0;
+    sys.q << 0.0, 0.0, R_free - 0.01, 0.0, 0.0, 0.0;
     sys.q_dot.setZero();
     sys.compute_kinematics();
 
@@ -127,10 +127,10 @@ TEST_CASE("FullTireForce: lateral velocity produces slip angle and Fy",
     tire->auto_free_roll = false;
     // 20mm compression → Fz ≈ 4000 N
     const Real defl = 0.02;
-    sys.q << 0.0, R_free - defl, 0.0, 0.0, 0.0, 0.0;
+    sys.q << 0.0, 0.0, R_free - defl, 0.0, 0.0, 0.0;
 
     // Forward 20 m/s, lateral 1 m/s
-    sys.q_dot << 20.0, 0.0, 1.0, 0.0, 0.0, 0.0;
+    sys.q_dot << 20.0, 1.0, 0.0, 0.0, 0.0, 0.0;
     sys.compute_kinematics();
 
     // Set omega to free-rolling so kappa ≈ 0 (otherwise combined slip kills Fy)
@@ -178,7 +178,7 @@ TEST_CASE("FullTireForce: forward velocity with locked wheel produces slip ratio
     tire->omega_wheel = 0.0;
 
     const Real defl = 0.02;
-    sys.q << 0.0, R_free - defl, 0.0, 0.0, 0.0, 0.0;
+    sys.q << 0.0, 0.0, R_free - defl, 0.0, 0.0, 0.0;
 
     // Moving forward at 20 m/s, wheel not spinning (locked wheel)
     sys.q_dot << 20.0, 0.0, 0.0, 0.0, 0.0, 0.0;
@@ -207,7 +207,7 @@ TEST_CASE("FullTireForce: free-rolling wheel has near-zero slip ratio",
     tire->auto_free_roll = false;
 
     const Real defl = 0.02;
-    sys.q << 0.0, R_free - defl, 0.0, 0.0, 0.0, 0.0;
+    sys.q << 0.0, 0.0, R_free - defl, 0.0, 0.0, 0.0;
 
     const Real Vx = 20.0;
     sys.q_dot << Vx, 0.0, 0.0, 0.0, 0.0, 0.0;
@@ -244,10 +244,10 @@ TEST_CASE("FullTireForce: combined slip produces both Fx and Fy",
     tire->auto_free_roll = false;
 
     const Real defl = 0.02;
-    sys.q << 0.0, R_free - defl, 0.0, 0.0, 0.0, 0.0;
+    sys.q << 0.0, 0.0, R_free - defl, 0.0, 0.0, 0.0;
 
     // Forward at 20 m/s, lateral at 2 m/s, partial braking
-    sys.q_dot << 20.0, 0.0, 2.0, 0.0, 0.0, 0.0;
+    sys.q_dot << 20.0, 2.0, 0.0, 0.0, 0.0, 0.0;
     sys.compute_kinematics();
 
     const Real R_eff = R_free - defl * 0.5;
@@ -284,10 +284,10 @@ TEST_CASE("FullTireForce: free wheel settles to static equilibrium under gravity
 
     // A free wheel body on the kernel, with the tyre as its only force.
     kernel::System sys;
-    sys.model.gravity = Vec3(0.0, -g_accel, 0.0);
+    sys.model.gravity = Vec3(0.0, 0.0, -g_accel);
     sys.model.add_body(0, std::make_shared<kernel::FreeJointModel>(), Transform3::Identity(),
                        Transform3::Identity(),
-                       RigidBodyInertia::from_solid_box(mass, Vec3(0.15, R_free, 0.15)), "wheel");
+                       RigidBodyInertia::from_solid_box(mass, Vec3(0.15, 0.15, R_free)), "wheel");
     sys.force_elements.push_back(std::make_shared<FullTireForce>(
         1, R_free, k_z, c_z, PacejkaTireParams::DefaultPassengerCar()));
 
@@ -295,17 +295,17 @@ TEST_CASE("FullTireForce: free wheel settles to static equilibrium under gravity
     sim.method = kernel::Integrator::RK4;
 
     // Start slightly above equilibrium
-    const Real y_eq = R_free - mass * g_accel / k_z;
-    sim.q(1) = y_eq + 0.02;
+    const Real z_eq = R_free - mass * g_accel / k_z;
+    sim.q(2) = z_eq + 0.02;
     sim.initialize();
 
     sim.run(2.0, 0.001);
 
     // Should settle near equilibrium, without moving horizontally
     const RigidBodyState& wheel = sim.states()[1];
-    REQUIRE_THAT(wheel.p_WB.y(), WithinAbs(y_eq, 0.002));
+    REQUIRE_THAT(wheel.p_WB.z(), WithinAbs(z_eq, 0.002));
     REQUIRE_THAT(wheel.p_WB.x(), WithinAbs(0.0, 0.001));
-    REQUIRE_THAT(wheel.p_WB.z(), WithinAbs(0.0, 0.001));
+    REQUIRE_THAT(wheel.p_WB.y(), WithinAbs(0.0, 0.001));
 
     // Velocities near zero
     for (int i = 0; i < 6; ++i) {
@@ -329,9 +329,9 @@ TEST_CASE("FullTireForce: rotated wheel produces correct force directions",
 
     const Real defl = 0.02;
 
-    // Wheel yawed 90 degrees about Y: body X now points along world -Z.
-    // Tire forward direction in world = (0, 0, -1).
-    sys.q << 0.0, R_free - defl, 0.0, 0.0, pi / 2.0, 0.0;
+    // Wheel yawed 90 degrees about Z: body X now points along world +Y.
+    // Tire forward direction in world = (0, 1, 0).
+    sys.q << 0.0, 0.0, R_free - defl, 0.0, 0.0, pi / 2.0;
 
     // We want the wheel to move along world +X (perpendicular to tire forward).
     // FreeWheel's q_dot(0:2) is the world velocity of the wheel centre, so
@@ -346,14 +346,14 @@ TEST_CASE("FullTireForce: rotated wheel produces correct force directions",
     REQUIRE(std::abs(tire->get_slip_angle()) > 0.5);
     REQUIRE(std::abs(tire->get_Fy()) > 500.0);
 
-    // Tire forward is world -Z, lateral is world -X (from Y x forward).
-    // Fy acts along the lateral direction, which has a world X component.
-    // Vertical force acts along world Y.
-    // So total force should have significant components in X and/or Z plane.
-    const Real lateral_force_magnitude =
-        std::sqrt(sys.forces[1].f_W.x() * sys.forces[1].f_W.x() +
-                  sys.forces[1].f_W.z() * sys.forces[1].f_W.z());
-    REQUIRE(lateral_force_magnitude > 100.0);
+    // Tire forward is world +Y, lateral is world -X (Z x forward). The wheel
+    // slides along +X, across its heading, so its slip ratio is zero (Vx = 0
+    // and a free-rolling wheel) and its horizontal force is Fy alone, along
+    // -X: against the sliding. Vertical force acts along world Z, k_z defl.
+    const Vec3& f = sys.forces[1].f_W;
+    REQUIRE(f.x() < -500.0);
+    REQUIRE_THAT(f.y(), WithinAbs(0.0, 1e-9));
+    REQUIRE_THAT(f.z(), WithinAbs(k_z * defl, 1e-6));
 }
 
 // ============================================================================
@@ -371,8 +371,8 @@ TEST_CASE("FullTireForce: telemetry matches internal state",
     auto [sys, tire] = make_free_wheel(40.0, R_free, k_z, 0.0);
 
     const Real defl = 0.02;
-    sys.q << 0.0, R_free - defl, 0.0, 0.0, 0.0, 0.0;
-    sys.q_dot << 20.0, 0.0, 1.0, 0.0, 0.0, 0.0;
+    sys.q << 0.0, 0.0, R_free - defl, 0.0, 0.0, 0.0;
+    sys.q_dot << 20.0, 1.0, 0.0, 0.0, 0.0, 0.0;
     sys.compute_kinematics();
 
     sys.clear_forces();

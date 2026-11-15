@@ -4,7 +4,10 @@
 //
 // Implements drag, downforce, and (optionally) ride-height-dependent
 // downforce. Forces are applied at a configurable center of pressure
-// on the chassis body.
+// on the chassis body. Up is the ground's normal (ISO 8855's +Z unless set
+// otherwise, mbd/vehicle/axes.hpp): the drag acts against the velocity along
+// the ground, the downforce against the normal, and the ride height is the
+// chassis origin's height along it.
 
 #include "mbd/core/core.hpp"
 #include "mbd/forces/force_element.hpp"
@@ -24,6 +27,9 @@ struct AeroParams {
 
     /// Center of pressure offset from chassis body origin (CG), in chassis frame.
     Vec3 cop_offset_chassis{Vec3::Zero()};
+
+    /// The ground's unit normal, up, in world axes.
+    Vec3 ground_normal_W{Vec3::UnitZ()};
 
     /// Ride-height-dependent downforce.
     /// Effective ClA = ClA + dClA_dh * (h_ref - h) when h < h_ref, else just ClA.

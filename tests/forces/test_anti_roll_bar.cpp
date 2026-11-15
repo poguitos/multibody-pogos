@@ -12,8 +12,8 @@ using Catch::Matchers::WithinAbs;
 namespace
 {
     /// A pinned chassis with two wheels on prismatic joints below it, at
-    /// (0, 0.3, +-half_track) in the chassis frame. A positive coordinate moves
-    /// a wheel down from its mount.
+    /// (0, +-half_track, 0.3) in the chassis frame (ISO 8855: Y left, Z up). A
+    /// positive coordinate moves a wheel down from its mount.
     struct ArbRig {
         mbd::kernel::System sys;
         mbd::BodyIndex chassis{0}, left_wheel{0}, right_wheel{0};
@@ -24,16 +24,16 @@ namespace
         using namespace mbd;
         rig.chassis = rig.sys.model.add_body(
             0, std::make_shared<kernel::FixedJointModel>(), Transform3::Identity(),
-            Transform3::Identity(), RigidBodyInertia::from_solid_box(1000.0, Vec3(1.0, 0.3, 0.5)),
+            Transform3::Identity(), RigidBodyInertia::from_solid_box(1000.0, Vec3(1.0, 0.5, 0.3)),
             "chassis");
-        const Mat3 R_down = Eigen::AngleAxisd(pi / 2.0, Vec3::UnitX()).toRotationMatrix();
+        const Mat3 R_down = Eigen::AngleAxisd(pi, Vec3::UnitX()).toRotationMatrix();   // joint Z to -Z
         const auto I_wheel = RigidBodyInertia::from_solid_box(30.0, Vec3(0.15, 0.15, 0.15));
         const auto prismatic = std::make_shared<kernel::PrismaticJointModel>();
         rig.left_wheel = rig.sys.model.add_body(rig.chassis, prismatic,
-                                                Transform3(R_down, Vec3(0.0, 0.3, half_track)),
+                                                Transform3(R_down, Vec3(0.0, half_track, 0.3)),
                                                 Transform3::FromRotation(R_down), I_wheel, "left");
         rig.right_wheel = rig.sys.model.add_body(rig.chassis, prismatic,
-                                                 Transform3(R_down, Vec3(0.0, 0.3, -half_track)),
+                                                 Transform3(R_down, Vec3(0.0, -half_track, 0.3)),
                                                  Transform3::FromRotation(R_down), I_wheel, "right");
     }
 
@@ -86,8 +86,8 @@ TEST_CASE("ARB: zero force at reference configuration", "[arb][static]")
     // At the reference, both front wheels are at the same height in the
     // chassis frame, so the bars are untwisted.
     const Transform3 T_CW = sim.states()[static_cast<std::size_t>(vh.chassis_body)].pose_WB().inverse();
-    const Real z_FL = T_CW.apply(sim.states()[static_cast<std::size_t>(vh.corners[0].wheel_body)].p_WB).y();
-    const Real z_FR = T_CW.apply(sim.states()[static_cast<std::size_t>(vh.corners[1].wheel_body)].p_WB).y();
+    const Real z_FL = T_CW.apply(sim.states()[static_cast<std::size_t>(vh.corners[0].wheel_body)].p_WB).z();
+    const Real z_FR = T_CW.apply(sim.states()[static_cast<std::size_t>(vh.corners[1].wheel_body)].p_WB).z();
     REQUIRE_THAT(z_FL, WithinAbs(z_FR, 1e-6));
 
     // And the bars alone apply nothing.
@@ -116,8 +116,8 @@ TEST_CASE("ARB: produces restoring force under asymmetric wheel displacement",
 
     // F_mag = k_arb * (dz_L - dz_R) = 30000 * (0.01 - 0) = 300 N, restoring:
     // down on the left wheel, up on the right.
-    REQUIRE_THAT(forces[static_cast<std::size_t>(rig.left_wheel)].f_W.y(), WithinAbs(-300.0, 1.0));
-    REQUIRE_THAT(forces[static_cast<std::size_t>(rig.right_wheel)].f_W.y(), WithinAbs(+300.0, 1.0));
+    REQUIRE_THAT(forces[static_cast<std::size_t>(rig.left_wheel)].f_W.z(), WithinAbs(-300.0, 1.0));
+    REQUIRE_THAT(forces[static_cast<std::size_t>(rig.right_wheel)].f_W.z(), WithinAbs(+300.0, 1.0));
 
     // Chassis net force: zero (forces cancel), but there's a moment (couple)
     REQUIRE_THAT(forces[static_cast<std::size_t>(rig.chassis)].f_W.norm(), WithinAbs(0.0, 1.0));
@@ -188,21 +188,21 @@ TEST_CASE("ARB: reduces roll angle in steady-state cornering",
         // Run for 3 seconds to reach steady-state cornering
         sim.run(3.0, 0.001);
 
-        // Measure body roll as the tilt of chassis-Y axis from world-Y,
+        // Measure body roll as the tilt of chassis-Z axis (up) from world-Z,
         // around the chassis forward direction. Robust to yaw.
         const Quat q_WC = sim.states()[static_cast<std::size_t>(vh.chassis_body)].q_WB;
         const Vec3 chassis_x_W = q_WC * Vec3::UnitX();
-        const Vec3 chassis_y_W = q_WC * Vec3::UnitY();
+        const Vec3 chassis_z_W = q_WC * Vec3::UnitZ();
 
-        // Remove the yaw component: project chassis X onto world XZ plane
-        Vec3 fwd_horiz(chassis_x_W.x(), 0.0, chassis_x_W.z());
+        // Remove the yaw component: project chassis X onto world XY plane
+        Vec3 fwd_horiz(chassis_x_W.x(), chassis_x_W.y(), 0.0);
         fwd_horiz.normalize();
 
-        // Lateral axis = world_Y x fwd_horiz (points to the right of the motion);
-        // roll is the angle of chassis Y from world Y about the forward axis.
-        const Vec3 lat = Vec3::UnitY().cross(fwd_horiz);
-        const Real cos_roll = chassis_y_W.dot(Vec3::UnitY());
-        const Real sin_roll = chassis_y_W.dot(lat);
+        // Lateral axis = world_Z x fwd_horiz (points to the left of the motion);
+        // roll is the angle of chassis Z from world Z about the forward axis.
+        const Vec3 lat = Vec3::UnitZ().cross(fwd_horiz);
+        const Real cos_roll = chassis_z_W.dot(Vec3::UnitZ());
+        const Real sin_roll = chassis_z_W.dot(lat);
         return std::atan2(sin_roll, cos_roll);
     };
 
@@ -256,7 +256,7 @@ TEST_CASE("ARB: does not affect symmetric straight-line driving",
 
         sim.run(2.0, 0.001);
 
-        return sim.states()[static_cast<std::size_t>(vh.chassis_body)].p_WB.y(); // chassis height
+        return sim.states()[static_cast<std::size_t>(vh.chassis_body)].p_WB.z(); // chassis height
     };
 
     const Real h_no_arb = run_scenario(0.0);
@@ -283,6 +283,9 @@ TEST_CASE("ARB: chassis moment equals force times track width",
     const auto forces = arb_forces(rig, 30000.0, -0.01, 0.01);
 
     // F_mag = k_arb * delta = 30000 * 0.02 = 600 N
-    // With forces in ±Y and positions at ±Z*track: tau_X = F_L*z_L - F_R*z_R = 2*F*track
-    REQUIRE_THAT(forces[static_cast<std::size_t>(rig.chassis)].tau_W.x(), WithinAbs(-720.0, 5.0));
+    // The bar pushes the left wheel (y = +track) down and the right (y = -track)
+    // up, 600 N each, and the chassis the opposite way at the same points:
+    // tau_X = -(track * (-600) + (-track) * 600) = 2 * 600 * track = +720 N m,
+    // rolling the right side down (ISO 8855's positive roll).
+    REQUIRE_THAT(forces[static_cast<std::size_t>(rig.chassis)].tau_W.x(), WithinAbs(720.0, 5.0));
 }

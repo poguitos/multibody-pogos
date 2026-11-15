@@ -6,8 +6,8 @@ Mat3 detail::rotation_align_z_to(const Vec3& target)
 {
     Vec3 z = target.normalized();
     Vec3 x;
-    if (std::abs(z.dot(Vec3::UnitY())) < 0.9) {
-        x = z.cross(Vec3::UnitY()).normalized();
+    if (std::abs(z.dot(Vec3::UnitZ())) < 0.9) {        // Z: up (ISO 8855)
+        x = z.cross(Vec3::UnitZ()).normalized();
     } else {
         x = z.cross(Vec3::UnitX()).normalized();
     }
@@ -28,8 +28,8 @@ DoubleWishboneCorner build_double_wishbone_corner(
     DoubleWishboneCorner dwb;
     dwb.params = p;
     const Mat3 R_arm = detail::rotation_align_z_to(p.arm_axis);
-    const auto I_arm = RigidBodyInertia::from_solid_box(p.arm_mass, Vec3(0.02, 0.02, 0.2));
-    const auto I_upright = RigidBodyInertia::from_solid_box(p.upright_mass, Vec3(0.05, 0.1, 0.05));
+    const auto I_arm = RigidBodyInertia::from_solid_box(p.arm_mass, Vec3(0.02, 0.2, 0.02));
+    const auto I_upright = RigidBodyInertia::from_solid_box(p.upright_mass, Vec3(0.05, 0.05, 0.1));
     const auto revolute = std::make_shared<RevoluteJointModel>();
 
     dwb.lca_body = sys.model.add_body(0, revolute, Transform3(R_arm, p.lca_pivot),
@@ -57,9 +57,9 @@ DoubleWishboneCorner build_double_wishbone_corner(
         Marker{dwb.upright_body, Transform3::FromTranslation(p.tierod_outer - p.wheel_center)},
         (p.tierod_outer - p.tierod_inner).norm()));
 
-    // Bump prescription: wheel-centre height = wheel_center.y() + t.
+    // Bump prescription: wheel-centre height = wheel_center.z() + t.
     dwb.bump_constraint_idx = sys.constraints.size();
-    sys.constraints.push_back(point_height_driver(dwb.upright_body, Vec3::Zero(), 1, p.wheel_center.y()));
+    sys.constraints.push_back(point_height_driver(dwb.upright_body, Vec3::Zero(), 2, p.wheel_center.z()));
     return dwb;
 }
 
@@ -74,8 +74,8 @@ DoubleWishboneCorner build_double_wishbone_corner_dynamic(
     DoubleWishboneCorner dwb;
     dwb.params = p;
     const Mat3 R_arm = detail::rotation_align_z_to(p.arm_axis);
-    const auto I_arm = RigidBodyInertia::from_solid_box(p.arm_mass, Vec3(0.02, 0.02, 0.2));
-    const auto I_upright = RigidBodyInertia::from_solid_box(p.upright_mass, Vec3(0.05, 0.1, 0.05));
+    const auto I_arm = RigidBodyInertia::from_solid_box(p.arm_mass, Vec3(0.02, 0.2, 0.02));
+    const auto I_upright = RigidBodyInertia::from_solid_box(p.upright_mass, Vec3(0.05, 0.05, 0.1));
     const auto revolute = std::make_shared<RevoluteJointModel>();
 
     // Arm frames: origin at the pivot, axes of the chassis at the reference.

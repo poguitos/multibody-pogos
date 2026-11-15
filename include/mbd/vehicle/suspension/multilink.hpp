@@ -30,26 +30,26 @@ struct MultilinkParams {
     ///   Link 3: upper lateral  (primarily lateral, higher)
     ///   Link 4: toe link       (fore-aft + lateral, mid height)
     std::array<Vec3, 5> inner{{
-        Vec3(-0.35, 0.15, 0.35),   // lower trailing: far aft, fairly inboard
-        Vec3( 0.00, 0.15, 0.25),   // lower lateral: centered, inboard
-        Vec3(-0.25, 0.42, 0.40),   // upper diagonal: aft, mid-lateral
-        Vec3( 0.05, 0.42, 0.30),   // upper lateral: slightly forward, inboard
-        Vec3( 0.20, 0.22, 0.30)    // toe link: forward, inboard
+        Vec3(-0.35, 0.35, 0.15),   // lower trailing: far aft, fairly inboard
+        Vec3( 0.00, 0.25, 0.15),   // lower lateral: centered, inboard
+        Vec3(-0.25, 0.40, 0.42),   // upper diagonal: aft, mid-lateral
+        Vec3( 0.05, 0.30, 0.42),   // upper lateral: slightly forward, inboard
+        Vec3( 0.20, 0.30, 0.22)    // toe link: forward, inboard
     }};
 
     std::array<Vec3, 5> outer{{
-        Vec3(-0.05, 0.15, 0.72),   // lower trailing outer
-        Vec3( 0.00, 0.12, 0.72),   // lower lateral outer
-        Vec3(-0.05, 0.40, 0.70),   // upper diagonal outer
-        Vec3( 0.05, 0.40, 0.70),   // upper lateral outer
-        Vec3( 0.10, 0.20, 0.72)    // toe link outer
+        Vec3(-0.05, 0.72, 0.15),   // lower trailing outer
+        Vec3( 0.00, 0.72, 0.12),   // lower lateral outer
+        Vec3(-0.05, 0.70, 0.40),   // upper diagonal outer
+        Vec3( 0.05, 0.70, 0.40),   // upper lateral outer
+        Vec3( 0.10, 0.72, 0.20)    // toe link outer
     }};
 
     std::array<std::string, 5> names{{
         "lower_trailing", "lower_lateral", "upper_diagonal", "upper_lateral", "toe_link"
     }};
 
-    Vec3 wheel_center{0.0, 0.28, 0.75};
+    Vec3 wheel_center{0.0, 0.75, 0.28};
 
     Real upright_mass{8.0};
 };
@@ -70,7 +70,7 @@ struct MultilinkCorner {
 // ============================================================================
 
 /// Kinematic multilink corner: a free upright held by five links, with its
-/// bump driver: wheel-centre height = wheel_center.y() + t (see Kinematics).
+/// bump driver: wheel-centre height = wheel_center.z() + t (see Kinematics).
 MultilinkCorner build_multilink_corner(
     kernel::System& sys,
     const MultilinkParams& p = MultilinkParams{});

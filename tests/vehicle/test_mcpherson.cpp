@@ -64,7 +64,7 @@ TEST_CASE("McPherson: Newton-Raphson converges for 25mm bump", "[mcpherson][solv
     k.t = 0.025;
     REQUIRE(k.solve());
 
-    REQUIRE_THAT(k.state(mc.upright_body).p_WB.y(), WithinAbs(p.wheel_center.y() + 0.025, 1e-8));
+    REQUIRE_THAT(k.state(mc.upright_body).p_WB.z(), WithinAbs(p.wheel_center.z() + 0.025, 1e-8));
     REQUIRE_THAT(k.phi().norm(), WithinAbs(0.0, 1e-8));
 }
 

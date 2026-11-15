@@ -30,7 +30,7 @@ namespace
         fx.chassis_body = fx.sys.model.add_body(
             0, std::make_shared<kernel::FixedJointModel>(), Transform3::Identity(),
             Transform3::Identity(),
-            RigidBodyInertia::from_solid_box(10000.0, Vec3(1.5, 0.3, 0.8)), "chassis");
+            RigidBodyInertia::from_solid_box(10000.0, Vec3(1.5, 0.8, 0.3)), "chassis");
         fx.dwb = build_double_wishbone_corner_dynamic(fx.sys, fx.chassis_body, p);
     }
 }
@@ -97,7 +97,7 @@ TEST_CASE("DWB dynamic: chassis translation carries the corner",
     kernel::System sys;
     const BodyIndex chassis = sys.model.add_body(
         0, std::make_shared<kernel::FreeJointModel>(), Transform3::Identity(),
-        Transform3::Identity(), RigidBodyInertia::from_solid_box(10000.0, Vec3(1.5, 0.3, 0.8)),
+        Transform3::Identity(), RigidBodyInertia::from_solid_box(10000.0, Vec3(1.5, 0.8, 0.3)),
         "chassis");
     auto dwb = build_double_wishbone_corner_dynamic(sys, chassis, p);
 
@@ -152,7 +152,7 @@ TEST_CASE("DWB dynamic: prescribed wheel Y triggers consistent motion",
     make_fixed_chassis_dwb(fx, p);
 
     // Bump prescription on wheel center Y: nominal + t
-    fx.sys.constraints.push_back(point_height_driver(fx.dwb.upright_body, Vec3::Zero(), 1, p.wheel_center.y()));
+    fx.sys.constraints.push_back(point_height_driver(fx.dwb.upright_body, Vec3::Zero(), 2, p.wheel_center.z()));
 
     Kinematics k(fx.sys);
     const Real bump = 0.02;
@@ -160,7 +160,7 @@ TEST_CASE("DWB dynamic: prescribed wheel Y triggers consistent motion",
     REQUIRE(k.solve(100, 1e-8));
 
     // Wheel at prescribed Y
-    REQUIRE_THAT(k.state(fx.dwb.upright_body).p_WB.y(), WithinAbs(p.wheel_center.y() + bump, 1e-6));
+    REQUIRE_THAT(k.state(fx.dwb.upright_body).p_WB.z(), WithinAbs(p.wheel_center.z() + bump, 1e-6));
 
     // Camber changed
     REQUIRE(std::abs(extract_camber(k.state(fx.dwb.upright_body))) > 0.1 * deg);
@@ -182,7 +182,7 @@ TEST_CASE("DWB dynamic: sweep matches ground-parented kinematic builder",
     // --- Dynamic version (parented to fixed chassis) ---
     DwbFixture fx;
     make_fixed_chassis_dwb(fx, p);
-    fx.sys.constraints.push_back(point_height_driver(fx.dwb.upright_body, Vec3::Zero(), 1, p.wheel_center.y()));
+    fx.sys.constraints.push_back(point_height_driver(fx.dwb.upright_body, Vec3::Zero(), 2, p.wheel_center.z()));
     Kinematics k_dyn(fx.sys);
     auto dyn_sweep = sweep_bump_travel(k_dyn, fx.dwb.upright_body, -0.02, 0.02, 11);
 

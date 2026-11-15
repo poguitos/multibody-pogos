@@ -18,10 +18,10 @@ LapVehicle make_lap_vehicle(const VehicleTemplate& tmpl)
     lv.mass = tmpl.total_mass();
 
     // --- CG height: chassis ride height ---
-    // Approximate: tire_free_radius (front) + chassis half-Y - cg_offset.y
+    // Approximate: tire_free_radius (front) + chassis half-height - cg_offset.z
     lv.cg_height = tmpl.front_axle.tire_free_radius
-                 + tmpl.chassis.half_extents.y()
-                 - tmpl.chassis.cg_offset.y();
+                 + tmpl.chassis.half_extents.z()
+                 - tmpl.chassis.cg_offset.z();
 
     // --- Wheelbase ---
     lv.wheelbase = tmpl.wheelbase();

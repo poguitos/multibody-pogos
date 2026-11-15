@@ -1,5 +1,7 @@
 #include "mbd/vehicle/vehicle.hpp"
 
+#include "mbd/vehicle/axes.hpp"
+
 namespace mbd {
 
 std::pair<Real, Real> VehicleModel::ackermann_steering(Real delta) const
@@ -43,11 +45,11 @@ VehicleModel build_simple_vehicle(kernel::System& sys,
 {
     VehicleModel vm;
     vm.params = p;
-    sys.model.gravity = Vec3(0.0, -g_accel, 0.0);
+    sys.model.gravity = iso_gravity();
 
-    // Prismatic joint frames: Rx(pi/2) maps joint Z to chassis -Y, so a
+    // Prismatic joint frames: Rx(pi) maps joint Z to chassis -Z, so a
     // positive coordinate moves the wheel down from its mount.
-    const Mat3 R_susp = Eigen::AngleAxisd(pi / 2.0, Vec3::UnitX()).toRotationMatrix();
+    const Mat3 R_susp = Eigen::AngleAxisd(pi, Vec3::UnitX()).toRotationMatrix();
 
     // --- Chassis (body 1) ---
     vm.chassis_body = sys.model.add_body(
@@ -58,10 +60,10 @@ VehicleModel build_simple_vehicle(kernel::System& sys,
 
     // --- Wheel mount positions in chassis frame ---
     const std::array<Vec3, 4> mount_pos = {{
-        Vec3( p.front_axle_x, 0.0,  p.half_track),  // FL
-        Vec3( p.front_axle_x, 0.0, -p.half_track),  // FR
-        Vec3(-p.rear_axle_x,  0.0,  p.half_track),  // RL
-        Vec3(-p.rear_axle_x,  0.0, -p.half_track),  // RR
+        Vec3( p.front_axle_x,  p.half_track, 0.0),  // FL
+        Vec3( p.front_axle_x, -p.half_track, 0.0),  // FR
+        Vec3(-p.rear_axle_x,   p.half_track, 0.0),  // RL
+        Vec3(-p.rear_axle_x,  -p.half_track, 0.0),  // RR
     }};
 
     const std::array<std::string, 4> names = {{"FL", "FR", "RL", "RR"}};
@@ -90,6 +92,7 @@ VehicleModel build_simple_vehicle(kernel::System& sys,
             p.tire_k_z,
             p.tire_c_z,
             p.tire_params);
+        tire->ground_normal_W = ground_up(sys.model.gravity);
         vm.tires[c] = tire.get();
         sys.force_elements.push_back(std::move(tire));
     }
@@ -103,7 +106,7 @@ void set_vehicle_equilibrium(kernel::Simulator& sim, const VehicleModel& vm)
 
     // Chassis: centered at equilibrium height, no rotation
     sim.q = sim.system.model.neutral_configuration();
-    sim.q(vm.chassis_ty_idx()) = p.chassis_height_eq();
+    sim.q(vm.chassis_tz_idx()) = p.chassis_height_eq();
 
     // Wheels: each at equilibrium suspension extension
     for (std::size_t c = 0; c < 4; ++c) {

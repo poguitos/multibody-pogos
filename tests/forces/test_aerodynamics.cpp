@@ -108,7 +108,7 @@ TEST_CASE("Aero: downforce acts in -Y direction", "[aero][lift]")
 
     // Downforce = 0.5 * 1.225 * 50^2 * 2.0 = 3062.5 N
     const Real expected_DF = 0.5 * 1.225 * 50.0 * 50.0 * 2.0;
-    REQUIRE_THAT(f.f_W.y(), WithinAbs(-expected_DF, 5.0));
+    REQUIRE_THAT(f.f_W.z(), WithinAbs(-expected_DF, 5.0));
 
     // No drag (CdA = 0)
     REQUIRE_THAT(f.f_W.x(), WithinAbs(0.0, 5.0));
@@ -123,16 +123,16 @@ TEST_CASE("Aero: drag opposes lateral velocity too", "[aero][drag]")
     AerodynamicForce aero(1, p);
 
     // Forward 20 m/s, lateral 15 m/s
-    const RigidBodyForces f = aero_force(aero, Vec3::Zero(), Vec3(20.0, 0.0, 15.0));
+    const RigidBodyForces f = aero_force(aero, Vec3::Zero(), Vec3(20.0, 15.0, 0.0));
 
-    // Drag opposes (20, 0, 15), magnitude = sqrt(400+225)*scale
+    // Drag opposes (20, 15, 0), magnitude = sqrt(400+225)*scale
     const Real V = std::sqrt(20.0*20.0 + 15.0*15.0);
     const Real F_mag = 0.5 * 1.225 * V * V * 1.0;
-    const Vec3 v_unit(20.0 / V, 0.0, 15.0 / V);
+    const Vec3 v_unit(20.0 / V, 15.0 / V, 0.0);
     const Vec3 expected_F = -F_mag * v_unit;
 
     REQUIRE_THAT(f.f_W.x(), WithinAbs(expected_F.x(), 1.0));
-    REQUIRE_THAT(f.f_W.z(), WithinAbs(expected_F.z(), 1.0));
+    REQUIRE_THAT(f.f_W.y(), WithinAbs(expected_F.y(), 1.0));
 }
 
 TEST_CASE("Aero: vertical velocity doesn't affect drag", "[aero][drag]")
@@ -144,12 +144,12 @@ TEST_CASE("Aero: vertical velocity doesn't affect drag", "[aero][drag]")
     AerodynamicForce aero(1, p);
 
     // Forward 30 m/s, vertical 10 m/s (jumping or falling)
-    const RigidBodyForces f = aero_force(aero, Vec3::Zero(), Vec3(30.0, 10.0, 0.0));
+    const RigidBodyForces f = aero_force(aero, Vec3::Zero(), Vec3(30.0, 0.0, 10.0));
 
     // Drag should be based on horizontal V = 30, not on full V
     const Real expected_drag = 0.5 * 1.225 * 30.0 * 30.0 * 1.0;
     REQUIRE_THAT(f.f_W.x(), WithinAbs(-expected_drag, 1.0));
-    REQUIRE_THAT(f.f_W.y(), WithinAbs(0.0, 1.0));
+    REQUIRE_THAT(f.f_W.z(), WithinAbs(0.0, 1.0));
 }
 
 // ============================================================================
@@ -163,19 +163,20 @@ TEST_CASE("Aero: CoP above CG produces a pitch moment from drag",
 
     AeroParams p;
     p.CdA = 1.0;
-    p.cop_offset_chassis = Vec3(0.0, 0.5, 0.0);  // CoP above CG (e.g., wing height)
+    p.cop_offset_chassis = Vec3(0.0, 0.0, 0.5);  // CoP above CG (e.g., wing height)
     AerodynamicForce aero(1, p);
 
     const RigidBodyForces f = aero_force(aero, Vec3::Zero(), Vec3(30.0, 0.0, 0.0));
 
     // Drag F acts in -X at the CoP, 0.5 m above the CG. Its moment about the
-    // CG is r x F = (0, 0.5, 0) x (-F, 0, 0) = (0, 0, 0.5 F): about Z, the
-    // lateral axis of this Y-up layer, so a pitch moment. A positive rotation
-    // about Z turns +X toward +Y: drag high above the CG lifts the nose.
+    // CG is r x F = (0, 0, 0.5) x (-F, 0, 0) = (0, -0.5 F, 0): about Y, the
+    // lateral axis, so a pitch moment. A positive rotation about Y turns +X
+    // toward -Z (nose down, ISO 8855's positive pitch): drag high above the
+    // CG lifts the nose, a negative pitch moment.
     const Real drag = 0.5 * 1.225 * 30.0 * 30.0 * 1.0;
-    REQUIRE_THAT(f.tau_W.z(), WithinAbs(0.5 * drag, 1e-9));
+    REQUIRE_THAT(f.tau_W.y(), WithinAbs(-0.5 * drag, 1e-9));
     REQUIRE_THAT(f.tau_W.x(), WithinAbs(0.0, 1e-9));
-    REQUIRE_THAT(f.tau_W.y(), WithinAbs(0.0, 1e-9));
+    REQUIRE_THAT(f.tau_W.z(), WithinAbs(0.0, 1e-9));
 }
 
 // ============================================================================
@@ -194,7 +195,7 @@ TEST_CASE("Aero: ride-height sensitivity increases downforce at low h",
     AerodynamicForce aero(1, p);
 
     auto get_DF_at_h = [&](Real h, Real V) -> Real {
-        return -aero_force(aero, Vec3(0.0, h, 0.0), Vec3(V, 0.0, 0.0)).f_W.y();
+        return -aero_force(aero, Vec3(0.0, 0.0, h), Vec3(V, 0.0, 0.0)).f_W.z();
     };
 
     // At h = h_ref = 0.10: ClA_eff = 1.0 (baseline)
@@ -228,7 +229,7 @@ TEST_CASE("Aero: terminal velocity from constant forward force", "[aero][termina
     sys.model.gravity = Vec3::Zero();   // no gravity, to isolate aero
     const BodyIndex chassis = sys.model.add_body(
         0, std::make_shared<kernel::FreeJointModel>(), Transform3::Identity(),
-        Transform3::Identity(), RigidBodyInertia::from_solid_box(1500.0, Vec3(1.5, 0.3, 0.8)),
+        Transform3::Identity(), RigidBodyInertia::from_solid_box(1500.0, Vec3(1.5, 0.8, 0.3)),
         "chassis");
 
     AeroParams p;
@@ -364,7 +365,7 @@ TEST_CASE("Aero: downforce reduces ride height at speed", "[aero][downforce]")
         // Short run to allow vertical equilibration
         sim.run(0.5, 0.0005);
 
-        return sim.states()[static_cast<std::size_t>(vh.chassis_body)].p_WB.y();
+        return sim.states()[static_cast<std::size_t>(vh.chassis_body)].p_WB.z();
     };
 
     const Real h_no_aero = run_scenario(0.0);
@@ -372,7 +373,7 @@ TEST_CASE("Aero: downforce reduces ride height at speed", "[aero][downforce]")
 
     INFO("h_no_aero = " << h_no_aero << ", h_with_aero = " << h_with_aero);
 
-    // With downforce, chassis should be lower (smaller Y) at the same speed
+    // With downforce, chassis should be lower (smaller Z) at the same speed
     REQUIRE(h_with_aero < h_no_aero);
 
     const Real dh = h_no_aero - h_with_aero;

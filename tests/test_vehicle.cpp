@@ -52,7 +52,7 @@ TEST_CASE("Vehicle: settles to static equilibrium from perturbed state",
 
     // Start near equilibrium with a 3cm perturbation on chassis height
     set_vehicle_equilibrium(sim, vm);
-    sim.q(vm.chassis_ty_idx()) += 0.03;
+    sim.q(vm.chassis_tz_idx()) += 0.03;
     sim.initialize();
 
     // Simulate with damping for 5 seconds
@@ -60,11 +60,11 @@ TEST_CASE("Vehicle: settles to static equilibrium from perturbed state",
 
     // Chassis should settle to equilibrium height
     const RigidBodyState& chassis = body(sim, vm.chassis_body);
-    REQUIRE_THAT(chassis.p_WB.y(), WithinAbs(params.chassis_height_eq(), 0.003));
+    REQUIRE_THAT(chassis.p_WB.z(), WithinAbs(params.chassis_height_eq(), 0.003));
 
     // Chassis horizontal position unchanged (no lateral/longitudinal forces)
     REQUIRE_THAT(chassis.p_WB.x(), WithinAbs(0.0, 0.001));
-    REQUIRE_THAT(chassis.p_WB.z(), WithinAbs(0.0, 0.001));
+    REQUIRE_THAT(chassis.p_WB.y(), WithinAbs(0.0, 0.001));
 
     // No rotations
     require_vec3_near(chassis_rotation(sim, vm), Vec3::Zero(), 0.001);
@@ -120,19 +120,19 @@ TEST_CASE("Vehicle: wheel world positions are correct at equilibrium",
     kernel::Simulator sim(sys);
     set_vehicle_equilibrium(sim, vm);
 
-    const Real y_wheel = params.wheel_center_height_eq();
+    const Real z_wheel = params.wheel_center_height_eq();
     const Real a  = params.front_axle_x;
     const Real b  = params.rear_axle_x;
     const Real ht = params.half_track;
 
     // FL, FR, RL, RR
-    require_vec3_near(body(sim, vm.wheel_bodies[0]).p_WB, Vec3(a, y_wheel, ht), 0.001);
-    require_vec3_near(body(sim, vm.wheel_bodies[1]).p_WB, Vec3(a, y_wheel, -ht), 0.001);
-    require_vec3_near(body(sim, vm.wheel_bodies[2]).p_WB, Vec3(-b, y_wheel, ht), 0.001);
-    require_vec3_near(body(sim, vm.wheel_bodies[3]).p_WB, Vec3(-b, y_wheel, -ht), 0.001);
+    require_vec3_near(body(sim, vm.wheel_bodies[0]).p_WB, Vec3(a, ht, z_wheel), 0.001);
+    require_vec3_near(body(sim, vm.wheel_bodies[1]).p_WB, Vec3(a, -ht, z_wheel), 0.001);
+    require_vec3_near(body(sim, vm.wheel_bodies[2]).p_WB, Vec3(-b, ht, z_wheel), 0.001);
+    require_vec3_near(body(sim, vm.wheel_bodies[3]).p_WB, Vec3(-b, -ht, z_wheel), 0.001);
 
     // Chassis CG
-    REQUIRE_THAT(body(sim, vm.chassis_body).p_WB.y(), WithinAbs(params.chassis_height_eq(), 0.001));
+    REQUIRE_THAT(body(sim, vm.chassis_body).p_WB.z(), WithinAbs(params.chassis_height_eq(), 0.001));
 }
 
 // ============================================================================
@@ -177,7 +177,7 @@ TEST_CASE("Vehicle: undamped bounce conserves energy",
     kernel::Simulator sim(sys);
     sim.method = kernel::Integrator::RK4;
     set_vehicle_equilibrium(sim, vm);
-    sim.q(vm.chassis_ty_idx()) += 0.01; // 10mm chassis bounce
+    sim.q(vm.chassis_tz_idx()) += 0.01; // 10mm chassis bounce
     sim.initialize();
 
     auto compute_energy = [&]() -> Real {
@@ -190,8 +190,8 @@ TEST_CASE("Vehicle: undamped bounce conserves energy",
         for (int c = 0; c < 4; ++c) {
             const Vec3 p_mount = body(sim, vm.chassis_body).pose_WB().apply(
                 Vec3(c < 2 ? params.front_axle_x : -params.rear_axle_x,
-                     0.0,
-                     (c % 2 == 0) ? params.half_track : -params.half_track));
+                     (c % 2 == 0) ? params.half_track : -params.half_track,
+                     0.0));
             const Vec3 p_wheel = body(sim, vm.wheel_bodies[static_cast<std::size_t>(c)]).p_WB;
             const Real dist = (p_wheel - p_mount).norm();
             PE_spring += 0.5 * params.k_susp *
@@ -235,7 +235,7 @@ TEST_CASE("Vehicle: symmetric bounce keeps all corners equal",
     kernel::Simulator sim(sys);
     sim.method = kernel::Integrator::RK4;
     set_vehicle_equilibrium(sim, vm);
-    sim.q(vm.chassis_ty_idx()) += 0.02; // Pure heave perturbation
+    sim.q(vm.chassis_tz_idx()) += 0.02; // Pure heave perturbation
     sim.initialize();
 
     sim.run(0.5, 0.001);
@@ -248,9 +248,9 @@ TEST_CASE("Vehicle: symmetric bounce keeps all corners equal",
 
     // No chassis yaw, roll, or lateral motion
     const Vec3 rotation = chassis_rotation(sim, vm);
-    REQUIRE_THAT(body(sim, vm.chassis_body).p_WB.z(), WithinAbs(0.0, 1e-6));   // lateral
+    REQUIRE_THAT(body(sim, vm.chassis_body).p_WB.y(), WithinAbs(0.0, 1e-6));   // lateral
     REQUIRE_THAT(rotation.x(), WithinAbs(0.0, 1e-6));                          // roll
-    REQUIRE_THAT(rotation.y(), WithinAbs(0.0, 1e-6));                          // yaw
+    REQUIRE_THAT(rotation.z(), WithinAbs(0.0, 1e-6));                          // yaw
 }
 
 // ============================================================================
@@ -294,10 +294,10 @@ TEST_CASE("Vehicle: forward force accelerates vehicle in X",
     REQUIRE_THAT(chassis.p_WB.x(), WithinAbs(x_expected, x_expected * 0.05));
 
     // Lateral motion should be zero
-    REQUIRE_THAT(chassis.p_WB.z(), WithinAbs(0.0, 0.01));
+    REQUIRE_THAT(chassis.p_WB.y(), WithinAbs(0.0, 0.01));
 
     // Vehicle should still be near ground (not flying)
-    REQUIRE_THAT(chassis.p_WB.y(), WithinAbs(params.chassis_height_eq(), 0.02));
+    REQUIRE_THAT(chassis.p_WB.z(), WithinAbs(params.chassis_height_eq(), 0.02));
 }
 
 // ============================================================================

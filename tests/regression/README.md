@@ -13,7 +13,7 @@ do that), it says the result has not changed.
 | `bushed-pendulum` | The bushed double pendulum (1e6 N/m), Radau IIA at fixed steps of 1 ms, 1 s | Bushings, Radau IIA |
 | `hmmwv-joints` | The HMMWV of task 5.4 over the bump, RK4 at 0.5 ms, 1.2 s | A vehicle's closed loops, springs, tyres, contact switching |
 | `hmmwv-bushings` | The same with the paper's bushings, generalised-alpha at 1 ms | Stiff spring-dampers |
-| `sedan-drive` | The double-wishbone sedan at rest, accelerating, steering; RK4 at 1 ms, 2.3 s | Pacejka tyres, drivetrain, steering, state elements |
+| `sedan-drive` | The sedan (simple corners: each wheel on a slider) at rest, accelerating, steering; RK4 at 1 ms, 2.3 s | Pacejka tyres, drivetrain, steering, state elements |
 | `sedan-modes` | The sedan's static equilibrium and modes at rest | Statics, linearisation |
 | `sports-car-turn` | The double-wishbone sports car with anti-roll bars and downforce, accelerating, turning left; RK4 at 1 ms, 2 s | Linkage corners steered through a rack, anti-roll bars, ride-height-sensitive downforce; each tyre's forces, toe and camber |
 | `hatchback-brake` | The front-wheel-drive McPherson hatchback, accelerating, braking in a right turn; RK4 at 1 ms, 2 s | McPherson struts, front-wheel drive, brakes |

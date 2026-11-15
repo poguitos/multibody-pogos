@@ -59,19 +59,21 @@ TEST_CASE("Statics: the double-wishbone sedan settles in under 20 iterations", "
     // at rest, the chassis's position on the ground and its heading (the
     // tyres give no horizontal force without slip). Statics does not move
     // along them but for second-order effects: in the free joint's own
-    // coordinates (its rigid motion is an exponential), a rise dy with a
-    // pitch or roll dth moves the others by about dth dy / 2.
+    // coordinates (its rigid motion is an exponential), a rise dz with a
+    // pitch or roll dth moves the others by about dth dz / 2.
     CHECK(r.degrees_of_freedom == 10);
     CHECK(r.supported == 7);
     CHECK(r.neutral == 3);
     const int cv = model.idx_v[static_cast<std::size_t>(vh.chassis_body)];
-    const VecX& d = r.position_change;   // free joint: rotation (roll X, yaw Y, pitch Z), then translation
-    const Real second_order = 0.5 * (std::abs(d(cv)) + std::abs(d(cv + 2))) * std::abs(d(cv + 4));
-    INFO("chassis changes: yaw " << d(cv + 1) << ", forward " << d(cv + 3) << ", lateral " << d(cv + 5)
+    // Free joint, ISO 8855 chassis axes: rotation (roll X, pitch Y, yaw Z),
+    // then translation (forward X, lateral Y, up Z).
+    const VecX& d = r.position_change;
+    const Real second_order = 0.5 * (std::abs(d(cv)) + std::abs(d(cv + 1))) * std::abs(d(cv + 5));
+    INFO("chassis changes: yaw " << d(cv + 2) << ", forward " << d(cv + 3) << ", lateral " << d(cv + 4)
          << "; second-order bound " << second_order);
-    CHECK(std::abs(d(cv + 1)) <= second_order + 1e-9);
+    CHECK(std::abs(d(cv + 2)) <= second_order + 1e-9);
     CHECK(std::abs(d(cv + 3)) <= second_order + 1e-9);
-    CHECK(std::abs(d(cv + 5)) <= second_order + 1e-9);
+    CHECK(std::abs(d(cv + 4)) <= second_order + 1e-9);
 
     // The tyres carry the weight. The vertical forces on the whole vehicle,
     // the tyres' and gravity's, sum to the mass times the vertical
@@ -119,13 +121,13 @@ TEST_CASE("Statics: the sedan started 1 cm too high settles to the same equilibr
 
     kernel::Simulator sim(sys);
     set_vehicle_equilibrium(sim, vh);
-    sim.q(cq + 1) += 0.01;   // Y, up
+    sim.q(cq + 2) += 0.01;   // Z, up
     sim.initialize();
     const kernel::StaticReport r = kernel::static_equilibrium(sim);
     INFO(r.summary(model));
     CHECK(r.converged);
     CHECK(r.residual < 1e-6);
-    CHECK(std::abs(sim.q(cq + 1) - reference.q(cq + 1)) < 1e-6);
+    CHECK(std::abs(sim.q(cq + 2) - reference.q(cq + 2)) < 1e-6);
 }
 
 TEST_CASE("Linearisation: the sedan at rest has three neutral positions and no unstable mode",

@@ -15,22 +15,22 @@ namespace mbd {
 
 struct DoubleWishboneParams {
     // All coordinates in the parent (chassis/ground) frame.
-    // X = forward, Y = up, Z = left.
+    // X = forward, Y = left, Z = up (ISO 8855): a left corner.
 
     // Lower control arm
-    Vec3 lca_pivot{0.0, 0.20, 0.30};     ///< Inner pivot point
-    Vec3 lca_outer{0.0, 0.15, 0.70};     ///< Outer ball joint (lower)
+    Vec3 lca_pivot{0.0, 0.30, 0.20};     ///< Inner pivot point
+    Vec3 lca_outer{0.0, 0.70, 0.15};     ///< Outer ball joint (lower)
 
     // Upper control arm
-    Vec3 uca_pivot{0.0, 0.38, 0.35};     ///< Inner pivot point
-    Vec3 uca_outer{0.0, 0.35, 0.68};     ///< Outer ball joint (upper)
+    Vec3 uca_pivot{0.0, 0.35, 0.38};     ///< Inner pivot point
+    Vec3 uca_outer{0.0, 0.68, 0.35};     ///< Outer ball joint (upper)
 
     // Tie rod
-    Vec3 tierod_inner{0.10, 0.22, 0.28}; ///< Chassis/rack attachment
-    Vec3 tierod_outer{0.10, 0.20, 0.70}; ///< Upright attachment
+    Vec3 tierod_inner{0.10, 0.28, 0.22}; ///< Chassis/rack attachment
+    Vec3 tierod_outer{0.10, 0.70, 0.20}; ///< Upright attachment
 
     // Wheel center
-    Vec3 wheel_center{0.0, 0.25, 0.78};
+    Vec3 wheel_center{0.0, 0.78, 0.25};
 
     // Arm pivot axis (typically along vehicle X for a planar front-view mechanism)
     Vec3 arm_axis{Vec3::UnitX()};
@@ -83,7 +83,7 @@ Mat3 rotation_align_z_to(const Vec3& target);
 // model's neutral configuration.
 //
 // The kinematic corner hangs from ground and adds a bump driver that holds
-// the wheel-centre height at wheel_center.y() + t (see Kinematics). The
+// the wheel-centre height at wheel_center.z() + t (see Kinematics). The
 // dynamic corner hangs from a chassis body and has no driver.
 
 /// Kinematic DWB corner on ground, with its bump driver.

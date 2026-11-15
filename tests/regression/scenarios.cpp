@@ -157,9 +157,10 @@ Record sedan_record(const Simulator& sim)
     return r;
 }
 
-/// The double-wishbone sedan with its Pacejka tyres and drivetrain, from its
-/// equilibrium: 0.3 s at rest, 1 s at half throttle, 1 s steering 0.03 rad
-/// (the vehicle layer's axes: Y up). RK4 at 1 ms.
+/// The default sedan (simple corners: each wheel on a slider under the
+/// chassis) with its Pacejka tyres and drivetrain, from its equilibrium: 0.3 s
+/// at rest, 1 s at half throttle, 1 s steering 0.03 rad to the left. RK4 at
+/// 1 ms. ISO 8855 axes since task 7.1.
 Record sedan_drive(Real scale)
 {
     const VehicleTemplate tmpl = VehicleTemplate::DefaultSedan();
@@ -245,7 +246,8 @@ Record car_record(const Simulator& sim)
 /// anti-roll bars and downforce that grows as the ride height falls, its
 /// centre of pressure off the centre line: 0.3 s at rest, 0.7 s at 0.6
 /// throttle, 1 s steering 0.05 rad to the left. RK4 at 1 ms. Added before
-/// task 7.1 moved the vehicle layer to ISO 8855, to compare the two.
+/// task 7.1 moved the vehicle layer to ISO 8855, to compare the two (its
+/// legacy centre of pressure was (0.2, 0.05, 0.03): forward, up, left).
 Record sports_car_turn(Real scale)
 {
     VehicleTemplate tmpl = VehicleTemplate::SportsCar();
@@ -255,7 +257,7 @@ Record sports_car_turn(Real scale)
     tmpl.chassis.ClA = 1.2;
     tmpl.chassis.aero_h_ref = 0.6;
     tmpl.chassis.aero_dClA_dh = 3.0;
-    tmpl.chassis.aero_cop_offset = Vec3(0.2, 0.05, 0.03);   // forward, up, left (the legacy axes)
+    tmpl.chassis.aero_cop_offset = Vec3(0.2, 0.03, 0.05);   // forward, left, up (ISO 8855)
     System sys;
     VehicleHandle vh = build_vehicle(sys, tmpl);
     sys.model.gravity *= scale;
@@ -345,7 +347,7 @@ Record wishbone_sweep(Real scale)
     Kinematics k(sys);
     const KinematicSweepResult sweep = sweep_bump_travel(k, dwb.upright_body, -0.05, 0.05, 21);
     Record r{"bump [m]", {"camber [rad]", "toe [rad]", "wheel centre height [m]", "converged"}, {}};
-    for (const auto& p : sweep.points) r.add(p.bump, {p.camber, p.toe, p.wheel_y, p.converged ? 1.0 : 0.0});
+    for (const auto& p : sweep.points) r.add(p.bump, {p.camber, p.toe, p.wheel_height, p.converged ? 1.0 : 0.0});
     return r;
 }
 
@@ -383,7 +385,7 @@ const std::vector<Scenario>& scenarios()
         {"hmmwv-bushings", "The HMMWV with bushings over the bump; generalised-alpha at 1 ms for 1.2 s.",
          "gravity", 1e-8, false,
          [](Real s) { return hmmwv(s, true, Integrator::GeneralizedAlpha, 1e-3, 1.2, 0.2); }},
-        {"sedan-drive", "The double-wishbone sedan at rest, accelerating, then steering; RK4 at 1 ms for 2.3 s.",
+        {"sedan-drive", "The sedan (simple corners) at rest, accelerating, then steering; RK4 at 1 ms for 2.3 s.",
          "gravity", 1e-8, false, sedan_drive},
         {"sedan-modes", "The sedan's static equilibrium and its modes at rest.", "gravity", 1e-8, false,
          sedan_modes},

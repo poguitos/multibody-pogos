@@ -28,7 +28,7 @@ namespace
         fx.chassis_body = fx.sys.model.add_body(
             0, std::make_shared<kernel::FixedJointModel>(), Transform3::Identity(),
             Transform3::Identity(),
-            RigidBodyInertia::from_solid_box(10000.0, Vec3(1.5, 0.3, 0.8)), "chassis");
+            RigidBodyInertia::from_solid_box(10000.0, Vec3(1.5, 0.8, 0.3)), "chassis");
         fx.mc = build_mcpherson_corner_dynamic(fx.sys, fx.chassis_body, p);
     }
 }
@@ -91,7 +91,7 @@ TEST_CASE("McPherson dynamic: chassis translation carries the corner",
     kernel::System sys;
     const BodyIndex chassis = sys.model.add_body(
         0, std::make_shared<kernel::FreeJointModel>(), Transform3::Identity(),
-        Transform3::Identity(), RigidBodyInertia::from_solid_box(10000.0, Vec3(1.5, 0.3, 0.8)),
+        Transform3::Identity(), RigidBodyInertia::from_solid_box(10000.0, Vec3(1.5, 0.8, 0.3)),
         "chassis");
     auto mc = build_mcpherson_corner_dynamic(sys, chassis, p);
 
@@ -148,14 +148,14 @@ TEST_CASE("McPherson dynamic: prescribed wheel Y triggers consistent motion",
     McPhersonParams p;
     MCFixture fx;
     make_fixed_chassis_mcpherson(fx, p);
-    fx.sys.constraints.push_back(point_height_driver(fx.mc.upright_body, Vec3::Zero(), 1, p.wheel_center.y()));
+    fx.sys.constraints.push_back(point_height_driver(fx.mc.upright_body, Vec3::Zero(), 2, p.wheel_center.z()));
 
     Kinematics k(fx.sys);
     const Real bump = 0.02;
     k.t = bump;
     REQUIRE(k.solve(100, 1e-8));
 
-    REQUIRE_THAT(k.state(fx.mc.upright_body).p_WB.y(), WithinAbs(p.wheel_center.y() + bump, 1e-6));
+    REQUIRE_THAT(k.state(fx.mc.upright_body).p_WB.z(), WithinAbs(p.wheel_center.z() + bump, 1e-6));
     REQUIRE(std::abs(extract_camber(k.state(fx.mc.upright_body))) > 0.05 * deg);
     REQUIRE_THAT(k.phi().norm(), WithinAbs(0.0, 1e-6));
 }
@@ -174,7 +174,7 @@ TEST_CASE("McPherson dynamic: sweep matches kinematic builder",
     // Dynamic version
     MCFixture fx;
     make_fixed_chassis_mcpherson(fx, p);
-    fx.sys.constraints.push_back(point_height_driver(fx.mc.upright_body, Vec3::Zero(), 1, p.wheel_center.y()));
+    fx.sys.constraints.push_back(point_height_driver(fx.mc.upright_body, Vec3::Zero(), 2, p.wheel_center.z()));
     Kinematics k_dyn(fx.sys);
     auto dyn_sweep = sweep_bump_travel(k_dyn, fx.mc.upright_body, -0.02, 0.02, 11);
 
@@ -210,7 +210,7 @@ TEST_CASE("McPherson dynamic: negative camber gain in bump",
     McPhersonParams p;
     MCFixture fx;
     make_fixed_chassis_mcpherson(fx, p);
-    fx.sys.constraints.push_back(point_height_driver(fx.mc.upright_body, Vec3::Zero(), 1, p.wheel_center.y()));
+    fx.sys.constraints.push_back(point_height_driver(fx.mc.upright_body, Vec3::Zero(), 2, p.wheel_center.z()));
     Kinematics k(fx.sys);
 
     auto sweep = sweep_bump_travel(k, fx.mc.upright_body, -0.03, 0.03, 11);

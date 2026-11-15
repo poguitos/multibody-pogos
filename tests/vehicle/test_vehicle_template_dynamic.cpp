@@ -202,8 +202,8 @@ TEST_CASE("Dynamic template: all-DWB vehicle settles under gravity",
 
     // Chassis should be at roughly the expected height
     // The exact height depends on the DWB geometry, but should be around 0.25-0.30 m
-    REQUIRE(sim.q(1) > 0.20);
-    REQUIRE(sim.q(1) < 0.60);
+    REQUIRE(sim.q(2) > 0.20);   // the chassis height, ISO Z
+    REQUIRE(sim.q(2) < 0.60);
 
     // Velocities should be small (settled)
     for (int i = 0; i < sys.model.nv; ++i) {
@@ -284,8 +284,8 @@ TEST_CASE("Dynamic template: all-DWB vehicle drives forward",
     REQUIRE(forward_speed(sim, vh) > 1.0);
 
     // Chassis should still be near ground
-    REQUIRE(sim.q(1) > 0.15);
-    REQUIRE(sim.q(1) < 0.60);
+    REQUIRE(sim.q(2) > 0.15);
+    REQUIRE(sim.q(2) < 0.60);
 }
 
 // ============================================================================
@@ -325,12 +325,12 @@ TEST_CASE("Dynamic template: DWB vehicle corners with steering",
 
     // Apply left steering through the rack and the tie rods
     vh.set_steering(0.03);
-    const Real z_before = sim.states()[static_cast<std::size_t>(vh.chassis_body)].p_WB.z();
+    const Real y_before = sim.states()[static_cast<std::size_t>(vh.chassis_body)].p_WB.y();
     sim.run(3.0, 0.001);
-    const Real z_after = sim.states()[static_cast<std::size_t>(vh.chassis_body)].p_WB.z();
+    const Real y_after = sim.states()[static_cast<std::size_t>(vh.chassis_body)].p_WB.y();
 
-    // Should turn LEFT (positive Z)
-    REQUIRE(z_after - z_before > 0.05);
+    // Should turn LEFT (positive Y)
+    REQUIRE(y_after - y_before > 0.05);
 }
 
 TEST_CASE("Template vehicles pass validate() with ten degrees of freedom", "[vehicle][validate]")

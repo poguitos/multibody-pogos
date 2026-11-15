@@ -361,8 +361,8 @@ without a word; a tuple refuses the append.
 
 **Not bound yet:**
 - The vehicle layer, with its tyre, aerodynamic and anti-roll-bar elements:
-  they are still on the old Y-up axes, and Phases 7 and 8 rebuild them.
-  They will be bound then.
+  on ISO 8855 axes since task 7.1, but rebuilt in the rest of Phases 7 and
+  8. They will be bound then.
 - The lap tools.
 - The kernel's `Data` and its algorithms (forward kinematics, inverse
   dynamics, the mass matrix, Jacobians).
