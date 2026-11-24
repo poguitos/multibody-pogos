@@ -140,7 +140,10 @@ build stopped by stderr, the author's environment before and after.
 - Linux CI builds without the interface, so the parity tests run on Windows
   only.
 - The times, again on mains power (the author: the laptop was in
-  energy-saving mode throughout this task).
+  energy-saving mode throughout this task). *Done 24 November 2026, at the
+  author's request: `test_parity.py` 5.78 s in the suite, 5.91 s alone, 5.08
+  s by hand; the bushed pendulum's runs 2.3 s from C++ and from Python alike
+  (`data/2026-11-24_timings-on-mains.md`).*
 
 ## For the book
 

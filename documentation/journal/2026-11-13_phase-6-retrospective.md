@@ -127,7 +127,8 @@ and that an event's cut steps make semi-implicit Euler's energy drift.
   (Phases 7 and 8); forces written in Python and contact planes are not
   drawn; recordings are not read back in the tests; the viewer inside VS
   Code's notebooks has not been seen working (no display here).
-- 6.3's timings, to be repeated on mains power.
+- 6.3's timings, to be repeated on mains power. *Done 24 November 2026
+  (`data/2026-11-24_timings-on-mains.md`).*
 - From Phase 5, unchanged: generalised-alpha with events on the HMMWV
   (MBD-K058), Dormand-Prince's event location across force jumps, SDIRK4
   across force jumps without events, RK4's irregular convergence over the
