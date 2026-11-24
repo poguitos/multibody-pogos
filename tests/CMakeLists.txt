@@ -98,6 +98,7 @@ mbd_add_test_exe(test_forces
     forces/test_force_library.cpp
     forces/test_force_connectors.cpp
     forces/test_contact.cpp
+    forces/test_road.cpp
     test_force_elements.cpp
 )
 
@@ -108,6 +109,7 @@ mbd_add_test_exe(test_vehicle
     vehicle/test_vehicle_template_dynamic.cpp
     vehicle/test_vehicle_assembly.cpp
     vehicle/test_vehicle_statics.cpp
+    vehicle/test_vehicle_road.cpp
     test_vehicle.cpp
     test_vehicle_template.cpp
     test_steering.cpp
@@ -120,6 +122,7 @@ mbd_add_test_exe(test_vehicle
 
 mbd_add_test_exe(test_analysis
     analysis/test_track.cpp
+    analysis/test_track_surface.cpp
     analysis/test_lap_vehicle.cpp
     analysis/test_lap_speed_profile.cpp
     analysis/test_lap_simulation.cpp

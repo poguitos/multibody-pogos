@@ -35,6 +35,7 @@ add_library(multibody_core
     forces/aerodynamics.cpp
     forces/anti_roll_bar.cpp
     forces/contact.cpp
+    forces/road.cpp
     vehicle/suspension/double_wishbone.cpp
     vehicle/suspension/mcpherson.cpp
     vehicle/suspension/multilink.cpp
@@ -44,6 +45,7 @@ add_library(multibody_core
     analysis/position_kinematics.cpp
     analysis/bicycle_model.cpp
     analysis/track.cpp
+    analysis/track_surface.cpp
     analysis/lap_vehicle.cpp
     analysis/lap_speed_profile.cpp
     analysis/optimization.cpp

@@ -17,6 +17,7 @@
 #include "mbd/analysis/lap_vehicle.hpp"
 #include "mbd/analysis/position_kinematics.hpp"
 #include "mbd/analysis/track.hpp"
+#include "mbd/forces/road.hpp"
 #include "mbd/kernel/constraints.hpp"
 #include "mbd/kernel/linearization.hpp"
 #include "mbd/kernel/simulator.hpp"
@@ -311,6 +312,41 @@ Record hatchback_brake(Real scale)
     return r;
 }
 
+/// The sedan on an ISO 8608 road of class C (seed 1, a 200 m period), from
+/// its flat-road equilibrium at 15 m/s with a quarter throttle, steering
+/// 0.03 rad to the left after 0.5 s; 2 s, RK4 at 1 ms. The tyres take the
+/// ground from the road (task 7.2). The road is the same across its width, so
+/// without the steering the car's roll, yaw and lateral motion would be zero
+/// but for rounding, and so would their tolerances.
+Record sedan_rough_road(Real scale)
+{
+    const VehicleTemplate tmpl = VehicleTemplate::DefaultSedan();
+    System sys;
+    VehicleHandle vh = build_vehicle(sys, tmpl);
+    Iso8608Params road;
+    road.road_class = Iso8608Class::C;
+    road.seed = 1;
+    road.length = 200.0;
+    vh.set_road(std::make_shared<Iso8608Road>(road));
+    sys.model.gravity *= scale;
+    Simulator sim(sys);
+    sim.method = Integrator::RK4;
+    set_vehicle_equilibrium(sim, vh);
+    sim.v(sys.model.idx_v[static_cast<std::size_t>(vh.chassis_body)] + 3) = 15.0;   // forward
+    sim.initialize();
+    Drivetrain dt(tmpl.drivetrain);
+    dt.initialize(sim, vh);
+    dt.connect(sim, vh);
+    dt.throttle = 0.25;
+    Record r = car_record(sim);
+    for (int k = 0; k < 40; ++k) {
+        if (k == 10) vh.set_steering(0.03);
+        sim.run(0.05, 1e-3);
+        r.add(sim.time, car_channels(sim, vh));
+    }
+    return r;
+}
+
 /// The sedan's static equilibrium (to 1e-9) and its modes at rest: every
 /// mode faster than 1e-3 rad/s (the three neutral directions excluded).
 Record sedan_modes(Real scale)
@@ -393,6 +429,9 @@ const std::vector<Scenario>& scenarios()
          "The double-wishbone sports car with anti-roll bars and downforce, accelerating, then turning left; "
          "RK4 at 1 ms for 2 s.",
          "gravity", 1e-8, false, sports_car_turn},
+        {"sedan-rough-road",
+         "The sedan (simple corners) at 15 m/s on an ISO 8608 road of class C, steering; RK4 at 1 ms for 2 s.",
+         "gravity", 1e-8, false, sedan_rough_road},
         {"hatchback-brake",
          "The front-wheel-drive McPherson hatchback, accelerating, then braking in a right turn; RK4 at 1 ms "
          "for 2 s.",

@@ -2,12 +2,14 @@
 
 // Tire vertical contact force model.
 //
-// Monitors a contact point on a wheel body. When the contact point
-// penetrates the ground plane, applies a spring-damper force along the
-// plane's normal. The tire only pushes (lifts off when no contact).
+// Monitors a contact point on a wheel body. When the contact point is below
+// the road, applies a spring-damper force along the road's normal there. The
+// tire only pushes (lifts off when no contact).
 //
-// Ground plane: the points p with ground_normal_W . p = road_height; the
-// normal is ISO 8855's up, +Z, unless set otherwise (mbd/vehicle/axes.hpp).
+// The road (mbd/forces/road.hpp, task 7.2) is the tyre's only source of the
+// ground: at the contact point's (x, y) it gives the height h, the normal n
+// and the friction. The penetration is the contact point's depth below the
+// road's tangent plane there, (h - z) n_z.
 //
 // This is L2.3.1: the simplest tire model — vertical forces only,
 // no slip, no lateral dynamics. Suitable for quarter-car validation,
@@ -16,6 +18,9 @@
 #include "mbd/core/core.hpp"
 #include "mbd/forces/force_element.hpp"
 #include "mbd/forces/pacejka.hpp"
+#include "mbd/forces/road.hpp"
+
+#include <memory>
 
 namespace mbd {
 
@@ -30,14 +35,14 @@ public:
     Real k_z;        ///< Vertical stiffness [N/m]
     Real c_z;        ///< Vertical damping [N·s/m]
     Real R_free;     ///< Unloaded tire radius [m]
-    Real road_height; ///< Ground plane height along its normal [m]
-    Vec3 ground_normal_W{Vec3::UnitZ()};  ///< The ground plane's unit normal, up
+    std::shared_ptr<const Road> road;  ///< The ground (never null)
 
+    /// On `on_road`; a level road at height 0 if none is given.
     TireContactForce(BodyIndex wheel_idx,
                      Real free_radius,
                      Real stiffness,
                      Real damping,
-                     Real ground_height = 0.0);
+                     std::shared_ptr<const Road> on_road = nullptr);
 
     const char* name() const override { return "tyre contact"; }
     std::vector<BodyIndex> bodies() const override { return {wheel_body_idx}; }
@@ -79,8 +84,7 @@ public:
     // Vertical contact
     Real k_z;             ///< Vertical stiffness [N/m]
     Real c_z;             ///< Vertical damping [Ns/m]
-    Real road_height;     ///< Ground plane height along its normal [m]
-    Vec3 ground_normal_W{Vec3::UnitZ()};  ///< The ground plane's unit normal, up
+    std::shared_ptr<const Road> road;  ///< The ground (never null): height, normal, friction
 
     // Pacejka model
     PacejkaTire pacejka;
@@ -109,13 +113,14 @@ public:
     mutable Vec3 last_lateral_W{Vec3::UnitY()};
     mutable Real last_V_abs{1.0};   ///< Speed used to normalize slip [m/s]
     mutable Real last_R_eff{0.0};   ///< Rolling radius used for slip [m]
+    mutable Real last_friction{1.0};  ///< The road's friction at the contact [-]
 
     FullTireForce(BodyIndex wheel_idx,
                   Real free_radius,
                   Real vert_stiffness,
                   Real vert_damping,
                   const PacejkaTireParams& tire_params,
-                  Real ground_height = 0.0);
+                  std::shared_ptr<const Road> on_road = nullptr);
 
     const char* name() const override { return "tyre"; }
     std::vector<BodyIndex> bodies() const override { return {wheel_body_idx}; }

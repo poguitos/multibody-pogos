@@ -145,6 +145,10 @@ struct VehicleModel {
 
     /// Clear all steering (set all angles to zero).
     void clear_steering();
+
+    /// Put every tyre on `road` (mbd/forces/road.hpp); each starts on a level
+    /// road at height 0.
+    void set_road(const std::shared_ptr<const Road>& road);
 };
 
 // ============================================================================
@@ -154,7 +158,8 @@ struct VehicleModel {
 /// Build a simplified vehicle on a kernel system. Returns a VehicleModel
 /// with indices for easy access. The vehicle layer uses ISO 8855 axes (X
 /// forward, Y left, Z up; mbd/vehicle/axes.hpp): the model's gravity is set
-/// to -Z, and the tyres' ground normal against it.
+/// to -Z. The tyres start on a level road at height 0; set_road gives them
+/// another.
 VehicleModel build_simple_vehicle(kernel::System& sys,
                                          const VehicleParams& p = VehicleParams{});
 

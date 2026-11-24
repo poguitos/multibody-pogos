@@ -2,17 +2,45 @@
 
 namespace mbd {
 
+namespace {
+
+/// A point's contact with the road, the tyres' one use of the ground: the
+/// road at the point's (x, y); the point's depth below the road's tangent
+/// plane there, (h - z) n_z, positive in contact; and its velocity along the
+/// road's normal.
+struct RoadContact {
+    Real penetration;
+    Vec3 normal;
+    Real normal_velocity;
+    Real friction;
+};
+
+RoadContact road_contact(const std::shared_ptr<const Road>& road, const Vec3& p, const Vec3& v)
+{
+    MBD_THROW_IF(!road, "MBD-F051: tyre: its road is null; give it a road, or keep the level one it starts with");
+    const RoadPoint r = road->at(p.x(), p.y());
+    return {(r.height - p.z()) * r.normal.z(), r.normal, r.normal.dot(v), r.friction};
+}
+
+/// The road given, or a level one at height 0.
+std::shared_ptr<const Road> road_or_level(std::shared_ptr<const Road> road)
+{
+    return road ? std::move(road) : std::make_shared<FlatRoad>();
+}
+
+} // namespace
+
 TireContactForce::TireContactForce(BodyIndex wheel_idx,
                                    Real free_radius,
                                    Real stiffness,
                                    Real damping,
-                                   Real ground_height)
+                                   std::shared_ptr<const Road> on_road)
     : wheel_body_idx(wheel_idx)
     , contact_point_B(0.0, 0.0, -free_radius)
     , k_z(stiffness)
     , c_z(damping)
     , R_free(free_radius)
-    , road_height(ground_height)
+    , road(road_or_level(std::move(on_road)))
 {
     MBD_THROW_IF(k_z < 0.0, "MBD-F010: TireContactForce: stiffness must be >= 0");
     MBD_THROW_IF(c_z < 0.0, "MBD-F010: TireContactForce: damping must be >= 0");
@@ -29,24 +57,22 @@ void TireContactForce::apply(const std::vector<RigidBodyState>& states,
     const Vec3 p_contact_W = s.p_WB + r_W;
     const Vec3 v_contact_W = s.v_WB + s.w_WB.cross(r_W);
 
-    // Penetration: positive when contact point is below ground
-    const Real penetration = road_height - ground_normal_W.dot(p_contact_W);
+    // Penetration: positive when contact point is below the road
+    const RoadContact contact = road_contact(road, p_contact_W, v_contact_W);
 
-    if (penetration <= Real(0.0)) {
+    if (contact.penetration <= Real(0.0)) {
         return; // No contact — tire has lifted off
     }
 
-    // Velocity of contact point along the normal (positive = moving up)
-    const Real v_z = ground_normal_W.dot(v_contact_W);
-
-    // Normal force: spring + damper, only pushes (clamp to >= 0)
-    Real f_z = k_z * penetration - c_z * v_z;
+    // Normal force: spring + damper (the velocity along the normal is
+    // positive moving up), only pushes (clamp to >= 0)
+    Real f_z = k_z * contact.penetration - c_z * contact.normal_velocity;
     if (f_z < Real(0.0)) {
         f_z = Real(0.0); // Tire cannot pull
     }
 
     // Apply the normal force at the contact point
-    const Vec3 F_W = f_z * ground_normal_W;
+    const Vec3 F_W = f_z * contact.normal;
 
     forces[static_cast<size_t>(wheel_body_idx)].f_W   += F_W;
     forces[static_cast<size_t>(wheel_body_idx)].tau_W += r_W.cross(F_W);
@@ -57,8 +83,7 @@ Real TireContactForce::get_deflection(const std::vector<RigidBodyState>& states)
     const auto& s = states[static_cast<size_t>(wheel_body_idx)];
     const Vec3 r_W = s.q_WB * contact_point_B;
     const Vec3 p_contact_W = s.p_WB + r_W;
-    const Real penetration = road_height - ground_normal_W.dot(p_contact_W);
-    return std::max(Real(0.0), penetration);
+    return std::max(Real(0.0), road_contact(road, p_contact_W, Vec3::Zero()).penetration);
 }
 
 Real TireContactForce::get_vertical_force(const std::vector<RigidBodyState>& states) const
@@ -68,10 +93,10 @@ Real TireContactForce::get_vertical_force(const std::vector<RigidBodyState>& sta
     const Vec3 p_contact_W = s.p_WB + r_W;
     const Vec3 v_contact_W = s.v_WB + s.w_WB.cross(r_W);
 
-    const Real penetration = road_height - ground_normal_W.dot(p_contact_W);
-    if (penetration <= Real(0.0)) return Real(0.0);
+    const RoadContact contact = road_contact(road, p_contact_W, v_contact_W);
+    if (contact.penetration <= Real(0.0)) return Real(0.0);
 
-    Real f_z = k_z * penetration - c_z * ground_normal_W.dot(v_contact_W);
+    Real f_z = k_z * contact.penetration - c_z * contact.normal_velocity;
     return std::max(Real(0.0), f_z);
 }
 
@@ -80,13 +105,13 @@ FullTireForce::FullTireForce(BodyIndex wheel_idx,
                              Real vert_stiffness,
                              Real vert_damping,
                              const PacejkaTireParams& tire_params,
-                             Real ground_height)
+                             std::shared_ptr<const Road> on_road)
     : wheel_body_idx(wheel_idx)
     , R_free(free_radius)
     , R_loaded_approx(free_radius * 0.97)
     , k_z(vert_stiffness)
     , c_z(vert_damping)
-    , road_height(ground_height)
+    , road(road_or_level(std::move(on_road)))
     , pacejka(tire_params)
 {
     MBD_THROW_IF(R_free <= 0.0, "MBD-F011: FullTireForce: free radius must be > 0");
@@ -101,35 +126,36 @@ void FullTireForce::apply(const std::vector<RigidBodyState>& states,
 
     // --- Contact point kinematics ---
     const Vec3 contact_B(0.0, 0.0, -R_free);
-    const Vec3& n = ground_normal_W;
     const Vec3 r_W = s.q_WB * contact_B;
     const Vec3 p_contact_W = s.p_WB + r_W;
     const Vec3 v_contact_W = s.v_WB + s.w_WB.cross(r_W);
 
     last_contact_pos_W = p_contact_W;
 
-    // --- Contact along the ground's normal ---
-    const Real penetration = road_height - n.dot(p_contact_W);
-    last_deflection = std::max(Real(0.0), penetration);
+    // --- Contact with the road, along its normal there ---
+    const RoadContact contact = road_contact(road, p_contact_W, v_contact_W);
+    const Vec3& n = contact.normal;
+    last_deflection = std::max(Real(0.0), contact.penetration);
+    last_friction = contact.friction;
 
-    if (penetration <= Real(0.0)) {
+    if (contact.penetration <= Real(0.0)) {
         // No contact: clear cached results
         last_Fz = 0.0;
         last_result = TireForceResult{};
         return;
     }
 
-    Real Fz = k_z * penetration - c_z * n.dot(v_contact_W);
+    Real Fz = k_z * contact.penetration - c_z * contact.normal_velocity;
     if (Fz < Real(0.0)) Fz = Real(0.0);
     last_Fz = Fz;
 
     // --- Tire frame directions in world ---
-    // Forward = steered body X projected onto ground plane and normalized.
+    // Forward = steered body X projected onto the road's tangent plane and normalized.
     // Rz(steer_angle) turns body X to the left for a positive steer_angle.
     const Quat q_steer(Eigen::AngleAxisd(steer_angle, Vec3::UnitZ()));
     const Vec3 steered_fwd_B = q_steer * Vec3::UnitX();
     Vec3 body_x_W = s.q_WB * steered_fwd_B;
-    body_x_W -= n.dot(body_x_W) * n;  // Project onto ground plane
+    body_x_W -= n.dot(body_x_W) * n;  // Project onto the road's tangent plane
     const Real fwd_len = body_x_W.norm();
 
     Vec3 forward_W, lateral_W;
@@ -173,7 +199,7 @@ void FullTireForce::apply(const std::vector<RigidBodyState>& states,
     const Real alpha = -std::atan2(Vy, V_abs);
 
     // --- Pacejka forces ---
-    last_result = pacejka.compute(kappa, alpha, Fz);
+    last_result = pacejka.compute(kappa, alpha, Fz, contact.friction);
 
     // --- Apply forces in world frame at contact patch ---
     const Vec3 F_W = last_result.Fx * forward_W
@@ -192,9 +218,9 @@ Real FullTireForce::longitudinal_force_slope() const
     }
     const Real eps = Real(1e-4);
     const Real Fx_plus  = pacejka.compute(last_result.kappa + eps,
-                                          last_result.alpha, last_Fz).Fx;
+                                          last_result.alpha, last_Fz, last_friction).Fx;
     const Real Fx_minus = pacejka.compute(last_result.kappa - eps,
-                                          last_result.alpha, last_Fz).Fx;
+                                          last_result.alpha, last_Fz, last_friction).Fx;
     const Real dFx_dkappa = (Fx_plus - Fx_minus) / (Real(2.0) * eps);
     return std::max(dFx_dkappa, Real(0.0)) * last_R_eff / last_V_abs;
 }

@@ -33,6 +33,12 @@ void VehicleModel::set_steering_angles(Real fl, Real fr, Real rl, Real rr)
     tires[3]->steer_angle = rr;
 }
 
+void VehicleModel::set_road(const std::shared_ptr<const Road>& road)
+{
+    MBD_THROW_IF(!road, "MBD-F051: VehicleModel::set_road: the road is null");
+    for (auto* t : tires) t->road = road;
+}
+
 void VehicleModel::clear_steering()
 {
     for (auto* t : tires) {
@@ -92,7 +98,6 @@ VehicleModel build_simple_vehicle(kernel::System& sys,
             p.tire_k_z,
             p.tire_c_z,
             p.tire_params);
-        tire->ground_normal_W = ground_up(sys.model.gravity);
         vm.tires[c] = tire.get();
         sys.force_elements.push_back(std::move(tire));
     }

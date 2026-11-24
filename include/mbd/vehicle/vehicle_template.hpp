@@ -235,6 +235,10 @@ struct VehicleHandle {
         set_steering(0.0);
     }
 
+    /// Put every tyre on `road` (mbd/forces/road.hpp); each starts on a level
+    /// road at height 0.
+    void set_road(const std::shared_ptr<const Road>& road);
+
     /// Install anti-roll bars on front and/or rear axles based on template config.
     /// Must be called AFTER the vehicle is built and positioned at equilibrium,
     /// but before simulation. Returns pointers to the installed ARB force elements
@@ -337,8 +341,9 @@ Real calibrate_rack(const VehicleTemplate& tmpl, const AxleConfig& ax,
 ///   - 4 corners with suspension, springs, dampers, and tires
 ///
 /// The vehicle layer uses ISO 8855 axes (X forward, Y left, Z up; plan task
-/// 7.1, mbd/vehicle/axes.hpp): the model's gravity is set to -Z, and the
-/// tyres' ground normal against it.
+/// 7.1, mbd/vehicle/axes.hpp): the model's gravity is set to -Z. The tyres
+/// start on a level road at height 0; VehicleHandle::set_road gives them
+/// another.
 ///
 /// Returns a VehicleHandle with convenient accessors.
 VehicleHandle build_vehicle(kernel::System& sys,

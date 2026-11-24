@@ -125,6 +125,14 @@ void VehicleHandle::set_steering(Real delta)
     }
 }
 
+void VehicleHandle::set_road(const std::shared_ptr<const Road>& road)
+{
+    MBD_THROW_IF(!road, "MBD-F051: VehicleHandle::set_road: the road is null");
+    for (auto& corner : corners) {
+        if (corner.tire) corner.tire->road = road;
+    }
+}
+
 std::pair<AntiRollBar*, AntiRollBar*> VehicleHandle::install_anti_roll_bars(
     kernel::System& sys,
     const std::vector<RigidBodyState>& equilibrium_states)
@@ -480,11 +488,6 @@ VehicleHandle build_vehicle(kernel::System& sys,
                     sys, vh.chassis_body, cd.mount_pos, cd.axle, cd.is_right, tierod_body);
                 break;
         }
-    }
-
-    // --- The tyres' ground: the plane normal to gravity ---
-    for (auto& corner : vh.corners) {
-        if (corner.tire) corner.tire->ground_normal_W = ground_up(sys.model.gravity);
     }
 
     // --- Calibrate rack travel per radian of toe, corner by corner ---

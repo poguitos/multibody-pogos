@@ -70,7 +70,7 @@ Spatial vectors are ordered `[angular; linear]` everywhere (decision D1).
 | Z | up |
 | Gravity | along −Z |
 
-The core (joints, constraints, dynamics, integration) assumes no axes: it takes gravity as a vector, `(0, 0, −9.81)` by default. The vehicle layer's axes are decided in one place, `mbd/vehicle/axes.hpp`: the builders set gravity from `iso_gravity()`, and give the elements that need the ground's normal (the tyres, the aerodynamics) `ground_up(gravity)`, the unit vector against gravity. No element assumes a world axis is up. The vehicle's own up is its chassis's Z axis (the anti-roll bar measures wheel travel along it).
+The core (joints, constraints, dynamics, integration) assumes no axes: it takes gravity as a vector, `(0, 0, −9.81)` by default. The vehicle layer's axes are decided in one place, `mbd/vehicle/axes.hpp`: the builders set gravity from `iso_gravity()`. The tyres take the ground from a road (`mbd/forces/road.hpp`, task 7.2, D61), whose heights are along Z and which gives its own normal and friction at each point; the aerodynamics, which measure ride height above flat ground, are given `ground_up(gravity)`, the unit vector against gravity. No element assumes a world axis is up. The vehicle's own up is its chassis's Z axis (the anti-roll bar measures wheel travel along it).
 
 Hardpoints are given for a left corner (Y outboard); the right side mirrors Y.
 

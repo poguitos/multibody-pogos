@@ -17,6 +17,7 @@ do that), it says the result has not changed.
 | `sedan-modes` | The sedan's static equilibrium and modes at rest | Statics, linearisation |
 | `sports-car-turn` | The double-wishbone sports car with anti-roll bars and downforce, accelerating, turning left; RK4 at 1 ms, 2 s | Linkage corners steered through a rack, anti-roll bars, ride-height-sensitive downforce; each tyre's forces, toe and camber |
 | `hatchback-brake` | The front-wheel-drive McPherson hatchback, accelerating, braking in a right turn; RK4 at 1 ms, 2 s | McPherson struts, front-wheel drive, brakes |
+| `sedan-rough-road` | The sedan at 15 m/s on an ISO 8608 road of class C (seed 1), steering after 0.5 s; RK4 at 1 ms, 2 s | The road interface, a generated random road |
 | `wishbone-sweep` | The sports car's front double wishbone over +-0.05 m | Kinematic analysis |
 | `lap-oval` | The lap speed profile of an oval | The lap model |
 | `hmmwv-joints-5s`, `hmmwv-bushings-5s`, `sedan-slalom` | The paper's 5 s; a 20 s slalom | The long suite (nightly) |
@@ -26,7 +27,8 @@ do that), it says the result has not changed.
 Every channel is held to 1e-8 of its largest magnitude in the reference. The
 hidden case `[sensitivity]` measures where that sits (9 November 2026, the
 author's laptop, MSVC; the sports car and the hatchback, added for task 7.1,
-on 14 November):
+on 14 November; the rough road, for task 7.2, and `sedan-modes` again, on 24
+November):
 
 | Scenario | 1e-12 change, over the tolerance | 1e-6 change, over the tolerance |
 |---|---|---|
@@ -36,17 +38,20 @@ on 14 November):
 | hmmwv-joints | 6.0e-5 | 60 |
 | hmmwv-bushings | 2.4e-4 | 60 |
 | sedan-drive | 1.0e-3 | 997 |
-| sedan-modes | 5.1e-3 | 26 |
+| sedan-modes | 1.0e-2 (5.1e-3 before the mirror of task 7.1) | 26 |
 | sports-car-turn | 5.0e-4 | 500 |
 | hatchback-brake | 2.3e-4 | 234 |
+| sedan-rough-road | 6.2e-4 | 616 |
 | wishbone-sweep | 6.8e-4 | 682 |
 | lap-oval | 4.2e-5 | 41 |
 
 A relative change of 1e-12 in one physical parameter (gravity; for the
 analyses a hardpoint or the friction) stands for what rounding differences
-between compilers do: it moves no channel by more than half a percent of the
+between compilers do: it moves no channel by more than one percent of the
 tolerance. A change of 1e-6 moves every scenario by 26 times the tolerance or
-more. Between Windows (MSVC) and Linux (GCC) the CI jobs report each
+more. A channel that is zero but for rounding throughout a scenario (a
+symmetric car's roll going straight) would have a tolerance of rounding
+itself; scenarios avoid them (the rough road's car steers for that reason). Between Windows (MSVC) and Linux (GCC) the CI jobs report each
 scenario's worst difference as an annotation.
 
 ## When a scenario fails

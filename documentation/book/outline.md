@@ -309,7 +309,11 @@ Already marked for vehicle subsystems (7): a frame that was a mirror image of
 the car its labels named, and why keeping the labels made the move to ISO
 8855 exact; a regression harness used as a before-and-after instrument for a
 change of coordinates, and the one data error it caught that no test could.
-*J: Phase 7, axes. D60.*
+*J: Phase 7, axes. D60.* A road as an interface (height, normal, friction)
+and a tyre that sees nothing else; random roads from a spectrum, and why
+fixed amplitudes with random phases make each road's spectrum exact rather
+than right on average; a regression channel that measured rounding. *J:
+Phase 7, the road. D61.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

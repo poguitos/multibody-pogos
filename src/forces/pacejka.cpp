@@ -40,13 +40,14 @@ PacejkaTireParams PacejkaTireParams::DefaultPassengerCar()
 
 Real PacejkaTire::evaluate_magic_formula(Real x,
                                          Real Fz,
-                                         const MagicFormulaCoeffs& c)
+                                         const MagicFormulaCoeffs& c,
+                                         Real friction)
 {
     const Real dFz = (Fz - c.Fz0) / c.Fz0;
 
-    // Peak factor
+    // Peak factor, scaled by the road's friction
     const Real mu = c.mu0 + c.mu_Fz * dFz;
-    const Real D  = mu * Fz;
+    const Real D  = mu * Fz * friction;
 
     // Stiffness
     const Real K = c.K0 + c.K_Fz * dFz;
@@ -74,7 +75,7 @@ Real PacejkaTire::evaluate_combined_weight(Real x_other,
     return c.D_comb * std::cos(c.C_comb * std::atan(Bx));
 }
 
-TireForceResult PacejkaTire::compute(Real kappa, Real alpha, Real Fz) const
+TireForceResult PacejkaTire::compute(Real kappa, Real alpha, Real Fz, Real friction) const
 {
     TireForceResult r;
     r.kappa = kappa;
@@ -86,8 +87,8 @@ TireForceResult PacejkaTire::compute(Real kappa, Real alpha, Real Fz) const
     }
 
     // Pure slip forces
-    r.Fx_pure = evaluate_magic_formula(kappa, Fz, params.longitudinal);
-    r.Fy_pure = evaluate_magic_formula(alpha, Fz, params.lateral);
+    r.Fx_pure = evaluate_magic_formula(kappa, Fz, params.longitudinal, friction);
+    r.Fy_pure = evaluate_magic_formula(alpha, Fz, params.lateral, friction);
 
     // Combined slip weighting
     r.Gx = evaluate_combined_weight(alpha, params.Gx_alpha);

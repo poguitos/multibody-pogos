@@ -98,10 +98,13 @@ public:
     ///   x: slip input (alpha for lateral, kappa for longitudinal)
     ///   Fz: current vertical load [N]
     ///   c: coefficients for this axis
+    ///   friction: the road's scale on the peak (1 = the reference surface);
+    ///     the peak D scales with it and the slip stiffness K = B C D does not
     /// Returns the force value.
     static Real evaluate_magic_formula(Real x,
                                        Real Fz,
-                                       const MagicFormulaCoeffs& c);
+                                       const MagicFormulaCoeffs& c,
+                                       Real friction = 1.0);
 
     /// Evaluate the combined slip weighting function.
     ///   x_other: the "other" slip quantity (alpha for Gx, kappa for Gy)
@@ -115,7 +118,9 @@ public:
     /// \param kappa  Slip ratio (positive = traction).
     /// \param alpha  Slip angle [rad] (positive = generates positive Fy).
     /// \param Fz     Vertical load [N] (positive = tire loaded).
-    TireForceResult compute(Real kappa, Real alpha, Real Fz) const;
+    /// \param friction  The road's scale on the tyre's friction (1 = the
+    ///                  surface its data was measured on).
+    TireForceResult compute(Real kappa, Real alpha, Real Fz, Real friction = 1.0) const;
 
     /// Compute the cornering stiffness Kalpha = dFy/dalpha at alpha=0.
     /// This is the initial slope of the Fy vs alpha curve.

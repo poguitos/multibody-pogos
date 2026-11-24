@@ -88,6 +88,7 @@ TEST_CASE("Regression: the sedan driving", "[regression]") { check("sedan-drive"
 TEST_CASE("Regression: the sedan's modes at rest", "[regression]") { check("sedan-modes"); }
 TEST_CASE("Regression: the sports car turning", "[regression]") { check("sports-car-turn"); }
 TEST_CASE("Regression: the hatchback braking in a turn", "[regression]") { check("hatchback-brake"); }
+TEST_CASE("Regression: the sedan on a rough road", "[regression]") { check("sedan-rough-road"); }
 TEST_CASE("Regression: a double wishbone's kinematics", "[regression]") { check("wishbone-sweep"); }
 TEST_CASE("Regression: a lap of an oval", "[regression]") { check("lap-oval"); }
 
@@ -120,14 +121,15 @@ TEST_CASE("Regression: how far small changes move each scenario", "[.][regressio
     // is 1e-16, and many add up) and by 1e-6 (the smallest physics change the
     // harness is meant to catch). Run by hand with -s: the table is the
     // evidence for the tolerance (README.md).
-    std::printf("%-20s %-36s %12s %12s\n", "scenario", "perturbed", "1e-12", "1e-6");
+    std::printf("%-20s %-36s %12s %12s  %s\n", "scenario", "perturbed", "1e-12", "1e-6", "worst channel at 1e-12");
     for (const auto& s : scenarios()) {
         const Record base = s.run(1.0);
         const Comparison tiny = compare(s, s.run(1.0 + 1e-12), base);
         const Comparison small = compare(s, s.run(1.0 + 1e-6), base);
         const Real r12 = tiny.worst() ? tiny.worst()->ratio() : 0.0;
         const Real r6 = small.worst() ? small.worst()->ratio() : 0.0;
-        std::printf("%-20s %-36s %12.3g %12.3g\n", s.name.c_str(), s.perturbed.c_str(), r12, r6);
+        std::printf("%-20s %-36s %12.3g %12.3g  %s\n", s.name.c_str(), s.perturbed.c_str(), r12, r6,
+                    tiny.worst() ? tiny.worst()->name.c_str() : "");
         CHECK(r12 < 0.1);
         CHECK(r6 > 10.0);
     }

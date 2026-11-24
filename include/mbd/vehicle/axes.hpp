@@ -7,10 +7,10 @@
 // docs/conventions.md gives every sign.
 //
 // The kernel assumes no axes: it takes gravity as a vector. The vehicle
-// builders set it from iso_gravity(), and the elements that need the road's
-// normal (the tyres, the aerodynamics) are given ground_up(gravity), so that
-// "up" is decided here and nowhere else (task 7.2 replaces the flat ground
-// with a road).
+// builders set it from iso_gravity(). The tyres take the ground from a road
+// (mbd/forces/road.hpp, task 7.2), whose heights are along Z and whose normal
+// it gives; the aerodynamics, which measure ride height above flat ground,
+// are given ground_up(gravity). "Up" is decided by these and nowhere else.
 
 #include "mbd/core/core.hpp"
 

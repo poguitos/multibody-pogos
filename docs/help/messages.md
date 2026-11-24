@@ -802,6 +802,26 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
 
 - **Means:** a contact between a body and itself, which can never act.
 
+### MBD-F050
+
+`<road>: <what is wrong>`, such as `RampRoad: the length must be > 0`, `KerbRoad: the chamfer must be > 0 and at most half the kerb's width`, `GridRoad: the heights need nx * ny values`, `Iso8608Road: it needs 0 < n_min < n_max` or `TrackSurfaceRoad: the track has no segment`
+
+- **Means:** a road (`mbd/forces/road.hpp`, `mbd/analysis/track_surface.hpp`)
+  was given a parameter out of range: a length, wavelength or spacing that is
+  not positive, a kerb narrower than its two chamfers, a grid whose heights
+  do not fill it, a frequency band that is empty, a friction below zero, or a
+  track with no segment.
+- **What to do:** the message names the road and the parameter.
+
+### MBD-F051
+
+`tyre: its road is null; ...`, `VehicleHandle::set_road: the road is null` or `VehicleModel::set_road: the road is null`
+
+- **Means:** a tyre was left without a road. Every tyre starts on a level road
+  at height 0, and takes the ground only from its road (task 7.2); its `road`
+  member, or a vehicle's `set_road`, was given a null pointer.
+- **What to do:** give it a road (`FlatRoad` for level ground).
+
 ## A: analysis
 
 ### MBD-A001

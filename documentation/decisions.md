@@ -71,6 +71,7 @@ and the journal entry of the work refers to them by number
 | D58 | Notebooks that check themselves: three worked examples, run as tests | 12 Nov 2026 | In force, task 6.6 |
 | D59 | Rerun's viewer inside notebooks, where rerun-notebook is installed | 13 Nov 2026 | In force, Phase 6 (added at the author's request) |
 | D60 | The vehicle layer in ISO 8855 axes, its labels kept; up decided in one place | 15 Nov 2026 | In force, task 7.1 |
+| D61 | The road: one interface for height, normal and friction; the tyres take the ground only from it | 24 Nov 2026 | In force, task 7.2 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -2590,3 +2591,76 @@ and the journal entry of the work refers to them by number
   corners, `position_kinematics`, the lap vehicle; the vehicle tests;
   `tests/regression/` (two scenarios, four references written again);
   `docs/conventions.md`.
+
+## D61. The road: one interface for height, normal and friction; the tyres take the ground only from it
+
+- **Context.** Task 7.2: "One interface returning height, normal and friction
+  at a point. Flat, analytic (ramp, bump, kerb, sine), gridded height map,
+  and a three-dimensional track surface. ISO 8608 random roads, classes A to
+  H, generated from the standard's displacement spectrum with a seed (D42).
+  *Done when the tyre uses only this interface, and a generated ISO 8608 road
+  reproduces its class's spectrum.*" After task 7.1 the tyres met a flat
+  plane given by a height and a normal.
+- **Decision.**
+  - **The interface:** `Road::at(x, y)` returns a `RoadPoint`: the height z
+    of the surface above the ground point (x, y), its unit normal, and its
+    friction, in ISO 8855 world axes (`mbd/forces/road.hpp`). A road is a
+    height field: one surface above each ground point.
+  - **Friction is a scale** on the tyre's own friction, 1 being the surface
+    its data was measured on. The tyre multiplies its peak force D by it and
+    keeps its slip stiffness K = BCD (B rises as D falls), as the Magic
+    Formula's friction scaling does.
+  - **The tyres take the ground only from their road:** at the contact
+    point's (x, y), the depth below the road's tangent plane, (h - z) n_z,
+    the force along the road's normal, the heading and slip in the tangent
+    plane, the friction into the tyre law. Each tyre starts on a level road
+    at height 0; `VehicleHandle::set_road` and `VehicleModel::set_road` put
+    a vehicle's tyres on another; a null road is refused (MBD-F051).
+  - **The roads:** `FlatRoad`; `RampRoad`, `BumpRoad` (raised cosine),
+    `KerbRoad` (a chamfered strip along the road), `SineRoad`; `GridRoad`
+    (bilinear within each cell, its edges continuing level); `Iso8608Road`;
+    and in `mbd/analysis`, beside the track it is built on,
+    `TrackSurfaceRoad`: a query point projected onto the centreline (the
+    nearest of samples every metre, found through a grid of buckets, then
+    Newton on the arc length), its height the elevation less the lateral
+    distance times the banking's tangent.
+  - **ISO 8608 roads:** one profile along X, the same across the road, a
+    sum of cosines at n_k = k / L between n_min and n_max (0.011 to 2.83
+    cycles/m by default) with amplitudes A_k = sqrt(2 G_d(n_k) / L), so
+    that the variance in each frequency interval is the class's, and phases
+    uniform from the seed. The 64-bit Mersenne twister's outputs are fixed by
+    the C++ standard, its distributions are not, so the phases are its top
+    53 bits mapped to [0, 1) by hand: a seed gives the same road on every
+    compiler. The profile is sampled once (ten samples per shortest
+    wavelength) and interpolated by Catmull-Rom cubics, which pass through
+    the samples with a continuous slope; it repeats every L.
+- **Alternatives.**
+  - Random amplitudes as well as phases (each component Rayleigh): the
+    spectrum then holds on average over many roads, not on each. With the
+    amplitudes fixed, every road's periodogram over one period is the
+    class's spectrum exactly, which is what the "done when" asks and what the
+    test checks.
+  - The sum evaluated at every query: about 2,800 cosines per tyre per
+    evaluation for a 1 km road. Rejected for sampling once.
+  - Two tracks, left and right, with a coherence between them: ISO 8608
+    defines one track's spectrum; the coherence needs a model of its own.
+    For the four-post rig (task 9.4).
+  - A stateful projection for the track (the last arc length as a hint):
+    cheaper, but a road queried by four tyres and by several threads would
+    need one hint each. The buckets need none.
+  - A three-dimensional mesh road (OpenCRG and the like, overhangs): later
+    if needed; a height field serves ground vehicles.
+- **Consequences.** The tyre's contact geometry is unchanged: the contact
+  point is still the lowest point of the wheel's frame (finding F8, task
+  7.3). The ramp's and the kerb's edges, the grid's cell edges and the track's
+  segment ends (where the banking changes) are where a road's slope or
+  height jumps; the tyres meet those as they are. The aerodynamics still
+  measure ride height above flat ground (`ground_up`). On flat ground every
+  regression scenario reproduces its reference bit for bit.
+- **Record.** Journal: Phase 7, the road; `include/mbd/forces/road.hpp`,
+  `src/forces/road.cpp`, `include/mbd/analysis/track_surface.hpp`,
+  `src/analysis/track_surface.cpp`, the tyres, the tyre law (`friction`),
+  the builders (`set_road`); `tests/forces/test_road.cpp`,
+  `tests/analysis/test_track_surface.cpp`,
+  `tests/vehicle/test_vehicle_road.cpp`, the regression scenario
+  `sedan-rough-road`; `docs/help/messages.md` (F050, F051).

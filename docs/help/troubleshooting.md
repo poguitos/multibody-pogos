@@ -218,6 +218,15 @@ positive steer is a positive rotation about Z). In the free joint's
 coordinates the height is now `q(2)`, and in its velocities the yaw rate is
 the third and the vertical velocity the sixth. *(Phase 7: axes, D60.)*
 
+**A tyre's force jumps as it crosses a ramp's end, a kerb's edge or a
+track's segment end.** The tyres take the ground from their road at the
+contact point, and these roads' slopes (or, on a banked track where the
+banking changes between segments, heights away from the centreline) change
+abruptly there, so the tyre's normal and depth do too. A bump and a sine
+wave have continuous slopes; an ISO 8608 road too (cubic between its
+samples); a gridded road's slope changes across cell edges. For a smooth
+crossing use a bump, or a finer grid. *(Phase 7: the road, D61.)*
+
 ## Initial conditions, statics and linearisation
 
 **`assemble()` reports MBD-K063 (and MBD-K062).** The held coordinates fix
@@ -790,3 +799,4 @@ Before building on it (working rule 2):
 | Phase 6: examples | Semi-implicit Euler's energy growing when an event cuts its steps (Numerical traps); two runs mixed in one recording (fixed) (Viewing) |
 | Phase 6: the viewer in notebooks | A blank viewer below a cell (Viewing); the viewer in a window instead (MBD-P016 for a missing rerun-notebook) |
 | Phase 7: axes | A model written for the earlier axes (Models) |
+| Phase 7: the road | A tyre's force jumping where a road's slope does (Models); a road out of range (MBD-F050); a tyre with no road (MBD-F051) |
