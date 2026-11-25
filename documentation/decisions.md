@@ -73,6 +73,7 @@ and the journal entry of the work refers to them by number
 | D60 | The vehicle layer in ISO 8855 axes, its labels kept; up decided in one place | 15 Nov 2026 | In force, task 7.1 |
 | D61 | The road: one interface for height, normal and friction; the tyres take the ground only from it | 24 Nov 2026 | In force, task 7.2 |
 | D62 | The wheel as a body on a spin joint; the contact from the wheel plane and the road; the drivetrain without states, the engine's inertia left out until 7.8 | 25 Nov 2026 | In force, task 7.3 |
+| D63 | The Magic Formula tyre: TNO's MF-Tyre 6.1 as published, where the book differs; MF 5.2 as 6.1 with 5.2's forms; checked against MFeval | 25 Nov 2026 | In force, task 7.4 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -2767,3 +2768,106 @@ and the journal entry of the work refers to them by number
   `src/vehicle/wheel.cpp`, the tyres, the builders, the drivetrain;
   `tests/vehicle/test_wheel.cpp`, `tests/forces/test_full_tire.cpp`;
   `docs/help/messages.md` (F052).
+
+## D63. The Magic Formula tyre: TNO's MF-Tyre 6.1 as published, where the book differs; MF 5.2 as 6.1 with 5.2's forms; checked against MFeval
+
+- **Context.** Task 7.4: "Tyre (F7). Magic Formula 5.2 with its full
+  coefficient set, a `.tir` file reader, camber, aligning and overturning
+  moments, rolling resistance, combined slip, and scaling factors. Lag
+  through relaxation length, valid to standstill. *Done when curves match
+  the reference curves in Pacejka chapter 4 and an independent Magic Formula
+  implementation, and a car held on its brakes on a slope stays put.*" The
+  author chose, when asked, both MF 5.2 and MF 6.1, the file choosing, and
+  MFeval 4.3.1 (Marco Furlan, BSD-3, MATLAB File Exchange 63618) as the
+  independent implementation, downloaded outside the repository and run
+  there by a script that writes its curves to CSV. This decision covers the
+  steady-state tyre; the lag and the slope come in the task's second part.
+  The library has had a simpler Magic Formula since before the plan
+  (`mbd/forces/pacejka.hpp`: a few coefficients per axis, no file).
+  Three sources were at hand: Pacejka's Tire and Vehicle Dynamics, 3rd ed.
+  (2012), section 4.3.2, (4.E1) to (4.E78), MF 6.1 only; the appendix of
+  Besselink, Schmeitz and Pacejka, "An improved Magic Formula/Swift tyre
+  model that can handle inflation pressure changes" (Vehicle System
+  Dynamics 48, 2010; the accepted manuscript is open at TU Eindhoven),
+  equations (33) to (90), TNO's MF-Tyre 6.1, with a list of what 6.1 changed
+  from 5.2; and MFeval's code and documentation, whose author compared it
+  with TNO's solver (MF-Tyre/MF-Swift 6.1.2.1) and documents seven places
+  where the book's forms did not match it and the paper's did. No MF 5.2
+  equation manual was within reach (TNO's is not public; a DTIC report
+  refused the download). The book's chapter 4 figures are fits of measured
+  tyres whose parameters it does not give.
+- **Decision.**
+  - **The equations are the paper's where it and the book differ**, and the
+    book's where the paper is silent (the epsilons of 1e-6 with their
+    neighbour's sign, LMUV, the sign of the forward speed in the trail and
+    the residual torque). The slip angle and the inclination enter as they
+    are, not as the book's alpha* = tan(alpha) sgn(Vcx) and gamma* =
+    sin(gamma); the trail's camber terms are (84) and (86), and its peak
+    takes Fz0, not Fz0'; cos(alpha) appears once in the residual torque, in
+    Mzr (88), not also in Dr (90); the combined equivalent slips are (80)
+    and (81); the rolling resistance is (50), -R0 Fz0 (...), against the
+    rolling; the overturning couple is (49), with qsx12 to qsx14; the
+    degressive friction factor is not applied (the book's A_mu taken as 1;
+    the paper's (42) and (65) carry lambda_mu). The book's qBz6 is not a
+    parameter. One point follows TNO's solver as MFeval found it, against
+    both written sources: the combined side force in Mz takes Gyk at the
+    inclination ((4.E74) and the paper's note say at zero), which matters
+    only when rBy4 is not 0.
+  - **MF 5.2 is the same evaluation with 5.2's forms where the paper says
+    6.1 changed them**: the camber shift pHy3 gamma in place of the camber
+    stiffness; the aligning torque's arm on Fy - SVyk; the rolling
+    resistance -R0 Fz (qsy1 ... qsy4); the relaxation lengths from pTx and
+    pTy; no inflation pressure; the inclination scaled by LGAX, LGAY and
+    LGAZ. For the rolling resistance and the relaxation lengths MFeval's
+    code (which cites TNO's 5.2 manual) is the only source: there it is
+    source and check at once. FITTYP chooses (6, 21: MF 5.2; 61, 62: MF
+    6.1), or Adams's PROPERTY_FILE_FORMAT in a file without FITTYP.
+  - **"Match the reference curves in Pacejka chapter 4"** is read as: the
+    chapter's equations, with the one parameter set the book publishes
+    (Appendix 3's 205/60R15 tyre, Table A3.1, written out as a .tir file),
+    against MFeval, plus identities the equations imply (slip stiffnesses
+    are the slopes, peaks are mu Fz plus the shifts, combined slip leaves a
+    force alone at zero of the other slip). The chapter's figures cannot be
+    redrawn without their tyres' parameters.
+  - **The comparison:** three tyres (Appendix 3; Appendix 3 with every
+    scaling factor other than 1; a synthetic MF 5.2 tyre with scaling
+    factors), 1812 points over load, both slips, combined slip,
+    inclination, speed and pressure, thirteen channels. MFeval runs in mode
+    211 (no limit checks or low-speed reduction, no alpha*, no turn slip).
+    Coefficients a file leaves out take this tyre's defaults (0; PKY4 2) in
+    the script, not MFeval's sample tyre's. Tolerances: 1e-10 of each
+    channel's largest magnitude, 1e-6 for the trail and Mz, where MFeval's
+    cos(alpha') = Vcx / (Vc + 1e-6) differs from cos(alpha) by 1e-6 / Vc.
+  - **The inputs are taken as they are:** a file's ranges are read and not
+    applied, and there is no low-speed reduction in the steady state; the
+    second part's relaxation keeps the slips finite at rest.
+- **Alternatives.**
+  - The book's equations as printed: they differ from TNO's solver, with
+    which .tir files are fitted. Put back one at a time on the test tyres
+    they change a channel by 0.09 % to 9 % of its largest magnitude (the
+    rolling resistance by 75 %, and its sign); `docs/tyres.md` has the
+    table.
+  - Both forms, chosen by an option (as MFeval's alpha* mode): two formulas
+    for one quantity, and the book's alpha* matters only beyond the slip
+    angles the tyres are fitted at.
+  - MFeval's code as the source throughout: the comparison would check a
+    copy against its original. It is the source only where nothing else
+    was (MF 5.2's rolling resistance and relaxation lengths), and for the
+    one observation about TNO's solver above.
+  - Refusing qsx12 to qsx14 (as the first version of this code did, after
+    the book): the paper has them, and MF 6.1 and 6.2 files carry them.
+  - Comparing with the book's figures, digitised: their tyres' parameters
+    are not published, so no curve here could be expected to lie on them.
+- **Consequences.**
+  - `MagicFormulaTyre` (`mbd/forces/magic_formula.hpp`) and `read_tir`
+    (`mbd/io/tir_file.hpp`); messages MBD-F053 and MBD-I020 to MBD-I024;
+    `docs/tyres.md`.
+  - Each line of the equations names its source in both numberings.
+  - The comparison needs no MATLAB to run: the CSVs are in
+    `tests/forces/data/mfeval/`. Writing them again needs MATLAB, MFeval and
+    the script (kept with MFeval, quoted in the journal).
+  - Rolling backwards is not compared: MFeval's conventions for it differ.
+    Here the trail and the residual torque change sign with Vcx (the book's
+    sgn(Vcx)) and the rolling resistance opposes the motion; the second part
+    settles reverse running with the vehicle.
+  - The vehicles keep the simpler tyre until the second part.

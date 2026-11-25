@@ -99,6 +99,8 @@ mbd_add_test_exe(test_forces
     forces/test_force_connectors.cpp
     forces/test_contact.cpp
     forces/test_road.cpp
+    forces/test_magic_formula.cpp
+    forces/test_magic_formula_mfeval.cpp
     test_force_elements.cpp
 )
 

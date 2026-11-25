@@ -835,6 +835,17 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
   `Drivetrain::Corner` its tyre, the wheel made with `add_wheel`
   (`mbd/vehicle/wheel.hpp`) and the body that wheel turns on.
 
+### MBD-F053
+
+`Magic Formula tyre: <parameter> must be > 0`
+
+- **Means:** a Magic Formula tyre (`mbd/forces/magic_formula.hpp`, task 7.4)
+  was given a parameter set it cannot evaluate: a nominal load, unloaded
+  radius, reference speed, nominal pressure (MF 6.1) or load scaling factor
+  that is not positive. Each is a divisor in the equations.
+- **What to do:** check the .tir file's [VERTICAL], [DIMENSION], [MODEL],
+  [OPERATING_CONDITIONS] and [SCALING_COEFFICIENTS] values.
+
 ## A: analysis
 
 ### MBD-A001
@@ -974,6 +985,46 @@ elements and joint forces)
   C++). The file is not written, rather than written without it.
 - **What to do:** write the model without it and add it in code after
   loading, or give the time function as a constant.
+
+### MBD-I020
+
+`read_tir: cannot open "<path>"`
+
+- **Means:** the tyre property file (.tir, `mbd/io/tir_file.hpp`) could not be
+  opened.
+- **What to do:** check the path and that the file is readable.
+
+### MBD-I021
+
+`<file>, line <n>: <quantity> is in '<unit>'; only SI units are read`
+
+- **Means:** the file's [UNITS] gives a unit other than meter, newton,
+  radians, kg, second or pascal. The reader does not convert units.
+- **What to do:** convert the file to SI (most .tir files are already).
+
+### MBD-I022
+
+`<file>, line <n>: FITTYP <value> is not a Magic Formula this tyre evaluates`
+
+- **Means:** FITTYP names a Magic Formula version other than MF 5.2 (6 or
+  21) and MF 6.1 (61 or 62), such as an older MF 5.0 or a Fiala file.
+- **What to do:** use a file of a version the tyre evaluates.
+
+### MBD-I023
+
+`<file>: FNOMIN is missing`, `UNLOADED_RADIUS is missing` or `FITTYP is missing`
+
+- **Means:** a parameter without a default is not in the file: the nominal
+  load, the unloaded radius, or the version (FITTYP, or Adams's
+  PROPERTY_FILE_FORMAT 'PAC2002', 'MF_05', 'MF_61' or 'MF_62').
+- **What to do:** add it.
+
+### MBD-I024
+
+`<file>, line <n>: <KEY> = '<value>' is not a number` or `a section header without ']'`
+
+- **Means:** a line of the file could not be read.
+- **What to do:** correct the line the message names.
 
 ## P: the Python interface
 

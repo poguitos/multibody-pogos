@@ -36,6 +36,7 @@ add_library(multibody_core
     forces/anti_roll_bar.cpp
     forces/contact.cpp
     forces/road.cpp
+    forces/magic_formula.cpp
     vehicle/suspension/double_wishbone.cpp
     vehicle/suspension/mcpherson.cpp
     vehicle/suspension/multilink.cpp
@@ -52,6 +53,7 @@ add_library(multibody_core
     analysis/optimization.cpp
     analysis/recorder.cpp
     io/model_file.cpp
+    io/tir_file.cpp
 )
 
 # Public headers live in the top-level include directory

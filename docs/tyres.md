@@ -1,0 +1,217 @@
+# Tyres
+
+Plan task 7.4 (decision D63): the Magic Formula tyre, from a tyre property
+file (.tir), in its two versions MF 6.1 and MF 5.2. This page says what it
+computes, from which equations, how it was checked, and what it leaves out.
+
+| What | Where |
+|---|---|
+| The tyre: steady-state forces and moments | `mbd/forces/magic_formula.hpp` |
+| The .tir reader | `mbd/io/tir_file.hpp` |
+| Tests: identities at the nominal state | `tests/forces/test_magic_formula.cpp` |
+| Tests: against MFeval, an independent implementation | `tests/forces/test_magic_formula_mfeval.cpp` |
+| Test tyres and MFeval's curves | `tests/forces/data/*.tir`, `tests/forces/data/mfeval/*.csv` |
+
+The vehicles of Phase 7 still use the simpler Magic Formula the library
+had before the plan (`mbd/forces/pacejka.hpp`, `FullTireForce`) until the second part of
+task 7.4 adds the tyre's lag (relaxation lengths) and makes this one their
+tyre.
+
+## Using it
+
+```cpp
+#include "mbd/forces/magic_formula.hpp"
+#include "mbd/io/tir_file.hpp"
+
+const mbd::io::TirFile file = mbd::io::read_tir("my_tyre.tir");
+// file.ignored lists the keys the tyre does not use (SWIFT, contact patch, ...)
+const mbd::MagicFormulaTyre tyre(file.parameters);
+
+mbd::MagicFormulaInput in;
+in.Fz = 4000.0;      // N
+in.kappa = 0.05;     // longitudinal slip, positive in traction
+in.alpha = 0.03;     // slip angle, rad
+in.gamma = 0.0;      // inclination, rad
+in.Vcx = 20.0;       // forward speed of the contact centre, m/s
+const mbd::MagicFormulaOutput out = tyre.evaluate(in);
+// out.Fx, out.Fy, out.Mx, out.My, out.Mz; out.Kxk, out.Kya, out.trail,
+// out.sigma_kappa, out.sigma_alpha, ...
+```
+
+## Axes and signs
+
+Those of a .tir file: ISO, the tyre's W axes. x is along the wheel's heading
+in the road plane, y to its left, z up along the road's normal. The inputs:
+
+| Input | Definition |
+|---|---|
+| `Fz` | Normal load, N; at zero or below every output is zero |
+| `kappa` | Longitudinal slip, -Vsx / \|Vcx\|: positive in traction, -1 for a locked wheel rolling forwards |
+| `alpha` | Slip angle, tan(alpha) = Vcy / \|Vcx\|: positive when the contact centre moves to the left. A car tyre's cornering stiffness `Kya` is then negative, and so is its side force at a positive slip angle |
+| `gamma` | Inclination angle: positive when the wheel's top leans to the right (to -y) |
+| `Vcx` | Forward speed of the contact centre: its sign, the rolling resistance's speed terms, and the slip speed of LMUV |
+| `pressure` | Inflation pressure, Pa (MF 6.1); below zero, the file's INFLPRES |
+
+The outputs are the forces and moments of the road on the tyre at the
+contact point, in the same axes. The rolling resistance moment `My` is
+negative when rolling forwards: it opposes the wheel's spin, which is about
++y.
+
+## The equations
+
+The tyre evaluates TNO's MF-Tyre 6.1 as Besselink, Schmeitz and Pacejka list
+it in the appendix of "An improved Magic Formula/Swift tyre model that can
+handle inflation pressure changes" (Vehicle System Dynamics 48, 2010),
+equations (33) to (90). Pacejka's Tire and Vehicle Dynamics, 3rd edition
+(2012), section 4.3.2, equations (4.E1) to (4.E78), gives the same in most
+places, and the source comments carry both numbers. Turn slip is not
+modelled (every zeta factor is 1).
+
+Where the book and the paper differ, the paper is followed. .tir files are
+fitted with TNO's tools, so their parameters mean what TNO's equations make
+of them. MFeval's author compared his implementation with TNO's solver
+(MF-Tyre/MF-Swift 6.1.2.1) and found the paper's forms match it where the
+book's do not. The differences, and what each would change on the test
+tyres: each book form was put back alone and compared with MFeval, and the
+last column gives the largest change of a channel as a fraction of that
+channel's largest magnitude over the sweep (the Appendix 3 tyre, or the
+scaled one where marked):
+
+| Point | Book | Here (paper, TNO) | Change if the book's form were used |
+|---|---|---|---|
+| Slip angle | alpha* = tan(alpha) sgn(Vcx) (4.E3); gamma* = sin(gamma) (4.E4) | alpha and gamma as they are | Mz 1.6 %, Fx 0.7 %, Fy 0.4 % (alpha* alone) |
+| cos(alpha) in the residual torque | in Dr (4.E47) and again in Mzr (4.E36, 4.E75) | once, in Mzr (88); not in Dr (90) | Mzr 0.5 %, Mz 0.09 % |
+| Camber in the trail | (1 + qBz5 \|gamma*\| + qBz6 gamma*^2) (4.E40); (1 + qDz3 \|gamma*\| + qDz4 gamma*^2) (4.E43) | (1 + qBz4 gamma + qBz5 \|gamma\|) (84); (1 + qDz3 gamma + qDz4 gamma^2) (86) | t 5.9 %, Mz 4.5 % |
+| Equivalent slips, combined | sqrt(alpha_t^2 + (Kxk / Kya)^2 kappa^2) (4.E77, 4.E78) | atan(sqrt(tan^2 alpha_t + (Kxk / Kya)^2 kappa^2)) (80, 81) | t 2.4 %, Mz 1.3 % |
+| Rolling resistance | Fz R0 (...) (Fz / Fz0)^qsy7 ..., positive (4.E70) | -R0 Fz0 (...) (Fz / Fz0)^qsy7 ... (50) | My 75 % (at 7000 N), and its sign |
+| Degressive friction factor | lambda' = A_mu lambda* / (1 + (A_mu - 1) lambda*), A_mu = 10 (4.E8) | lambda' = lambda* (A_mu = 1; (42), (65) have lambda_mu) | Mz 0.4 %, Fy 0.2 % (only with friction scaling other than 1) |
+| Peak trail | Fz R0 / Fz0' (4.E42) | Fz R0 / Fz0 (86) | t 9.1 %, Mz 8.9 % (only with LFZO other than 1) |
+| Overturning couple | (4.E69), without qsx12 to qsx14 | (49), with them | none on the test tyres (their qsx12 to qsx14 are 0) |
+| Side force in Mz, combined | Gyk at zero inclination (4.E74; the paper's note to (75) too) | Gyk at the inclination, as MFeval found TNO's solver has it | none on the test tyres (their rBy4 is 0); not checked independently |
+| qBz6 | in (4.E40) | not a parameter: no .tir file has it | |
+
+Elsewhere the book is followed where the paper is silent: the small
+quantities epsilon (1e-6, with their neighbour's sign) that keep
+denominators from zero, the friction scaling with slip speed `LMUV` (4.E7,
+default 0, which TNO's files do not use), and the sign of the forward speed
+in the trail and in the residual torque (4.E42, 4.E47).
+
+### MF 5.2
+
+A file's FITTYP chooses the version: 6 or 21 is MF 5.2, 61 or 62 is MF 6.1
+(MF 6.2's steady-state forces are 6.1's). A file without FITTYP may name the
+version as Adams does, `PROPERTY_FILE_FORMAT = 'PAC2002'` or `'MF_05'` (MF
+5.2), `'MF_61'` or `'MF_62'` (MF 6.1).
+
+MF 5.2 takes the same equations, with 5.2's forms where the paper says 6.1
+changed them:
+
+- camber shifts the side force curve in proportion, `SHy = (pHy1 + pHy2 dfz)
+  lHy + pHy3 gamma_y`, rather than through 6.1's camber stiffness (pKy6,
+  pKy7);
+- the aligning torque's arm takes the side force at the inclination, less
+  its slip-induced part: `Mz = -t (Fy - SVyk) + Mzr + s Fx`; 6.1 takes the
+  side force at zero inclination;
+- the rolling resistance is `My = -R0 Fz lMy (qsy1 + qsy2 Fx / Fz0 + qsy3
+  |Vx / V0| + qsy4 (Vx / V0)^4)`, without 6.1's camber, load exponent and
+  pressure terms;
+- the relaxation lengths come from their own coefficients: `sigma_kappa =
+  Fz (pTx1 + pTx2 dfz) exp(-pTx3 dfz) (R0 / Fz0) lsgkp`, `sigma_alpha = pTy1
+  sin(2 atan(Fz / (pTy2 Fz0'))) (1 - pKy3 |gamma_y|) R0 lFz0 lsgal`; 6.1
+  divides the slip stiffnesses by the carcass's stiffnesses;
+- there is no inflation pressure;
+- the inclination is scaled for each use, by LGAX (the longitudinal force),
+  LGAY (the side force) and LGAZ (the aligning torque); 6.1 scales the
+  camber stiffnesses instead (LKYC, LKZC).
+
+No written MF 5.2 equation manual was within reach. The forms of the rolling
+resistance and of the relaxation lengths are those MFeval gives as TNO's 5.2
+manual's: for them MFeval is the source as well as the check. The camber
+scaling factors LGAX, LGAY and LGAZ come from older descriptions of MF 5.2
+(PAC2002); MFeval does not take them, so they are not compared.
+
+## Reading .tir files
+
+A .tir file is text in sections, `[SECTION]`, of `KEY = value` lines. `$`
+begins a comment, as does a line beginning with `!`; strings are quoted;
+lines without `=` (the rows of a table such as `[SHAPE]`) are skipped.
+
+- `[UNITS]` must be SI: meter, newton, radians, kg, second, pascal
+  (MBD-I021 otherwise). The reader does not convert units.
+- FITTYP (or PROPERTY_FILE_FORMAT), FNOMIN and UNLOADED_RADIUS are required
+  (MBD-I023). Every other parameter takes its default when the file leaves
+  it out: coefficients 0, scaling factors 1, except LMUV 0 and PKY4 2.
+- Keys are matched by name, whatever their section. A key the tyre does not
+  use (a SWIFT parameter, the contact patch's, the header's) is listed in
+  `TirFile::ignored`, not refused.
+- The ranges of a file (`[LONG_SLIP_RANGE]`, `[VERTICAL_FORCE_RANGE]` and so
+  on) are read and not used: the tyre evaluates the formulas at the inputs
+  it is given, as MFeval's mode 211 does.
+
+The messages are MBD-I020 to MBD-I024 and MBD-F053 (`docs/help/messages.md`).
+
+## How it was checked
+
+**Identities** (`test_magic_formula.cpp`), at the nominal state of the
+book's Appendix 3 tyre (205/60R15, its Table A3.1 written out as
+`tests/forces/data/pacejka_a3_205_60R15.tir`): the slip stiffnesses are the
+slopes of the curves at their centres (central differences, within 1e-8);
+the peaks are mu Fz lifted by the vertical shifts (a sweep every 2e-5 of
+slip, within 1e-5); combined slip leaves each force alone where the other
+slip is zero (exactly, both versions); the rolling resistance and the
+relaxation lengths are their closed forms.
+
+**Against MFeval** (`test_magic_formula_mfeval.cpp`). MFeval 4.3.1 (Marco
+Furlan, BSD-3 licence, MATLAB File Exchange 63618) is an independent
+implementation of MF 5.2, 6.1 and 6.2, written from the book and the paper
+and compared by its author with TNO's solver. It is kept outside the
+repository; a MATLAB script kept with it, `mfeval_curves.m`, evaluates the
+three test tyres in its mode 211 (no limit checks, no low-speed reduction,
+no alpha*, no turn slip) and writes the CSV files in
+`tests/forces/data/mfeval/`. Their headers say how they were made; the
+journal entry of 25 November 2026 quotes the script.
+
+| Tyre | Version | Points |
+|---|---|---|
+| Appendix 3 (`pacejka_a3_205_60R15.tir`) | MF 6.1 | 618 |
+| Appendix 3 with every scaling factor other than 1 (`..._scaled.tir`) | MF 6.1 | 618 |
+| A synthetic MF 5.2 tyre with scaling factors (`mf52_test_tyre.tir`) | MF 5.2 | 576 |
+
+The points sweep the longitudinal slip from -0.9 to 0.9 and the slip angle
+from -0.35 to 0.35 rad at loads of 1500, 4000 and 7000 N and three
+inclinations, combine the two at 3000 and 6000 N, vary the forward speed
+from 2 to 40 m/s and (MF 6.1) the pressure from 180 to 260 kPa. Thirteen
+channels are compared: Fx, Fy, Mx, My, Mz, the trail, the residual torque,
+both friction coefficients, both slip stiffnesses and both relaxation
+lengths. Each must be within 1e-10 of its largest magnitude in the file, the
+trail and Mz within 1e-6: MFeval multiplies the trail by Vcx / (Vc + 1e-6)
+where the paper has cos(alpha), a difference of 1e-6 / Vc. Seen: every
+channel but those two within 3.5e-12 (the CSV's 12 significant digits), the
+trail within 2.1e-7 and Mz within 1.1e-7, both at the 2 m/s point.
+
+MFeval fills a parameter a file leaves out with values of a sample tyre
+(QSX4 = 5, for instance); the script gives them this tyre's defaults
+instead, and each CSV lists which.
+
+**Pacejka's chapter 4 curves.** The plan asked that the curves match the
+reference curves of the book's chapter 4. Those figures are fits of measured
+tyres whose parameters the book does not give, so they cannot be redrawn.
+The book's own parameter set is Appendix 3's, and that is what the
+identities and the comparison with MFeval use (D63).
+
+## What is not modelled
+
+- Turn slip and the zeta factors (every one 1).
+- The tyre's vertical behaviour from the file: loaded radius, vertical
+  stiffness, effective rolling radius, contact patch. The wheels' contact is
+  task 7.3's (`mbd/forces/tire.hpp`).
+- Limit checks: the file's ranges are not applied, and loads, slips and
+  inclinations outside them are evaluated as they are.
+- Low speed and standstill: the steady-state formulas divide by the speed
+  through the slips. The second part of task 7.4 adds the relaxation
+  behaviour that keeps them valid down to rest.
+- Rolling backwards was not compared: MFeval's conventions for it differ
+  (its slip is -Vsx / Vx, signed, and it reverses the longitudinal force).
+  Here the trail and the residual torque change sign with Vcx and the
+  rolling resistance opposes the motion; the second part settles reverse
+  running with the vehicle.
