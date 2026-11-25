@@ -14,7 +14,8 @@
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
 
-// The drivetrain on the simple vehicle, simulated on the kernel (plan task 2.7).
+// The drivetrain on the simple vehicle, simulated on the kernel (plan task 2.7);
+// its wheels on spin joints since task 7.3 (D62).
 
 namespace
 {
@@ -22,6 +23,16 @@ namespace
     mbd::Real vx(const mbd::kernel::Simulator& sim)
     {
         return sim.states()[1].v_WB.x();
+    }
+
+    /// Start every wheel 3 % faster than free rolling, as the drivetrain
+    /// started them before task 7.3 (its spins from R_free x 0.97): a release
+    /// transient for the spins to settle from, which they no longer have when
+    /// roll_wheels starts them at free rolling exactly.
+    void spin_off_free_rolling(mbd::kernel::Simulator& sim, const mbd::VehicleModel& vm)
+    {
+        for (std::size_t c = 0; c < 4; ++c) sim.v(vm.spin_v[c]) *= 1.03;
+        sim.refresh();
     }
 }
 
@@ -255,7 +266,6 @@ TEST_CASE("Drivetrain: braking deceleration matches the hand calculation",
 
     Drivetrain dt;
     dt.params.layout = DriveLayout::RWD;
-    dt.params.engine.inertia = 0.0; // keep the engine out of the inertia that is braked
     dt.initialize(sim, vm);
     dt.throttle = 0.0;
     dt.brake = 0.0;
@@ -276,22 +286,30 @@ TEST_CASE("Drivetrain: braking deceleration matches the hand calculation",
     const Real decel = (V1 - V2) / 1.0;
 
     // Hand calculation, for wheels that roll without locking:
-    //   wheel c:  I * (a / R_c) = T_c - F_c * R_c     (it slows with the car)
+    //   wheel c:  I * (a / R_c) = T_c - F_c * r_c     (it slows with the car)
     //   car:      m * a = sum(F_c)
-    //   =>        a = sum(T_c / R_c) / (m + sum(I / R_c^2))
+    //   =>        a = sum(T_c / r_c) / (m + sum(I / (R_c r_c)))
     // with T_c the brake torque, F_c the braking force of the tyre, R_c the
-    // rolling radius and I the spin inertia of one wheel.
+    // rolling radius (spin to speed), r_c the arm of F_c about the axle (task
+    // 7.3: the force acts on the road, R_free - deflection below the axle),
+    // and I the spin inertia of one wheel, m R^2 / 2 = 2.45 kg m^2. The slip
+    // that the braking force needs (about -4 %) makes the wheels turn, and
+    // slow, that much slower than rolling, so their inertia takes that much
+    // less of the brakes' torque: of the wheels' 5 % share of the inertia,
+    // 0.2 % of the deceleration, which this leaves out (measured 5.539
+    // against 5.528 m/s^2). Allowed 0.5 %.
     Real force_from_torque = 0.0;
     Real inertia_as_mass   = 0.0;
     for (int c = 0; c < 4; ++c) {
         const Real R = vm.tires[c]->get_rolling_radius();
-        force_from_torque += dt.brake_torque_out[c] / R;
-        inertia_as_mass   += dt.wheel_inertia[c] / (R * R);
+        const Real r = vm.tires[c]->R_free - vm.tires[c]->get_deflection();
+        force_from_torque += dt.brake_torque_out[c] / r;
+        inertia_as_mass   += dt.wheel_inertia[c] / (R * r);
     }
     const Real a_expected = force_from_torque / (vp.total_mass() + inertia_as_mass);
 
     INFO("measured " << decel << " m/s^2, expected " << a_expected << " m/s^2");
-    REQUIRE_THAT(decel, WithinRel(a_expected, 0.02));
+    REQUIRE_THAT(decel, WithinRel(a_expected, 0.005));
 
     // Brake torque per wheel: bias times the total, split left/right.
     REQUIRE_THAT(dt.brake_torque_out[0], WithinAbs(0.5 * 6000.0 * 0.65 / 2.0, 1e-9));
@@ -301,8 +319,9 @@ TEST_CASE("Drivetrain: braking deceleration matches the hand calculation",
     // (less the small part that slows the wheel itself).
     for (int c = 0; c < 4; ++c) {
         const Real R = vm.tires[c]->get_rolling_radius();
+        const Real r = vm.tires[c]->R_free - vm.tires[c]->get_deflection();
         const Real F_expected =
-            (dt.brake_torque_out[c] - dt.wheel_inertia[c] * a_expected / R) / R;
+            (dt.brake_torque_out[c] - dt.wheel_inertia[c] * a_expected / R) / r;
         INFO("corner " << c);
         REQUIRE_THAT(-vm.tires[c]->get_Fx(), WithinRel(F_expected, 0.03));
         REQUIRE(dt.wheel_omega[c] > 0.0); // still rolling
@@ -456,7 +475,6 @@ TEST_CASE("Drivetrain: Dormand-Prince reproduces RK4's braking deceleration",
         sim.initialize();
         Drivetrain dt;
         dt.params.layout = DriveLayout::RWD;
-        dt.params.engine.inertia = 0.0;
         dt.initialize(sim, vm);
         dt.connect(sim, vm);
         sim.run(0.3, 0.001);
@@ -529,7 +547,9 @@ TEST_CASE("Drivetrain: generalised-alpha rolls the car at low speed in steps of 
     // same to 1e-4. Nothing takes energy
     // out of the coasting car (as in the test above), and the method's
     // damping acts on the motions too fast for the step, not on the speed,
-    // which holds to 1e-3.
+    // which holds to 1e-3. Since task 7.3 the spins are the wheels' joints;
+    // they start 3 % fast, as they did before, to give them something to
+    // settle from (measured values in this comment from before 7.3).
     using namespace mbd;
     struct Run {
         Real V_start, V_end, worst;   // worst: largest |spin x rolling radius - speed| / speed
@@ -546,6 +566,7 @@ TEST_CASE("Drivetrain: generalised-alpha rolls the car at low speed in steps of 
         sim.initialize();
         Drivetrain dt;
         dt.initialize(sim, vm);
+        spin_off_free_rolling(sim, vm);
         dt.connect(sim, vm);
         sim.run(0.3, h);
         Run r{vx(sim), 0.0, 0.0, {}};
@@ -638,7 +659,9 @@ TEST_CASE("Drivetrain: auto-shift changes up at the shift speed of each gear",
     // car accelerates at 2.88 m/s^2 or more:
     //   - engine-limited at the bottom of first gear: 400 Nm * 0.4 (idle
     //     fraction) * 12.25 * 0.92 / 0.34 m = 5.3 kN on 1840 kg (car, wheels
-    //     and the engine inertia seen through first gear) = 2.88 m/s^2;
+    //     and the engine inertia seen through first gear, which task 7.3
+    //     leaves out until 7.8: the car is lighter to accelerate now, and the
+    //     bound holds) = 2.88 m/s^2;
     //   - with the driven wheels spinning: sliding friction 0.65 on at least
     //     the static rear axle load of 7.65 kN = 4.9 kN, or 3.0 m/s^2;
     //   - at the top of second gear: 6.6 kN on 1730 kg = 3.8 m/s^2.
@@ -765,12 +788,18 @@ TEST_CASE("Drivetrain: initialize matches wheel omega to vehicle speed",
     Drivetrain dt;
     dt.initialize(sim, vm);
 
-    const Real R_eff = vp.tire_free_radius * 0.97;
+    // Free rolling at the static deflection: each tyre carries a quarter of
+    // the car's weight, deflecting by W / k_z, and rolls at R_eff = R_free -
+    // deflection / 2; 20 m/s over it. The spins are the wheels' joints' (the
+    // chassis does not turn), to rounding.
+    const Real R_eff = vp.tire_free_radius - 0.5 * vp.tire_deflection_eq();
     const Real expected_omega = 20.0 / R_eff;
 
     for (int c = 0; c < 4; ++c) {
-        REQUIRE_THAT(dt.wheel_omega[c], WithinAbs(expected_omega, 0.1));
+        REQUIRE_THAT(dt.wheel_omega[c], WithinAbs(expected_omega, 1e-9));
+        REQUIRE_THAT(sim.v(vm.spin_v[c]), WithinAbs(expected_omega, 1e-9));
     }
+    REQUIRE(dt.current_gear > 1);   // 20 m/s is past first gear's middle
 }
 
 TEST_CASE("Drivetrain: linearly implicit Euler rolls the car at low speed in steps of 5 ms, one evaluation a step",
@@ -786,7 +815,10 @@ TEST_CASE("Drivetrain: linearly implicit Euler rolls the car at low speed in ste
     // left from the release (about 2e-5 of the speed measured): within 1e-3.
     // Its first order shows in the release transient it damps differently
     // from RK4 at 0.5 ms: the speed after it within 1e-3 of RK4's. Every step
-    // costs one evaluation and one set of derivatives.
+    // costs one evaluation and one set of derivatives. Since task 7.3 the
+    // spins are the wheels' joints; they start 3 % fast, as they did before,
+    // to give them something to settle from (measured values in this comment
+    // from before 7.3).
     using namespace mbd;
     kernel::System sys;
     VehicleParams vp;
@@ -798,6 +830,7 @@ TEST_CASE("Drivetrain: linearly implicit Euler rolls the car at low speed in ste
     sim.initialize();
     Drivetrain dt;
     dt.initialize(sim, vm);
+    spin_off_free_rolling(sim, vm);
     dt.connect(sim, vm);
     const Real h = 0.005;
     sim.run(0.3, h);
@@ -820,6 +853,7 @@ TEST_CASE("Drivetrain: linearly implicit Euler rolls the car at low speed in ste
     ref.initialize();
     Drivetrain ref_dt;
     ref_dt.initialize(ref, ref_vm);
+    spin_off_free_rolling(ref, ref_vm);
     ref_dt.connect(ref, ref_vm);
     ref.run(2.3, 0.0005);
 
@@ -839,8 +873,9 @@ TEST_CASE("Drivetrain: on the sedan every linearly implicit step does the same w
           "[drivetrain][integrators][implicit][linear]")
 {
     // The plan's "done when" for task 4.5: the cost of a step does not vary.
-    // The double-wishbone sedan (27 velocities, 4 wheel spins, its corners
-    // closed by constraints) is driven at full stretch of its states: half
+    // The double-wishbone sedan (31 velocities, 4 of them the wheel spins
+    // since task 7.3, its corners closed by constraints) is driven at full
+    // stretch of its states: half
     // throttle from rest for 1 s, braking to a stop for 2 s (the wheels lock,
     // task 4.1), standing for 1 s. Every step must take exactly one
     // evaluation and one set of derivatives, whatever the state; RK4 takes
@@ -889,96 +924,4 @@ TEST_CASE("Drivetrain: on the sedan every linearly implicit step does the same w
     CHECK(lin_most == 1001);
     CHECK(std::abs(lin_top - rk4_top) < 0.01 * rk4_top);
     CHECK(std::abs(lin_end) < 1e-3);
-}
-
-
-TEST_CASE("Drivetrain: multirate RK4 with a ratio of 6 reproduces single-rate RK4 at its fast step",
-          "[drivetrain][integrators][multirate]")
-{
-    // The plan's "done when" for task 4.6. At walking pace the wheel spins are
-    // the stiff part (about 3000 per second on the simple vehicle): RK4 needs
-    // steps under a millisecond. Multirate RK4 steps the bodies at 3 ms and
-    // the spins in six steps of 0.5 ms, and must give what single-rate RK4 at
-    // 0.5 ms gives, at a sixth of the dynamics' evaluations.
-    //
-    // The simple vehicle rolling at 0.5 m/s: every wheel within 1e-3 of free
-    // rolling (single rate at 0.5 ms: 4e-5; at 3 ms its spins chatter by more
-    // than 5 %), the speed after 2 s within 1e-3 of single rate's (the release
-    // transient is stepped at 3 ms). The sedan through a drive (half throttle
-    // for 1 s, brake to a stop for 2 s, stand for 1 s): the top speed within
-    // 0.5 % of single rate's and the car at rest at the end. Extrapolating the
-    // bodies over a step shapes the spins' slip to second order in it: 0.04 %
-    // at 1.5 ms and 0.14 % at 3 ms when measured.
-    using namespace mbd;
-    struct Rolling {
-        Real V, worst;
-        kernel::IntegratorStats stats;
-    };
-    auto rolling = [](Real H, int m) {
-        kernel::System sys;
-        VehicleParams vp;
-        auto vm = build_simple_vehicle(sys, vp);
-        kernel::Simulator sim(sys);
-        sim.multirate = m;
-        set_vehicle_equilibrium(sim, vm);
-        sim.v(3) = 0.5;
-        sim.initialize();
-        Drivetrain dt;
-        dt.initialize(sim, vm);
-        dt.connect(sim, vm);
-        sim.run(0.3, H);
-        Real worst = 0.0;
-        const int steps = static_cast<int>(std::round(2.0 / H));
-        for (int k = 0; k < steps; ++k) {
-            sim.step(H);
-            for (int c = 0; c < 4; ++c) {
-                const Real r = dt.wheel_omega[c] * vm.tires[c]->get_rolling_radius();
-                worst = std::max(worst, std::abs(r - vx(sim)) / vx(sim));
-            }
-        }
-        return Rolling{vx(sim), worst, sim.integrator_stats()};
-    };
-    const Rolling single = rolling(0.0005, 1), multi = rolling(0.003, 6), coarse = rolling(0.003, 1);
-    INFO("rolling: single rate at 0.5 ms " << single.V << " m/s, within " << single.worst << " ("
-         << single.stats.evaluations << " evaluations); multirate 3 ms x 6 " << multi.V << ", within " << multi.worst
-         << " (" << multi.stats.evaluations << " evaluations, " << multi.stats.state_evaluations
-         << " state evaluations); single rate at 3 ms within " << coarse.worst);
-    CHECK(multi.worst < 1e-3);
-    CHECK(std::abs(multi.V - single.V) < 1e-3 * single.V);
-    CHECK(coarse.worst > 0.05);
-
-    auto drive = [](Real H, int m, long long& evaluations) {
-        auto tmpl = VehicleTemplate::DefaultSedan();
-        tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
-        tmpl.rear_axle.suspension_type = SuspensionType::DoubleWishbone;
-        kernel::System sys;
-        auto vh = build_vehicle(sys, tmpl);
-        kernel::Simulator sim(sys);
-        sim.multirate = m;
-        set_vehicle_equilibrium(sim, vh);
-        sim.initialize();
-        Drivetrain dt(tmpl.drivetrain);
-        dt.initialize(sim, vh);
-        dt.connect(sim, vh);
-        Real top = 0.0;
-        const int steps = static_cast<int>(std::round(4.0 / H));
-        for (int k = 0; k < steps; ++k) {
-            const Real t = k * H;
-            dt.throttle = t < 1.0 - 1e-9 ? 0.5 : 0.0;
-            dt.brake = t >= 1.0 - 1e-9 && t < 3.0 - 1e-9 ? 0.6 : 0.0;
-            sim.step(H);
-            top = std::max(top, vx(sim));
-        }
-        evaluations = sim.integrator_stats().evaluations;
-        return std::make_pair(top, vx(sim));
-    };
-    long long single_evaluations = 0, multi_evaluations = 0;
-    const auto [single_top, single_end] = drive(0.0005, 1, single_evaluations);
-    const auto [multi_top, multi_end] = drive(0.003, 6, multi_evaluations);
-    INFO("sedan: single rate at 0.5 ms top " << single_top << " m/s, end " << single_end << " ("
-         << single_evaluations << " evaluations); multirate 3 ms x 6 top " << multi_top << ", end " << multi_end
-         << " (" << multi_evaluations << " evaluations)");
-    CHECK(std::abs(multi_top - single_top) < 0.005 * single_top);
-    CHECK(std::abs(multi_end) < 1e-4);
-    CHECK(6 * multi_evaluations <= single_evaluations + 24);
 }

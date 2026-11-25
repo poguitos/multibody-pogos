@@ -2,6 +2,36 @@
 
 namespace mbd {
 
+namespace {
+
+/// The drivetrain's torques as a force element of the system: what connect()
+/// adds, so that they act in every evaluation with the other forces.
+class DrivetrainTorques final : public ForceElement {
+public:
+    DrivetrainTorques(Drivetrain& drivetrain, std::vector<BodyIndex> bodies)
+        : drivetrain_(drivetrain), bodies_(std::move(bodies))
+    {}
+
+    const char* name() const override { return "drivetrain"; }
+    std::vector<BodyIndex> bodies() const override { return bodies_; }
+
+    void apply(const std::vector<RigidBodyState>& states, std::vector<RigidBodyForces>& forces) const override
+    {
+        drivetrain_.apply_torques(states, forces);
+    }
+
+private:
+    Drivetrain& drivetrain_;
+    std::vector<BodyIndex> bodies_;
+};
+
+Real sign(Real x)
+{
+    return x > 0.0 ? 1.0 : (x < 0.0 ? -1.0 : 0.0);
+}
+
+} // namespace
+
 Real Drivetrain::torque_curve(Real rpm, const EngineParams& ep)
 {
     if (rpm < ep.idle_rpm) return ep.idle_torque_fraction;
@@ -35,37 +65,70 @@ Real Drivetrain::omega_to_rpm(Real omega_wheel_avg) const
     return omega_engine * Real(60.0) / (Real(2.0) * pi);
 }
 
-void Drivetrain::initialize(const kernel::Simulator& sim, const VehicleModel& vm)
+Drivetrain::Corners Drivetrain::corners_of(const VehicleModel& vm)
 {
-    const Real R = vm.params.tire_free_radius;
-    const Real I = disc_inertia(vm.params.wheel_mass, R);
-    wheel_inertia = {{I, I, I, I}};
-    initialize_from_speed(sim.states(), vm.chassis_body, {{R, R, R, R}});
+    Corners corners;
+    for (std::size_t c = 0; c < 4; ++c) corners[c] = {vm.tires[c], vm.wheel_bodies[c], vm.carrier_bodies[c]};
+    return corners;
 }
 
-void Drivetrain::initialize(const kernel::Simulator& sim, const VehicleHandle& vh)
+Drivetrain::Corners Drivetrain::corners_of(const VehicleHandle& vh)
 {
-    const auto& front = vh.tmpl.front_axle;
-    const auto& rear  = vh.tmpl.rear_axle;
-    const Real R_f = front.tire_free_radius;
-    const Real R_r = rear.tire_free_radius;
-    const Real I_f = disc_inertia(front.wheel_mass, R_f);
-    const Real I_r = disc_inertia(rear.wheel_mass, R_r);
-    wheel_inertia = {{I_f, I_f, I_r, I_r}};
-    initialize_from_speed(sim.states(), vh.chassis_body, {{R_f, R_f, R_r, R_r}});
-}
-
-void Drivetrain::initial_states(kernel::VecRef x) const
-{
-    for (int c = 0; c < 4; ++c) x(c) = wheel_omega[c];
-}
-
-void Drivetrain::begin_evaluation(const kernel::Simulator& /*sim*/, Real /*t*/, kernel::ConstVecRef x)
-{
-    for (int c = 0; c < 4; ++c) {
-        tires_[c]->omega_wheel = x(c);
-        tires_[c]->auto_free_roll = false;
+    Corners corners;
+    for (std::size_t c = 0; c < 4; ++c) {
+        const CornerHandle& h = vh.corners[c];
+        corners[c] = {h.tire, h.wheel_body, h.upright_body};
     }
+    return corners;
+}
+
+void Drivetrain::set_corners(const kernel::Simulator& sim, BodyIndex chassis, const Corners& corners)
+{
+    const kernel::Model& model = sim.system.model;
+    for (const Corner& c : corners) {
+        MBD_THROW_IF(c.tire == nullptr || c.wheel <= 0 || c.upright <= 0 || c.wheel >= model.nbodies()
+                         || c.upright >= model.nbodies() || model.parent[c.wheel] != c.upright
+                         || model.nvs[c.wheel] != 1,
+                     "MBD-F052: Drivetrain: each corner needs its tyre, and a wheel on a spin joint of one "
+                     "coordinate on the corner's upright");
+    }
+    chassis_ = chassis;
+    corners_ = corners;
+    for (std::size_t c = 0; c < 4; ++c) {
+        wheel_inertia[c] = model.inertia[corners[c].wheel].I_com_B(1, 1);
+    }
+}
+
+void Drivetrain::initialize(kernel::Simulator& sim, const VehicleModel& vm)
+{
+    set_corners(sim, vm.chassis_body, corners_of(vm));
+    roll_wheels(sim, vm);
+    initialize_from_spins(sim);
+}
+
+void Drivetrain::initialize(kernel::Simulator& sim, const VehicleHandle& vh)
+{
+    set_corners(sim, vh.chassis_body, corners_of(vh));
+    roll_wheels(sim, vh);
+    initialize_from_spins(sim);
+}
+
+void Drivetrain::initialize_from_spins(const kernel::Simulator& sim)
+{
+    wheel_omega = spins(sim.states());
+    choose_gear(wheel_omega);
+    engine_rpm = std::max(omega_to_rpm(driven_wheel_speed()), params.engine.idle_rpm);
+}
+
+std::array<Real, 4> Drivetrain::spins(const std::vector<RigidBodyState>& states) const
+{
+    std::array<Real, 4> omega{};
+    for (std::size_t c = 0; c < 4; ++c) {
+        const RigidBodyState& w = states[static_cast<std::size_t>(corners_[c].wheel)];
+        const RigidBodyState& u = states[static_cast<std::size_t>(corners_[c].upright)];
+        omega[c] = (w.w_WB - u.w_WB).dot(w.q_WB * Vec3::UnitY());
+    }
+    return omega;
 }
 
 void Drivetrain::update_torques(const std::array<Real, 4>& omega)
@@ -113,30 +176,42 @@ void Drivetrain::update_torques(const std::array<Real, 4>& omega)
 
 Real Drivetrain::free_torque(int c) const
 {
-    return drive_torque[c] - tires_[c]->get_Fx() * tires_[c]->get_rolling_radius();
+    return drive_torque[c] + corners_[static_cast<std::size_t>(c)].tire->last_axle_moment;
 }
 
-void Drivetrain::rates(const kernel::Simulator& /*sim*/, Real /*t*/, kernel::ConstVecRef x, kernel::VecRef x_dot)
+void Drivetrain::apply_torques(const std::vector<RigidBodyState>& states, std::vector<RigidBodyForces>& forces)
 {
-    const std::array<Real, 4> omega{{x(0), x(1), x(2), x(3)}};
+    const std::array<Real, 4> omega = spins(states);
     update_torques(omega);
-    for (int c = 0; c < 4; ++c) {
-        if (wheel_locked[c]) {
-            x_dot(c) = 0.0;
-            continue;
-        }
+    for (std::size_t c = 0; c < 4; ++c) {
+        const Corner& corner = corners_[c];
+        const int k = static_cast<int>(c);
         // The brake opposes the rotation in the direction it had at the start
         // of the step, kept for the whole step: if the spin crosses zero
         // within it, end_step decides whether the brake holds the wheel. A
         // sign taken at each evaluation would flip between the stages and
-        // make the rates discontinuous within a step.
-        x_dot(c) = (free_torque(c) - brake_direction_[c] * brake_torque_out[c]) / compute_effective_inertia(c);
+        // make the rates discontinuous within a step. A locked wheel's brake
+        // holds it against the other torques, and damps the spin left at the
+        // lock, within what the brake can give.
+        Real T_brake = -brake_direction_[c] * brake_torque_out[c];
+        if (wheel_locked[c]) {
+            const Real hold = -free_torque(k) - wheel_inertia[c] / lock_time * omega[c];
+            T_brake = std::clamp(hold, -brake_torque_out[c], brake_torque_out[c]);
+        }
+        brake_torque_applied[c] = T_brake;
+
+        const RigidBodyState& w = states[static_cast<std::size_t>(corner.wheel)];
+        const Vec3 axis = w.q_WB * Vec3::UnitY();
+        forces[static_cast<std::size_t>(corner.wheel)].tau_W += (drive_torque[c] + T_brake) * axis;
+        forces[static_cast<std::size_t>(chassis_)].tau_W -= drive_torque[c] * axis;
+        forces[static_cast<std::size_t>(corner.upright)].tau_W -= T_brake * axis;
     }
 }
 
-void Drivetrain::end_step(const kernel::Simulator& /*sim*/, Real t, kernel::VecRef x)
+void Drivetrain::end_step(const kernel::Simulator& sim, Real t, kernel::VecRef /*x*/)
 {
-    std::array<Real, 4> omega{{x(0), x(1), x(2), x(3)}};
+    MBD_THROW_IF(&sim != sim_, "MBD-F052: Drivetrain: end_step from a simulator it is not connected to");
+    std::array<Real, 4> omega = spins(sim.states());
     update_torques(omega);
 
     // Dry friction: a braked wheel that reached rest within the step (its
@@ -146,39 +221,33 @@ void Drivetrain::end_step(const kernel::Simulator& /*sim*/, Real t, kernel::VecR
     // are those of the step's last evaluation. Locking a wheel the brake is
     // about to stop saves the step in which the spin would pass zero and
     // end, unlocked, slightly the other way.
+    // A locked wheel turns with its upright: its spin joint is set to rest.
     const Real dt = t - last_step_time_;
     last_step_time_ = t;
+    bool held = false;
     for (int c = 0; c < 4; ++c) {
         const Real T_brake = brake_torque_out[c];
         const Real T_free = free_torque(c);
         if (T_brake <= 0.0) {
             wheel_locked[c] = false;
         } else if (wheel_locked[c]) {
-            if (std::abs(T_free) > T_brake) {
-                wheel_locked[c] = false;
-            } else {
-                // Held at exactly zero: an implicit method's Newton
-                // corrections, solved to a tolerance, can leave a locked
-                // spin a little off it.
-                omega[c] = 0.0;
-                x(c) = 0.0;
-            }
+            if (std::abs(T_free) > T_brake) wheel_locked[c] = false;
         } else {
             const Real before = omega_last_step_[c];
-            const Real direction = omega[c] > 0.0 ? 1.0 : (omega[c] < 0.0 ? -1.0 : 0.0);
-            const Real rate = (T_free - direction * T_brake) / compute_effective_inertia(c);
+            const Real rate = (T_free - sign(omega[c]) * T_brake) / wheel_inertia[c];
             const bool stops_next = rate * omega[c] < 0.0 && std::abs(omega[c]) <= std::abs(rate) * dt;
             const bool reached_rest = before == 0.0 || before * omega[c] <= 0.0 || stops_next;
-            if (reached_rest && std::abs(T_free) <= T_brake) {
-                wheel_locked[c] = true;
-                omega[c] = 0.0;
-                x(c) = 0.0;
-            }
+            if (reached_rest && std::abs(T_free) <= T_brake) wheel_locked[c] = true;
+        }
+        if (wheel_locked[c] && omega[c] != 0.0) {
+            sim_->v(sim_->system.model.idx_v[static_cast<std::size_t>(corners_[static_cast<std::size_t>(c)].wheel)]) = 0.0;
+            omega[c] = 0.0;
+            held = true;
         }
         // The brake's direction for the next step: against the spin, or,
         // from rest, against the torque that turns the wheel.
         const Real turning = omega[c] != 0.0 ? omega[c] : T_free;
-        brake_direction_[c] = wheel_locked[c] ? 0.0 : (turning > 0.0 ? 1.0 : (turning < 0.0 ? -1.0 : 0.0));
+        brake_direction_[c] = wheel_locked[c] ? 0.0 : sign(turning);
     }
 
     // Gear: shift up or down by engine speed.
@@ -195,6 +264,7 @@ void Drivetrain::end_step(const kernel::Simulator& /*sim*/, Real t, kernel::VecR
 
     wheel_omega = omega;
     omega_last_step_ = omega;
+    if (held) sim_->refresh();
 }
 
 bool Drivetrain::is_driven(int corner) const
@@ -207,50 +277,31 @@ bool Drivetrain::is_driven(int corner) const
     return false;
 }
 
-Real Drivetrain::compute_effective_inertia(int corner) const
+void Drivetrain::connect(kernel::Simulator& sim, BodyIndex chassis, const Corners& corners)
 {
-    const Real I_wheel = wheel_inertia[corner];
-
-    if (!is_driven(corner)) return I_wheel;
-
-    int n_driven = 0;
-    for (int c = 0; c < 4; ++c) {
-        if (is_driven(c)) ++n_driven;
+    set_corners(sim, chassis, corners);
+    std::vector<BodyIndex> bodies{chassis};
+    for (const Corner& c : corners) {
+        bodies.push_back(c.upright);
+        bodies.push_back(c.wheel);
     }
-
-    const Real ratio = total_ratio();
-    const Real I_reflected = params.engine.inertia * ratio * ratio /
-                             static_cast<Real>(n_driven);
-
-    return I_wheel + I_reflected;
-}
-
-void Drivetrain::connect(kernel::Simulator& sim, const TireSet& tires)
-{
-    tires_ = tires;
+    sim.attach(*this);
+    sim.system.force_elements.push_back(std::make_shared<DrivetrainTorques>(*this, std::move(bodies)));
+    sim_ = &sim;
     omega_last_step_ = wheel_omega;
     last_step_time_ = sim.time;
     wheel_locked.fill(false);
-    for (int c = 0; c < 4; ++c) {
-        brake_direction_[c] = wheel_omega[c] > 0.0 ? 1.0 : (wheel_omega[c] < 0.0 ? -1.0 : 0.0);
-    }
-    sim.attach(*this);
+    for (int c = 0; c < 4; ++c) brake_direction_[c] = sign(wheel_omega[c]);
 }
 
 void Drivetrain::connect(kernel::Simulator& sim, const VehicleModel& vm)
 {
-    connect(sim, vm.tires);
+    connect(sim, vm.chassis_body, corners_of(vm));
 }
 
 void Drivetrain::connect(kernel::Simulator& sim, const VehicleHandle& vh)
 {
-    connect(sim, tires_of(vh));
-}
-
-Drivetrain::TireSet Drivetrain::tires_of(const VehicleHandle& vh)
-{
-    return {{vh.corners[0].tire, vh.corners[1].tire,
-             vh.corners[2].tire, vh.corners[3].tire}};
+    connect(sim, vh.chassis_body, corners_of(vh));
 }
 
 Real Drivetrain::driven_wheel_speed(const std::array<Real, 4>& omega) const
@@ -266,32 +317,28 @@ Real Drivetrain::driven_wheel_speed(const std::array<Real, 4>& omega) const
     return (n_driven > 0) ? sum / n_driven : Real(0.0);
 }
 
-void Drivetrain::initialize_from_speed(const std::vector<RigidBodyState>& states, BodyIndex chassis,
-                                       const std::array<Real, 4>& free_radius)
+void Drivetrain::choose_gear(const std::array<Real, 4>& omega)
 {
-    const auto& chassis_state = states[static_cast<std::size_t>(chassis)];
-    const Vec3 fwd_W = chassis_state.q_WB * Vec3::UnitX();
-    const Real Vx = chassis_state.v_WB.dot(fwd_W);
-
-    // Free rolling on a tyre that is about 3 % smaller under load.
+    // Speed at the driven wheels, from their spins at the tyres' free radius.
+    Real radius = 0.0;
+    int n_driven = 0;
     for (int c = 0; c < 4; ++c) {
-        wheel_omega[c] = Vx / (free_radius[c] * Real(0.97));
-    }
-
-    // Select appropriate gear for current speed
-    const Real omega_init = driven_wheel_speed();
-    if (Vx < Real(0.5)) {
-        current_gear = 1;
-    } else {
-        const Real rpm_target = (params.engine.peak_torque_rpm +
-                                 params.engine.idle_rpm) * Real(0.5);
-        for (int g = num_gears(); g >= 1; --g) {
-            current_gear = g;
-            if (omega_to_rpm(omega_init) >= rpm_target) break;
+        if (is_driven(c)) {
+            radius += corners_[static_cast<std::size_t>(c)].tire->R_free;
+            ++n_driven;
         }
     }
-
-    engine_rpm = std::max(omega_to_rpm(omega_init), params.engine.idle_rpm);
+    const Real omega_driven = driven_wheel_speed(omega);
+    const Real V = n_driven > 0 ? omega_driven * radius / n_driven : Real(0.0);
+    if (V < Real(0.5)) {
+        current_gear = 1;
+        return;
+    }
+    const Real rpm_target = (params.engine.peak_torque_rpm + params.engine.idle_rpm) * Real(0.5);
+    for (int g = num_gears(); g >= 1; --g) {
+        current_gear = g;
+        if (omega_to_rpm(omega_driven) >= rpm_target) break;
+    }
 }
 
 } // namespace mbd

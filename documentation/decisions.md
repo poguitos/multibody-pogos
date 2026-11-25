@@ -72,6 +72,7 @@ and the journal entry of the work refers to them by number
 | D59 | Rerun's viewer inside notebooks, where rerun-notebook is installed | 13 Nov 2026 | In force, Phase 6 (added at the author's request) |
 | D60 | The vehicle layer in ISO 8855 axes, its labels kept; up decided in one place | 15 Nov 2026 | In force, task 7.1 |
 | D61 | The road: one interface for height, normal and friction; the tyres take the ground only from it | 24 Nov 2026 | In force, task 7.2 |
+| D62 | The wheel as a body on a spin joint; the contact from the wheel plane and the road; the drivetrain without states, the engine's inertia left out until 7.8 | 25 Nov 2026 | In force, task 7.3 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -2664,3 +2665,105 @@ and the journal entry of the work refers to them by number
   `tests/analysis/test_track_surface.cpp`,
   `tests/vehicle/test_vehicle_road.cpp`, the regression scenario
   `sedan-rough-road`; `docs/help/messages.md` (F050, F051).
+
+## D62. The wheel as a body on a spin joint; the contact from the wheel plane and the road
+
+- **Context.** Task 7.3: "Wheel and contact (F6, F8). Wheel as a rotating
+  body on a spin joint. Contact point and frame from the wheel plane and the
+  road. *Done when a pitching upright no longer moves the contact point, and
+  a spinning wheel shows gyroscopic precession.*" D4 had decided the spin
+  joint in October: "Spin becomes part of the multibody state, gyroscopic
+  effects appear, and torque reactions go to the right bodies." Until now
+  the four spins were the drivetrain's first-order states (tasks 1.7, 4.1),
+  handed to the tyres, which sat on the uprights with their contact point
+  fixed in them at (0, 0, -R).
+- **Decision.**
+  - **The wheel** (`mbd/vehicle/wheel.hpp`): a body on a revolute joint
+    about the Y axis of the body that carries it, its origin at the axle
+    centre, its axes the carrier's at a joint angle of zero, so that a
+    forward roll is a positive rotation. Its inertia is a uniform thin disc
+    of the wheel's mass and the tyre's free radius: m R^2 / 2 about the axle
+    (the drivetrain's value since task 1.7), m R^2 / 4 about a diameter.
+  - **In the builders** every corner has an upright (the linkage corners'
+    upright; on a simple corner the slider, now massless, the wheel holding
+    all the unsprung mass) and a wheel on it. The upright steers, takes the
+    spring and the anti-roll bar, and gives toe and camber; the tyre is on
+    the wheel. `CornerHandle::upright_body` is new and `wheel_body` is now
+    the wheel; the simple vehicle has `carrier_bodies`, `wheel_bodies` and
+    `spin_v`. A linkage corner's wheel adds its mass, which the model did not
+    have before (F9's first item). `wheel_half_extents` is gone.
+  - **The contact** (`wheel_contact`, `mbd/forces/tire.hpp`): the wheel's
+    lowest point is the point of its circle (the free radius, in the plane
+    normal to the spin axis) furthest against the road's normal; the road is
+    asked under the centre for that normal, then at the lowest point for the
+    height, normal and friction there; the depth is the lowest point's below
+    the road's tangent plane, (h - z) n_z; the contact point is the lowest
+    point brought onto that plane, and the forces act there. The heading is
+    the wheel plane's line in the road plane, a x n. A simple corner's
+    steering turns the wheel plane about the road's normal (its upright does
+    not steer).
+  - **The slips:** the spin Omega is the wheel's angular velocity along its
+    axis (absolute: a pitching upright with a locked wheel turns it); Vx and
+    Vy are the contact point's velocity carried by the wheel without that
+    spin. The tyre law and its slip definitions are unchanged.
+  - **The drivetrain** has no states. Its torques act through a force element
+    that `connect` adds to the system: a driven wheel's share of the engine
+    torque between the wheel and the chassis (an inboard differential), the
+    brake's between the wheel and its upright (an outboard brake). Spins are
+    read as the wheel's rate relative to its upright. A locked wheel's brake
+    gives the opposite of the other torques on it (drive and the tyre's
+    moment about the axle), plus a damping of the wheel's inertia over
+    `lock_time` (5 ms), within the brake's torque; at the end of each step a
+    locked wheel's spin joint is set to rest. `end_step` still locks,
+    releases and shifts.
+  - **The engine's inertia is left out** until task 7.8 gives the engine a
+    speed of its own: its share, seen through the gears, was added to each
+    driven wheel's spin inertia while the spins were the drivetrain's
+    states; a body's inertia cannot change with the gear, and the kernel has
+    no rotor inertia on a joint coordinate. `EngineParams::inertia` is not
+    read. The plan's 7.8 is amended to say it returns there.
+  - `roll_wheels` (both builders) and `set_free_rolling` set a moving
+    vehicle's wheels at free rolling; `Drivetrain::initialize` calls it.
+- **Alternatives.**
+  - The engine's reflected inertia in the wheel body: it would change with
+    the gear (a model is fixed during a run), break the triangle inequality
+    of a disc's inertia (validate(), MBD-M014) and spin gyroscopically about
+    the axle, which the engine does not.
+  - A rotor inertia ("armature") on joint coordinates in the kernel
+    (Featherstone's geared rotors, Pinocchio's and MuJoCo's armature): sound
+    and general, but a kernel feature with its own invariant tests, model
+    files and bindings, for an approximation (each driven wheel its own share
+    of one engine) that 7.8 replaces with an engine speed and half-shafts.
+  - Locking a wheel by setting its joint's velocity to zero at the end of a
+    step, as the drivetrain set its own states: it would change the
+    multibody state behind the integrator's back (generalised-alpha's
+    history, Dormand-Prince's last stage) and needs write access the state
+    elements do not have. The holding torque keeps everything a force.
+  - The contact point by iterating to a fixed point on a curved road: on a
+    plane two queries are exact; on curved roads a single point is an
+    approximation anyway (enveloping is for later).
+  - Steering a simple corner by a steer joint: that is task 7.7's.
+- **Consequences.**
+  - The vehicles have four more bodies and four more degrees of freedom
+    (14); statics and linearisation find four more neutral directions (the
+    spin angles).
+  - Multirate RK4 (D36) has no fast states on a vehicle until 7.4 (the
+    tyre's lag) or 7.8; its vehicle test was removed. The integrator report's
+    sedan measurements describe the model before.
+  - The spin's stiffness at low speed is unchanged (the same inertia, the
+    same tyre), now in the bodies' step: RK4 still needs under a millisecond
+    at walking pace; the implicit methods carry it.
+  - A locked wheel's spin joint is set to rest at the end of each step, as
+    the drivetrain's spin state was (a force-only lock let wheels turn back
+    by up to 0.11 rad/s): the drivetrain keeps the simulator it was
+    connected to, since `end_step` receives it as const.
+  - Every driven vehicle accelerates faster without the engine's inertia (in
+    first gear about 12 %), and its tyre's force turns the wheel with the
+    arm to the road; the linkage cars are heavier by their wheels. The
+    regression scenarios sedan-drive, sedan-slalom, sports-car-turn,
+    hatchback-brake, sedan-rough-road and sedan-modes were written again;
+    the journal's data show by how much and why.
+- **Record.** Journal: Phase 7, the wheel; `include/mbd/vehicle/wheel.hpp`,
+  `src/vehicle/wheel.cpp`, the tyres, the builders, the drivetrain;
+  `tests/vehicle/test_wheel.cpp`, `tests/forces/test_full_tire.cpp`;
+  `docs/help/messages.md` (F052).

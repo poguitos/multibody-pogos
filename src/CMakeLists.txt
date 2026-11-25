@@ -42,6 +42,7 @@ add_library(multibody_core
     vehicle/vehicle.cpp
     vehicle/vehicle_template.cpp
     vehicle/drivetrain.cpp
+    vehicle/wheel.cpp
     analysis/position_kinematics.cpp
     analysis/bicycle_model.cpp
     analysis/track.cpp

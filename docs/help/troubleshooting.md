@@ -246,9 +246,10 @@ until its budget ends. Check that every loaded degree of freedom has
 something to hold it. *(Static equilibrium.)*
 
 **A template vehicle started with its wheels in the air settles folded.**
-The template's springs have no rebound stops and its tyre's contact point is
-fixed on the upright: a hanging wheel is pushed past the end of its travel,
-the upright turns, and its "contact point" leaves the ground. Start with
+The template's springs have no rebound stops: a hanging wheel is pushed past
+the end of its travel and the upright turns (before task 7.3 its tyre's
+contact point was fixed on the upright, and left the ground with it; it is
+now found from the wheel plane, but the folded linkage remains). Start with
 every tyre loaded (from `set_vehicle_equilibrium`, or within a centimetre of
 it) until the builders gain rebound stops (task 7.x). *(Static
 equilibrium.)*
@@ -425,25 +426,31 @@ the error control resolve the jump ([the HMMWV benchmark](../hmmwv.md)).
 *(The HMMWV benchmark.)*
 
 **Braking results differ from a hand calculation by about 0.2 %.** Since task
-4.1 the wheel spins are integrated with the bodies and the result no longer
-depends on the step (to nine digits between 1 and 0.25 ms); the difference
-comes from the hand calculation, which takes the static rolling radius and no
-tyre slip. Before task 4.1 the spins were advanced once per step, which added
-an error of the same size. *(Phase 1; the integrator interface.)*
+4.1 the wheel spins are integrated with the bodies (since task 7.3 as the
+wheels' spin joints) and the result no longer depends on the step; the
+difference comes from the hand calculation, which leaves out the tyre slip
+that makes the wheels slow a little faster than the car. Before task 4.1 the
+spins were advanced once per step, which added an error of the same size.
+*(Phase 1; the integrator interface.)*
 
 **Wheel spins chatter at low speed, or a vehicle with a drivetrain becomes
 unstable at standstill.** Below the tyre's `V_low` the wheel spin equation is
 stiff: an undriven 40 kg wheel's spin relaxes to free rolling at 2800 to 3100
-per second (measured on the simple vehicle at 0.5 m/s), just outside RK4's
-limit at 1 ms (2.785 / dt) and far outside explicit Euler's (2 / dt). Beyond
-the limit RK4 does not blow up: the spins chatter about free rolling, bounded
-by the tyre's saturation, by 2.8 % of the speed at 1 ms and 14 % at 5 ms,
-while the car's speed looks right. Use RK4 at 0.9 ms or less there, or
-`Integrator::GeneralizedAlpha`, which is stable at any step (the car rolls at
-walking pace in steps of 5 ms with its wheels within 1e-3 of free rolling). RK4
-with `multirate` 6 at 3 ms steps the spins at 0.5 ms and the bodies at 3 ms.
-`Integrator::LinearlyImplicitEuler` is stable at any step at a fixed cost.
+per second (measured on the simple vehicle at 0.5 m/s, task 4.1), just outside
+RK4's limit at 1 ms (2.785 / dt) and far outside explicit Euler's (2 / dt).
+Beyond the limit RK4 does not blow up: the spins chatter about free rolling,
+bounded by the tyre's saturation, while the car's speed looks right. Use RK4
+at 0.9 ms or less there, or `Integrator::GeneralizedAlpha`, which is stable at
+any step (the car rolls at walking pace in steps of 5 ms with its wheels
+within 1e-3 of free rolling). `Integrator::LinearlyImplicitEuler` is stable
+at any step at a fixed cost. Multirate RK4 no longer helps here: since task
+7.3 the spins are the wheels' joints, part of the bodies' step, not states.
 *(The integrator interface; generalised-alpha.)*
+
+**A moving vehicle's tyres skid in the first milliseconds.** Its wheels are
+bodies on spin joints (task 7.3): a chassis given a speed in `sim.v` leaves
+them at rest, and its tyres start locked. Call `roll_wheels(sim, vehicle)`
+after setting the speed (`Drivetrain::initialize` does it). *(The wheel.)*
 
 **A stiff model needs tiny steps.** A very stiff spring, bushing or contact
 limits an explicit method by stability, not accuracy: RK4 needs w h <= 2.8
@@ -500,7 +507,8 @@ a coasting car gain speed. Check a new element against `Simulator::force_jacobia
 and a run with RK4 at a short step. *(Linearly implicit Euler.)*
 
 **With multirate, a car drifts or creeps although single-rate RK4 at the
-same fast step is fine.** The fast steps are too long for the states:
+same fast step is fine.** (Met before task 7.3, when the wheel spins were
+the drivetrain's states.) The fast steps are too long for the states:
 `multirate` leaves each part to its own stability, and a wheel spin that
 chatters within the fast steps (at 1 ms, the sedan's front spins at walking
 pace) is seen by the bodies' stages only at the middle and end of the step,

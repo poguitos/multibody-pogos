@@ -2,18 +2,23 @@
 
 // Simplified full vehicle model builder.
 //
-// Creates a 5-body vehicle on the kinematics kernel: chassis on a free joint
-// + 4 wheels on prismatic joints for vertical suspension travel (10 DOF).
+// Creates a 9-body vehicle on the kinematics kernel: chassis on a free joint;
+// at each corner a carrier on a prismatic joint for vertical suspension
+// travel, and the wheel on its spin joint on the carrier (task 7.3,
+// mbd/vehicle/wheel.hpp): 14 DOF.
 //
-// q layout: [tx, ty, tz, quaternion (x, y, z, w), q_FL, q_FR, q_RL, q_RR]
-// v layout: [chassis w, chassis v (both in chassis axes), qd_FL ... qd_RR]
+// q layout: [tx, ty, tz, quaternion (x, y, z, w), then for each corner FL,
+//            FR, RL, RR its travel and its wheel's spin angle]
+// v layout: [chassis w, chassis v (both in chassis axes), then for each
+//            corner its travel rate and its wheel's spin rate]
 // The suspension coordinate is the travel (positive = wheel moves down from
-// its mount). Use VehicleModel::susp_q_idx and susp_v_idx rather than fixed
-// offsets.
+// its mount). Use VehicleModel::susp_q_idx, susp_v_idx and spin_v rather than
+// fixed offsets.
 
 #include "mbd/kernel/simulator.hpp"
 #include "mbd/forces/force_element.hpp"
 #include "mbd/forces/tire.hpp"
+#include "mbd/vehicle/wheel.hpp"
 
 #include <array>
 #include <utility>
@@ -36,9 +41,9 @@ struct VehicleParams {
     Real half_track{0.8};            ///< Half track width [m]
 
     // --- Wheels ---
-    Real wheel_mass{40.0};           ///< Per-wheel unsprung mass [kg]
-    Vec3 wheel_half_extents{         ///< For inertia computation
-        0.15, 0.15, 0.15};          ///< [m]
+    /// Per-corner unsprung mass [kg], all of it in the wheel, a uniform disc
+    /// of the tyre's free radius (wheel_inertia); the carrier has none.
+    Real wheel_mass{40.0};
 
     // --- Suspension ---
     Real k_susp{25000.0};            ///< Spring stiffness per corner [N/m]
@@ -115,11 +120,16 @@ enum class Corner { FL = 0, FR = 1, RL = 2, RR = 3 };
 
 struct VehicleModel {
     BodyIndex chassis_body{1};
-    std::array<BodyIndex, 4> wheel_bodies{2, 3, 4, 5};
-    std::array<int, 4> wheel_joint_indices{};
+    /// Each corner's carrier: the body on the suspension's slider, which the
+    /// spring pulls and the brake reacts on. Its origin is the wheel centre.
+    std::array<BodyIndex, 4> carrier_bodies{2, 4, 6, 8};
+    /// Each corner's wheel, on its spin joint on the carrier: the tyre's body.
+    std::array<BodyIndex, 4> wheel_bodies{3, 5, 7, 9};
+    std::array<int, 4> wheel_joint_indices{};   ///< The carriers' (suspension) joints
     int chassis_joint_index{0};
     std::array<int, 4> susp_q{};   ///< Index of each suspension coordinate in q
     std::array<int, 4> susp_v{};   ///< Index of each suspension velocity in v
+    std::array<int, 4> spin_v{};   ///< Index of each wheel's spin rate (relative to its carrier) in v
     std::array<FullTireForce*, 4> tires{};
     VehicleParams params;
 
@@ -150,6 +160,11 @@ struct VehicleModel {
     /// road at height 0.
     void set_road(const std::shared_ptr<const Road>& road);
 };
+
+/// Set every wheel of the vehicle spinning at its free-rolling rate for the
+/// simulator's present state (set_free_rolling): after giving the chassis a
+/// speed, so that the tyres do not start by skidding.
+void roll_wheels(kernel::Simulator& sim, const VehicleModel& vm);
 
 // ============================================================================
 // Builder function

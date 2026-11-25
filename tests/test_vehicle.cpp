@@ -55,8 +55,11 @@ TEST_CASE("Vehicle: settles to static equilibrium from perturbed state",
     sim.q(vm.chassis_tz_idx()) += 0.03;
     sim.initialize();
 
-    // Simulate with damping for 5 seconds
-    sim.run(5.0, 0.001);
+    // RK4 at 0.5 ms: at rest each wheel's spin, on its joint since task 7.3,
+    // is held by its tyre's slip below V_low, a motion that decays at about
+    // 3000 per second, which RK4 follows below 0.9 ms (2.785 / h) and not at
+    // 1 ms, where the spins chatter by a few hundredths of a rad/s.
+    sim.run(5.0, 0.0005);
 
     // Chassis should settle to equilibrium height
     const RigidBodyState& chassis = body(sim, vm.chassis_body);
@@ -282,16 +285,28 @@ TEST_CASE("Vehicle: forward force accelerates vehicle in X",
 
     sim.run(1.0, 0.001);
 
-    // Expected: a ≈ F / m_total = 5000 / 1560 ≈ 3.205 m/s^2
-    // After 1s: v ≈ 3.205 m/s, x ≈ 1.603 m
-    const Real a_expected = F_drive / params.total_mass();
+    // Expected: the wheels roll, so the tyres must spin them up (task 7.3):
+    // a wheel's I a / R_eff = F_tyre r_l, with R_eff = R - d / 2 its rolling
+    // radius and r_l = R - d the arm of the tyre's force; d = m g / 4 / k_z =
+    // 0.01912 m. The car: m a = F - sum(F_tyre), so
+    //   a = F / (m + 4 I / (R_eff r_l)) = 5000 / (1560 + 4 x 2.45 / (0.34044
+    //     x 0.33088)) = 5000 / (1560 + 87.0) = 3.0358 m/s^2.
+    // After 1 s: v = 3.036 m/s, x = 1.518 m. The tyres' slip in spinning the
+    // wheels (about 1e-3) and the load moving between the axles change this
+    // by less than 1e-3 of it.
+    const Real d = params.tire_deflection_eq();
+    const Real R_eff = params.tire_free_radius - 0.5 * d;
+    const Real r_l = params.tire_free_radius - d;
+    const Real I_spin = 0.5 * params.wheel_mass * params.tire_free_radius * params.tire_free_radius;
+    const Real a_expected = F_drive / (params.total_mass() + 4.0 * I_spin / (R_eff * r_l));
     const Real v_expected = a_expected * 1.0;
     const Real x_expected = 0.5 * a_expected * 1.0 * 1.0;
 
-    // Allow some tolerance (tires/suspension couple vertical and horizontal)
     const RigidBodyState& chassis = body(sim, vm.chassis_body);
-    REQUIRE_THAT(chassis.v_WB.x(), WithinAbs(v_expected, v_expected * 0.05));
-    REQUIRE_THAT(chassis.p_WB.x(), WithinAbs(x_expected, x_expected * 0.05));
+    INFO("speed " << chassis.v_WB.x() << " m/s, expected " << v_expected << "; position " << chassis.p_WB.x()
+                  << " m, expected " << x_expected);
+    REQUIRE_THAT(chassis.v_WB.x(), WithinAbs(v_expected, v_expected * 1e-3));
+    REQUIRE_THAT(chassis.p_WB.x(), WithinAbs(x_expected, x_expected * 1e-3));
 
     // Lateral motion should be zero
     REQUIRE_THAT(chassis.p_WB.y(), WithinAbs(0.0, 0.01));
@@ -313,27 +328,45 @@ TEST_CASE("Vehicle: correct DOF count and body count",
     VehicleParams params;
     auto vm = build_simple_vehicle(sys, params);
 
-    // 6 bodies: ground + chassis + 4 wheels
-    REQUIRE(sys.model.nbodies() == 6);
+    // 10 bodies: ground + chassis + 4 carriers + 4 wheels (task 7.3)
+    REQUIRE(sys.model.nbodies() == 10);
 
-    // 10 DOF: 6 (chassis) + 4 (suspension); 11 coordinates with the quaternion
-    REQUIRE(sys.model.nv == 10);
-    REQUIRE(sys.model.nq == 11);
+    // 14 DOF: 6 (chassis) + 4 (suspension) + 4 (spins); 15 coordinates with
+    // the quaternion
+    REQUIRE(sys.model.nv == 14);
+    REQUIRE(sys.model.nq == 15);
 
-    // 5 joints, one per body but ground
-    REQUIRE(sys.model.nbodies() - 1 == 5);
+    // 9 joints, one per body but ground
+    REQUIRE(sys.model.nbodies() - 1 == 9);
 
     // 8 force elements: 4 springs + 4 tires
     REQUIRE(sys.force_elements.size() == 8);
 
-    // Body indices
+    // Body indices: each corner's carrier, then its wheel
     REQUIRE(vm.chassis_body == 1);
-    REQUIRE(vm.wheel_bodies[0] == 2); // FL
-    REQUIRE(vm.wheel_bodies[1] == 3); // FR
-    REQUIRE(vm.wheel_bodies[2] == 4); // RL
-    REQUIRE(vm.wheel_bodies[3] == 5); // RR
+    REQUIRE(vm.carrier_bodies[0] == 2); // FL
+    REQUIRE(vm.wheel_bodies[0] == 3);
+    REQUIRE(vm.carrier_bodies[1] == 4); // FR
+    REQUIRE(vm.wheel_bodies[1] == 5);
+    REQUIRE(vm.carrier_bodies[2] == 6); // RL
+    REQUIRE(vm.wheel_bodies[2] == 7);
+    REQUIRE(vm.carrier_bodies[3] == 8); // RR
+    REQUIRE(vm.wheel_bodies[3] == 9);
+    for (std::size_t c = 0; c < 4; ++c) {
+        REQUIRE(sys.model.parent[static_cast<std::size_t>(vm.wheel_bodies[c])] == vm.carrier_bodies[c]);
+        REQUIRE(vm.tires[c]->wheel_body_idx == vm.wheel_bodies[c]);
+    }
 
-    // Suspension coordinates follow the chassis's seven
+    // Suspension coordinates follow the chassis's seven, each corner's spin
+    // after its travel
     REQUIRE(vm.susp_q_idx(Corner::FL) == 7);
     REQUIRE(vm.susp_v_idx(Corner::FL) == 6);
+    REQUIRE(vm.spin_v[0] == 7);
+    REQUIRE(vm.susp_v_idx(Corner::FR) == 8);
+
+    // The unsprung mass is the wheels': the carriers have none, and the
+    // model's mass is the parameters' total
+    Real mass = 0.0;
+    for (int b = 1; b < sys.model.nbodies(); ++b) mass += sys.model.inertia[static_cast<std::size_t>(b)].mass;
+    REQUIRE_THAT(mass, WithinAbs(params.total_mass(), 1e-9));
 }

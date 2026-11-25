@@ -17,7 +17,7 @@ How the project has been developed, and why it is built the way it is, is record
 | `include/mbd/kernel`, `src/kernel` | Joint models, model and data, recursive algorithms, constraints, constrained dynamics, simulator |
 | `include/mbd/model` | Rigid-body inertia, state and forces |
 | `include/mbd/forces` | Springs, tyres, roads (`road.hpp`: flat, analytic, gridded, ISO 8608 random roads), aerodynamics, anti-roll bar |
-| `include/mbd/vehicle` | Suspension corners, vehicle builders, drivetrain |
+| `include/mbd/vehicle` | Suspension corners, wheels on spin joints (`wheel.hpp`), vehicle builders, drivetrain |
 | `include/mbd/analysis` | Suspension kinematics, bicycle model, track, lap simulation, optimisation |
 | `include/mbd/io` | Model files: a model as JSON and back ([docs/model-files.md](docs/model-files.md)) |
 | `tests` | One executable per folder above, `howto` for the how-to guides' examples, and `regression` for results compared with stored references ([its README](tests/regression/README.md)) |

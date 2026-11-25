@@ -822,6 +822,19 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
   member, or a vehicle's `set_road`, was given a null pointer.
 - **What to do:** give it a road (`FlatRoad` for level ground).
 
+### MBD-F052
+
+`Drivetrain: each corner needs its tyre, and a wheel on a spin joint of one coordinate on the corner's upright`
+
+- **Means:** `Drivetrain::initialize` or `connect` was given a corner
+  without its tyre, or whose wheel is not a body on a joint of one
+  coordinate (its spin joint) on the corner's upright. Since task 7.3 the
+  drivetrain drives and brakes the wheels' spin joints.
+- **What to do:** connect it to a vehicle from `build_vehicle` or
+  `build_simple_vehicle`; for a vehicle of your own, give each
+  `Drivetrain::Corner` its tyre, the wheel made with `add_wheel`
+  (`mbd/vehicle/wheel.hpp`) and the body that wheel turns on.
+
 ## A: analysis
 
 ### MBD-A001

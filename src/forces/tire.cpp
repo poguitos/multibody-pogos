@@ -4,31 +4,65 @@ namespace mbd {
 
 namespace {
 
-/// A point's contact with the road, the tyres' one use of the ground: the
-/// road at the point's (x, y); the point's depth below the road's tangent
-/// plane there, (h - z) n_z, positive in contact; and its velocity along the
-/// road's normal.
-struct RoadContact {
-    Real penetration;
-    Vec3 normal;
-    Real normal_velocity;
-    Real friction;
-};
-
-RoadContact road_contact(const std::shared_ptr<const Road>& road, const Vec3& p, const Vec3& v)
-{
-    MBD_THROW_IF(!road, "MBD-F051: tyre: its road is null; give it a road, or keep the level one it starts with");
-    const RoadPoint r = road->at(p.x(), p.y());
-    return {(r.height - p.z()) * r.normal.z(), r.normal, r.normal.dot(v), r.friction};
-}
-
 /// The road given, or a level one at height 0.
 std::shared_ptr<const Road> road_or_level(std::shared_ptr<const Road> road)
 {
     return road ? std::move(road) : std::make_shared<FlatRoad>();
 }
 
+/// `v` turned by `angle` about the unit axis `n` (Rodrigues).
+Vec3 turned_about(const Vec3& v, const Vec3& n, Real angle)
+{
+    if (angle == 0.0) return v;
+    const Real c = std::cos(angle);
+    const Real s = std::sin(angle);
+    return v * c + n.cross(v) * s + n * (n.dot(v) * (1.0 - c));
+}
+
+/// The direction in the wheel plane (normal to `axis`) furthest against the
+/// road's normal `n`: the projection of -n on the plane, normalized. A wheel
+/// lying on its side, its plane the road's, has none; -n is taken then.
+Vec3 towards_road(const Vec3& axis, const Vec3& n)
+{
+    const Vec3 in_plane = n - n.dot(axis) * axis;
+    const Real length = in_plane.norm();
+    return length > Real(1e-12) ? Vec3(-in_plane / length) : Vec3(-n);
+}
+
+/// The wheel's angular velocity without its spin about its own axis: the
+/// motion of the wheel plane, which carries the contact point.
+Vec3 without_spin(const RigidBodyState& s, const Vec3& spin_axis)
+{
+    return s.w_WB - s.w_WB.dot(spin_axis) * spin_axis;
+}
+
 } // namespace
+
+WheelContact wheel_contact(const std::shared_ptr<const Road>& road, const Vec3& centre,
+                           const Vec3& spin_axis, Real free_radius, Real steer)
+{
+    MBD_THROW_IF(!road, "MBD-F051: tyre: its road is null; give it a road, or keep the level one it starts with");
+    // The direction to the lowest point, from the road's normal under the
+    // centre; the road again at that point.
+    const Vec3 n_centre = road->at(centre.x(), centre.y()).normal;
+    const Vec3 lowest = centre + free_radius * towards_road(turned_about(spin_axis, n_centre, steer), n_centre);
+    const RoadPoint r = road->at(lowest.x(), lowest.y());
+
+    WheelContact c;
+    c.lowest = lowest;
+    c.normal = r.normal;
+    c.friction = r.friction;
+    c.penetration = (r.height - lowest.z()) * r.normal.z();
+    c.point = lowest + c.penetration * r.normal;
+
+    // The heading: the wheel plane's line in the road plane.
+    const Vec3 axis = turned_about(spin_axis, r.normal, steer);
+    const Vec3 heading = axis.cross(r.normal);
+    const Real length = heading.norm();
+    c.forward = length > Real(1e-12) ? Vec3(heading / length) : Vec3(Vec3::UnitX());
+    c.lateral = r.normal.cross(c.forward);
+    return c;
+}
 
 TireContactForce::TireContactForce(BodyIndex wheel_idx,
                                    Real free_radius,
@@ -36,7 +70,6 @@ TireContactForce::TireContactForce(BodyIndex wheel_idx,
                                    Real damping,
                                    std::shared_ptr<const Road> on_road)
     : wheel_body_idx(wheel_idx)
-    , contact_point_B(0.0, 0.0, -free_radius)
     , k_z(stiffness)
     , c_z(damping)
     , R_free(free_radius)
@@ -51,22 +84,17 @@ void TireContactForce::apply(const std::vector<RigidBodyState>& states,
                              std::vector<RigidBodyForces>& forces) const
 {
     const auto& s = states[static_cast<size_t>(wheel_body_idx)];
-
-    // Contact point position and velocity in world frame
-    const Vec3 r_W = s.q_WB * contact_point_B;
-    const Vec3 p_contact_W = s.p_WB + r_W;
-    const Vec3 v_contact_W = s.v_WB + s.w_WB.cross(r_W);
-
-    // Penetration: positive when contact point is below the road
-    const RoadContact contact = road_contact(road, p_contact_W, v_contact_W);
-
+    const Vec3 axis = s.q_WB * Vec3::UnitY();
+    const WheelContact contact = wheel_contact(road, s.p_WB, axis, R_free);
     if (contact.penetration <= Real(0.0)) {
         return; // No contact — tire has lifted off
     }
 
-    // Normal force: spring + damper (the velocity along the normal is
-    // positive moving up), only pushes (clamp to >= 0)
-    Real f_z = k_z * contact.penetration - c_z * contact.normal_velocity;
+    // Normal force: spring + damper (the contact point's velocity along the
+    // normal is positive moving up), only pushes (clamp to >= 0)
+    const Vec3 r_W = contact.point - s.p_WB;
+    const Vec3 v_contact = s.v_WB + without_spin(s, axis).cross(r_W);
+    Real f_z = k_z * contact.penetration - c_z * contact.normal.dot(v_contact);
     if (f_z < Real(0.0)) {
         f_z = Real(0.0); // Tire cannot pull
     }
@@ -81,22 +109,17 @@ void TireContactForce::apply(const std::vector<RigidBodyState>& states,
 Real TireContactForce::get_deflection(const std::vector<RigidBodyState>& states) const
 {
     const auto& s = states[static_cast<size_t>(wheel_body_idx)];
-    const Vec3 r_W = s.q_WB * contact_point_B;
-    const Vec3 p_contact_W = s.p_WB + r_W;
-    return std::max(Real(0.0), road_contact(road, p_contact_W, Vec3::Zero()).penetration);
+    return std::max(Real(0.0), wheel_contact(road, s.p_WB, s.q_WB * Vec3::UnitY(), R_free).penetration);
 }
 
 Real TireContactForce::get_vertical_force(const std::vector<RigidBodyState>& states) const
 {
     const auto& s = states[static_cast<size_t>(wheel_body_idx)];
-    const Vec3 r_W = s.q_WB * contact_point_B;
-    const Vec3 p_contact_W = s.p_WB + r_W;
-    const Vec3 v_contact_W = s.v_WB + s.w_WB.cross(r_W);
-
-    const RoadContact contact = road_contact(road, p_contact_W, v_contact_W);
+    const Vec3 axis = s.q_WB * Vec3::UnitY();
+    const WheelContact contact = wheel_contact(road, s.p_WB, axis, R_free);
     if (contact.penetration <= Real(0.0)) return Real(0.0);
-
-    Real f_z = k_z * contact.penetration - c_z * contact.normal_velocity;
+    const Vec3 v_contact = s.v_WB + without_spin(s, axis).cross(contact.point - s.p_WB);
+    const Real f_z = k_z * contact.penetration - c_z * contact.normal.dot(v_contact);
     return std::max(Real(0.0), f_z);
 }
 
@@ -124,56 +147,33 @@ void FullTireForce::apply(const std::vector<RigidBodyState>& states,
 {
     const auto& s = states[static_cast<size_t>(wheel_body_idx)];
 
-    // --- Contact point kinematics ---
-    const Vec3 contact_B(0.0, 0.0, -R_free);
-    const Vec3 r_W = s.q_WB * contact_B;
-    const Vec3 p_contact_W = s.p_WB + r_W;
-    const Vec3 v_contact_W = s.v_WB + s.w_WB.cross(r_W);
-
-    last_contact_pos_W = p_contact_W;
-
-    // --- Contact with the road, along its normal there ---
-    const RoadContact contact = road_contact(road, p_contact_W, v_contact_W);
+    // --- The contact, from the wheel plane and the road ---
+    const Vec3 axis = s.q_WB * Vec3::UnitY();
+    const WheelContact contact = wheel_contact(road, s.p_WB, axis, R_free, steer_angle);
     const Vec3& n = contact.normal;
+    const Vec3 r_W = contact.point - s.p_WB;
+    last_contact_pos_W = contact.point;
     last_deflection = std::max(Real(0.0), contact.penetration);
     last_friction = contact.friction;
+    last_spin = s.w_WB.dot(axis);
 
     if (contact.penetration <= Real(0.0)) {
         // No contact: clear cached results
         last_Fz = 0.0;
+        last_axle_moment = 0.0;
         last_result = TireForceResult{};
         return;
     }
 
-    Real Fz = k_z * contact.penetration - c_z * contact.normal_velocity;
+    // The contact point's velocity, carried by the wheel without its spin.
+    const Vec3 v_contact_W = s.v_WB + without_spin(s, axis).cross(r_W);
+
+    Real Fz = k_z * contact.penetration - c_z * n.dot(v_contact_W);
     if (Fz < Real(0.0)) Fz = Real(0.0);
     last_Fz = Fz;
 
-    // --- Tire frame directions in world ---
-    // Forward = steered body X projected onto the road's tangent plane and normalized.
-    // Rz(steer_angle) turns body X to the left for a positive steer_angle.
-    const Quat q_steer(Eigen::AngleAxisd(steer_angle, Vec3::UnitZ()));
-    const Vec3 steered_fwd_B = q_steer * Vec3::UnitX();
-    Vec3 body_x_W = s.q_WB * steered_fwd_B;
-    body_x_W -= n.dot(body_x_W) * n;  // Project onto the road's tangent plane
-    const Real fwd_len = body_x_W.norm();
-
-    Vec3 forward_W, lateral_W;
-    if (fwd_len > Real(1e-6)) {
-        forward_W = body_x_W / fwd_len;
-    } else {
-        forward_W = Vec3::UnitX(); // Fallback
-    }
-
-    // Lateral = up x forward, to the left
-    lateral_W = n.cross(forward_W);
-    const Real lat_len = lateral_W.norm();
-    if (lat_len > Real(1e-6)) {
-        lateral_W /= lat_len;
-    } else {
-        lateral_W = Vec3::UnitY();
-    }
-
+    const Vec3& forward_W = contact.forward;
+    const Vec3& lateral_W = contact.lateral;
     last_forward_W = forward_W;
     last_lateral_W = lateral_W;
 
@@ -190,9 +190,8 @@ void FullTireForce::apply(const std::vector<RigidBodyState>& states,
     last_R_eff = R_eff;
 
     // Slip ratio: kappa = (omega*R_eff - Vx) / V_abs
-    const Real actual_omega = auto_free_roll ? (Vx / R_eff) : omega_wheel;
-    const Real kappa = (actual_omega * R_eff - Vx) / V_abs;
-    // Slip angle: alpha = -atan(Vy / V_abs)
+    const Real kappa = (last_spin * R_eff - Vx) / V_abs;
+    // Slip angle: alpha = -atan2(Vy, V_abs)
     // The sign convention: positive alpha → positive Fy
     // Vy positive means tire moving to the left, which requires
     // a rightward force: negative alpha, negative Fy.
@@ -201,14 +200,25 @@ void FullTireForce::apply(const std::vector<RigidBodyState>& states,
     // --- Pacejka forces ---
     last_result = pacejka.compute(kappa, alpha, Fz, contact.friction);
 
-    // --- Apply forces in world frame at contact patch ---
+    // --- Apply forces in world frame at the contact point ---
     const Vec3 F_W = last_result.Fx * forward_W
                    + last_result.Fy * lateral_W
                    + Fz * n;
+    const Vec3 moment_W = r_W.cross(F_W);
+    last_axle_moment = moment_W.dot(axis);
 
-    // Force applied at wheel body
     forces[static_cast<size_t>(wheel_body_idx)].f_W   += F_W;
-    forces[static_cast<size_t>(wheel_body_idx)].tau_W += r_W.cross(F_W);
+    forces[static_cast<size_t>(wheel_body_idx)].tau_W += moment_W;
+}
+
+Real FullTireForce::free_rolling_spin(const std::vector<RigidBodyState>& states) const
+{
+    const auto& s = states[static_cast<size_t>(wheel_body_idx)];
+    const Vec3 axis = s.q_WB * Vec3::UnitY();
+    const WheelContact contact = wheel_contact(road, s.p_WB, axis, R_free, steer_angle);
+    const Vec3 v_contact_W = s.v_WB + without_spin(s, axis).cross(contact.point - s.p_WB);
+    const Real R_eff = R_free - std::max(Real(0.0), contact.penetration) * 0.5;
+    return v_contact_W.dot(contact.forward) / R_eff;
 }
 
 Real FullTireForce::longitudinal_force_slope() const

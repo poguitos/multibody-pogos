@@ -143,8 +143,8 @@ std::pair<AntiRollBar*, AntiRollBar*> VehicleHandle::install_anti_roll_bars(
     if (tmpl.front_axle.k_arb > 0.0) {
         auto arb = std::make_shared<AntiRollBar>(
             chassis_body,
-            corners[0].wheel_body,  // FL
-            corners[1].wheel_body,  // FR
+            corners[0].upright_body,  // FL
+            corners[1].upright_body,  // FR
             tmpl.front_axle.k_arb,
             tmpl.front_axle.c_arb);
         arb->capture_reference(equilibrium_states);
@@ -155,8 +155,8 @@ std::pair<AntiRollBar*, AntiRollBar*> VehicleHandle::install_anti_roll_bars(
     if (tmpl.rear_axle.k_arb > 0.0) {
         auto arb = std::make_shared<AntiRollBar>(
             chassis_body,
-            corners[2].wheel_body,  // RL
-            corners[3].wheel_body,  // RR
+            corners[2].upright_body,  // RL
+            corners[3].upright_body,  // RR
             tmpl.rear_axle.k_arb,
             tmpl.rear_axle.c_arb);
         arb->capture_reference(equilibrium_states);
@@ -197,17 +197,20 @@ CornerHandle detail::build_simple_corner(
     CornerHandle ch;
     ch.type = SuspensionType::Simple;
 
-    // Prismatic joint: chassis → wheel, axis = chassis -Z (downward): Rx(pi)
+    // Prismatic joint: chassis → slider, axis = chassis -Z (downward): Rx(pi)
     // maps the joint's Z to -Z, so a positive coordinate moves the wheel down.
+    // The slider is massless: the unsprung mass is the wheel's.
     const Mat3 R_susp = Eigen::AngleAxisd(pi, Vec3::UnitX()).toRotationMatrix();
-    ch.wheel_body = sys.model.add_body(
+    ch.upright_body = sys.model.add_body(
         chassis_body, std::make_shared<kernel::PrismaticJointModel>(),
         Transform3(R_susp, mount_pos_chassis), Transform3::FromRotation(R_susp),
-        RigidBodyInertia::from_solid_box(axle.wheel_mass, axle.wheel_half_extents), name);
+        RigidBodyInertia{}, name + "_carrier");
+    ch.wheel_body = add_wheel(sys.model, ch.upright_body, Vec3::Zero(), axle.wheel_mass,
+                              axle.tire_free_radius, name);
 
     // Spring-damper
     sys.force_elements.push_back(std::make_shared<LinearSpringDamper>(
-        chassis_body, ch.wheel_body,
+        chassis_body, ch.upright_body,
         mount_pos_chassis, Vec3::Zero(),
         axle.k_spring, axle.c_damper, axle.spring_rest_length));
 
@@ -271,7 +274,9 @@ CornerHandle detail::build_dwb_corner(
 
     ch.lca_body     = dwb.lca_body;
     ch.uca_body     = dwb.uca_body;
-    ch.wheel_body   = dwb.upright_body;
+    ch.upright_body = dwb.upright_body;
+    ch.wheel_body   = add_wheel(sys.model, dwb.upright_body, Vec3::Zero(), axle.wheel_mass,
+                                axle.tire_free_radius, is_right_side ? "dwb_wheel_R" : "dwb_wheel_L");
     ch.on_rack      = tierod_body != chassis_body;
     ch.tierod_constraint_idx = dwb.tierod_constraint_idx;
 
@@ -289,9 +294,10 @@ CornerHandle detail::build_dwb_corner(
         axle.k_spring, axle.c_damper,
         precompressed_rest_length(ref_distance, axle.k_spring)));
 
-    // Tire: attaches to upright (wheel center is the upright origin)
+    // Tire: on the wheel, which turns on the upright (the wheel centre is the
+    // upright's origin)
     auto tire = std::make_shared<FullTireForce>(
-        dwb.upright_body,
+        ch.wheel_body,
         axle.tire_free_radius,
         axle.tire_k_z,
         axle.tire_c_z,
@@ -344,9 +350,11 @@ CornerHandle detail::build_mcpherson_corner(
         axle.arm_mass, axle.upright_mass);
     const auto mc = mbd::build_mcpherson_corner_dynamic(sys, chassis_body, p, tierod_body);
 
-    ch.lca_body   = mc.lca_body;
-    ch.uca_body   = 0; // no UCA in McPherson
-    ch.wheel_body = mc.upright_body;
+    ch.lca_body     = mc.lca_body;
+    ch.uca_body     = 0; // no UCA in McPherson
+    ch.upright_body = mc.upright_body;
+    ch.wheel_body   = add_wheel(sys.model, mc.upright_body, Vec3::Zero(), axle.wheel_mass,
+                                axle.tire_free_radius, is_right_side ? "mcpherson_wheel_R" : "mcpherson_wheel_L");
     ch.on_rack    = tierod_body != chassis_body;
     ch.tierod_constraint_idx = mc.tierod_constraint_idx;
 
@@ -362,9 +370,9 @@ CornerHandle detail::build_mcpherson_corner(
         axle.k_spring, axle.c_damper,
         precompressed_rest_length(ref_distance, axle.k_spring)));
 
-    // Tire attaches to upright
+    // Tire: on the wheel, which turns on the upright
     auto tire = std::make_shared<FullTireForce>(
-        mc.upright_body,
+        ch.wheel_body,
         axle.tire_free_radius,
         axle.tire_k_z,
         axle.tire_c_z,
@@ -501,6 +509,13 @@ VehicleHandle build_vehicle(kernel::System& sys,
     return vh;
 }
 
+void roll_wheels(kernel::Simulator& sim, const VehicleHandle& vh)
+{
+    for (const CornerHandle& corner : vh.corners) {
+        if (corner.tire) set_free_rolling(sim, corner.wheel_body, *corner.tire);
+    }
+}
+
 void set_vehicle_equilibrium(kernel::Simulator& sim, const VehicleHandle& vh)
 {
     const auto& t = vh.tmpl;
@@ -539,7 +554,7 @@ void set_vehicle_equilibrium(kernel::Simulator& sim, const VehicleHandle& vh)
     for (int c = 0; c < 4; ++c) {
         if (vh.corners[c].type != SuspensionType::Simple) continue;
         const Real wheel_z = (c < 2) ? wheel_z_front_world : wheel_z_rear_world;
-        sim.q(model.idx_q[vh.corners[c].wheel_body]) = chassis_z - wheel_z;
+        sim.q(model.idx_q[vh.corners[c].upright_body]) = chassis_z - wheel_z;
     }
 
     sim.refresh();

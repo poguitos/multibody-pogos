@@ -110,6 +110,7 @@ mbd_add_test_exe(test_vehicle
     vehicle/test_vehicle_assembly.cpp
     vehicle/test_vehicle_statics.cpp
     vehicle/test_vehicle_road.cpp
+    vehicle/test_wheel.cpp
     test_vehicle.cpp
     test_vehicle_template.cpp
     test_steering.cpp

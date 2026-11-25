@@ -347,7 +347,7 @@ and joint forces: what the vehicle builders fill. **`kernel::Simulator`** advanc
 one. It owns the state (`q`, `v`, `x`, `time`), `x` being the first-order states
 of the attached state elements, and, at every evaluation, computes the
 kinematics and body states, calls each state element's `begin_evaluation`
-(the drivetrain hands its wheel spins to the tyres there), applies the force
+(a lag hands its state to the force it shapes there), applies the force
 elements and joint forces, adds `tau` and `force_callback`, solves the
 constrained dynamics with `ConstraintSolver` from the same kinematics pass, and
 asks each state element for its `rates`. RK4 carries `x` through its stages
@@ -359,12 +359,15 @@ element's `end_step` makes its discrete changes.
 
 **State elements** (task 4.1, decision D30, `kernel/state_element.hpp`)
 replace the callbacks before the forces and after each step: an element that
-owns first-order states (a drivetrain's wheel spins, a tyre's lag, an
-actuator, a controller) is attached with `sim.attach(element)` and its states
-are integrated by the same method and in the same stages as the bodies, so a
-force that depends on them is as accurate as the integrator. The drivetrain is
-one: its wheel spins are integrated states, its brakes lock a wheel at rest as
-a discrete decision at the end of a step, and it shifts gear there.
+owns first-order states (a tyre's lag, an actuator, a controller) is
+attached with `sim.attach(element)` and its states are integrated by the same
+method and in the same stages as the bodies, so a force that depends on them
+is as accurate as the integrator. The drivetrain was the first: its wheel
+spins were its states until task 7.3 (D62) made the wheels bodies on spin
+joints, their spins part of the multibody state. It is still attached as an
+element, with no states, for its `end_step`: its brakes lock a wheel at rest
+as a discrete decision at the end of a step, and it shifts gear there; its
+torques act through a force element it adds to the system.
 
 **Integrators** (`Simulator::method`). `RK4` (fourth order, the default) and
 `SemiImplicitEuler` (first order: velocities, then positions, the inertia's
@@ -489,10 +492,14 @@ times (`integrator_stats().state_evaluations`): the dynamics, the dear
 part, a sixth as often at a ratio of 6. The bodies' first stage comes first
 and they are extrapolated from it over the fast steps; their other stages
 then see the states the fast steps reached (fastest first). At walking pace,
-where the spins hold RK4 under a millisecond, the sedan drives at 3 ms with
+where the spins hold RK4 under a millisecond, the sedan drove at 3 ms with
 6 fast steps as RK4 does at 0.5 ms (top speed within 0.14 %), 2.8 times
 faster. Each part must keep inside its own stability: the fast steps inside
-the states', the step inside the bodies'.
+the states', the step inside the bodies'. Since task 7.3 (D62) a vehicle's
+wheel spins are joints of the multibody model, no longer states: a vehicle
+has no fast states for multirate until the tyre's lag (task 7.4) or a
+powertrain with a speed of its own (task 7.8) gives it some, and the sedan's
+measurement above belongs to the model before.
 
 **Constraints per integrator** (task 4.7, decision D37). Every evaluation
 solves the loop constraints at the acceleration level, so a step's result
@@ -552,12 +559,12 @@ Choosing a method:
 | Model and need | Method |
 |---|---|
 | Smooth, fixed output steps | `RK4` |
-| Stiff state elements only (wheel spins at walking pace), explicit steps | `RK4` with `multirate` 6 |
+| Stiff state elements only (lags, actuators), explicit steps | `RK4` with `multirate` |
 | Smooth, a tolerance to meet, or long output steps | `DormandPrince` |
 | Stiff (stiff springs, bushings, contact, tyres at low speed), fixed steps, accuracy of the order of 1e-4 to 1e-6 | `GeneralizedAlpha` |
 | As above, a closed mechanism at long steps, its accelerations and reactions wanted as accurately as one step allows | `GeneralizedAlpha` with `implicit_control.stabilized_index2` |
 | Stiff, a tolerance to meet, any accuracy (on the stiff pendulum of the verification, the cheapest at every accuracy) | `RadauIIA` |
-| Stiffness only in first-order states (a vehicle on its tyres, offline: the cheapest on the sedan), or a smooth model at a tight tolerance | `SDIRK4` or `RadauIIA` |
+| Stiffness only in first-order states (a vehicle on its tyres before task 7.3, when its wheel spins were states, offline: the cheapest on the sedan then), or a smooth model at a tight tolerance | `SDIRK4` or `RadauIIA` |
 | Real time: the same cost every step, stiff or not; with very stiff springs between turning bodies, k h^2 / m below about 25 | `LinearlyImplicitEuler` |
 
 What each costs for a given accuracy, its order and its energy over long

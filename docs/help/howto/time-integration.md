@@ -21,7 +21,7 @@ the simulator, and must outlive it.
 | Smooth, a tolerance to meet | `DormandPrince` |
 | Stiff (stiff springs, bushings, contact, tyres at low speed), fixed steps, modest accuracy | `GeneralizedAlpha` |
 | Stiff, a tolerance to meet | `RadauIIA` |
-| Stiffness only in first-order states (a vehicle's wheel spins), a tolerance to meet | `SDIRK4` or `RadauIIA` |
+| Stiffness only in first-order states (lags, actuators), a tolerance to meet | `SDIRK4` or `RadauIIA` |
 | Real time: the same cost every step | `LinearlyImplicitEuler` |
 | Fast states and slow bodies, explicit | `RK4` with `multirate` |
 
@@ -184,8 +184,9 @@ sim.run(1.0, 0.01);
 - `begin_evaluation` receives the states of each evaluation (each stage of
   the step) before the forces; `rates` gives their derivatives after the
   dynamics; `end_step` (optional) makes discrete changes after a step (a
-  gear shift, a brake locking). The drivetrain's wheel spins are such
-  states.
+  gear shift, a brake locking). A tyre's lag, an actuator, a controller are
+  such states; the drivetrain, whose wheels spin on joints of the model
+  since task 7.3, has none, and is attached for its `end_step`.
 - The element must outlive the simulator; attach it before stepping.
 
 When the states are fast and the bodies slow, multirate RK4 steps the

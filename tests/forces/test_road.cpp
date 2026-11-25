@@ -272,33 +272,53 @@ TEST_CASE("Road: an ISO 8608 road is fixed by its seed, smooth, and the same acr
 
 TEST_CASE("Road: a tyre on a bump's flank pushes along the road's normal", "[road][tyre]")
 {
-    // A wheel at rest above x = 1.125, a quarter into a bump of 0.04 m and
-    // 0.5 m: the road is h = 0.02 there, slope 0.08 pi. The wheel's lowest
-    // point (radius 0.35) is 5 mm below it, so the tyre is in the road by
-    // 0.005 n_z along the normal, and with no damping and no slip (the wheel
-    // at rest, free rolling) it pushes k 0.005 n_z along the normal n.
-    const auto bump = std::make_shared<BumpRoad>(1.0, 0.5, 0.04);
-    FullTireForce tyre(1, 0.35, 200000.0, 0.0, PacejkaTireParams::DefaultPassengerCar(), bump);
+    // A wheel at rest, centre at x = 1.125 and z = 0.365, a quarter into a
+    // bump of 0.04 m and 0.5 m (h = H (1 - cos(2 pi (x - 1) / L)) / 2, its
+    // slope H pi / L sin(...)). The contact from the wheel plane (task 7.3):
+    // the road's normal under the centre, n_c = (-s, 0, 1) / sqrt(1 + s^2)
+    // with s = 0.08 pi, gives the lowest point P = c - R n_c (the wheel's
+    // plane holds n_c); the road at P's x gives the height and the normal
+    // n_P there, the depth (h(P) - P_z) n_P,z = 0.011921 m; with no damping
+    // and no slip (the wheel at rest) the tyre pushes k depth along n_P,
+    // computed here from the bump's closed form. (The point below the centre,
+    // as the contact was before, gave 0.004849 m; the exact depth of the
+    // wheel's circle in this road, R less the distance from the centre to the
+    // road's nearest point, is 0.013302 m: the journal's data.)
+    const Real H = 0.04, L = 0.5, R = 0.35;
+    auto h = [&](Real x) { return H * (1.0 - std::cos(2.0 * pi * (x - 1.0) / L)) / 2.0; };
+    auto normal = [&](Real x) -> Vec3 {   // a Vec3, not an Eigen expression of a temporary
+        const Real s = H * pi / L * std::sin(2.0 * pi * (x - 1.0) / L);
+        return Vec3(-s, 0.0, 1.0) / std::sqrt(1.0 + s * s);
+    };
+    const Vec3 c(1.125, 0.0, 0.35 + 0.02 - 0.005);
+    const Vec3 P = c - R * normal(c.x());
+    const Vec3 n_P = normal(P.x());
+    const Real depth = (h(P.x()) - P.z()) * n_P.z();
+    const auto bump = std::make_shared<BumpRoad>(1.0, L, H);
+    FullTireForce tyre(1, R, 200000.0, 0.0, PacejkaTireParams::DefaultPassengerCar(), bump);
     std::vector<RigidBodyState> states(2);
-    states[1] = RigidBodyState(Vec3(1.125, 0.0, 0.35 + 0.02 - 0.005), Quat::Identity(), Vec3::Zero(),
-                               Vec3::Zero());
+    states[1] = RigidBodyState(c, Quat::Identity(), Vec3::Zero(), Vec3::Zero());
     std::vector<RigidBodyForces> forces(2);
     tyre.apply(states, forces);
-    const Vec3 n = bump->at(1.125, 0.0).normal;
-    const Vec3 expected = 200000.0 * 0.005 * n.z() * n;
-    INFO("force " << forces[1].f_W.transpose() << ", expected " << expected.transpose());
+    const Vec3 expected = 200000.0 * depth * n_P;
+    INFO("force " << forces[1].f_W.transpose() << ", expected " << expected.transpose() << "; depth " << depth);
+    CHECK_THAT(depth, WithinAbs(0.011921, 1e-6));
     CHECK((forces[1].f_W - expected).norm() < 1e-9 * expected.norm());
 
-    // The vertical tyre, on a ramp's slope, the same.
+    // The vertical tyre, on a ramp's slope (0.05, a plane between x = 0 and
+    // 2 m): the lowest point is along the normal, still on the plane, so the
+    // depth is exact: R less the centre's distance from the plane,
+    // R - (z_c - h(x_c)) n_z = 0.35 - 0.346 n_z.
     const auto ramp = std::make_shared<RampRoad>(0.0, 2.0, 0.1);
-    TireContactForce vertical(1, 0.35, 200000.0, 0.0, ramp);
+    TireContactForce vertical(1, R, 200000.0, 0.0, ramp);
     states[1] = RigidBodyState(Vec3(1.0, 0.0, 0.35 + 0.05 - 0.004), Quat::Identity(), Vec3::Zero(),
                                Vec3::Zero());
     forces.assign(2, RigidBodyForces{});
     vertical.apply(states, forces);
     const Vec3 m = ramp->at(1.0, 0.0).normal;
-    CHECK((forces[1].f_W - 200000.0 * 0.004 * m.z() * m).norm() < 1e-9 * 800.0);
-    CHECK_THAT(vertical.get_deflection(states), WithinAbs(0.004 * m.z(), 1e-15));
+    const Real ramp_depth = R - 0.346 * m.z();
+    CHECK((forces[1].f_W - 200000.0 * ramp_depth * m).norm() < 1e-9 * 800.0);
+    CHECK_THAT(vertical.get_deflection(states), WithinAbs(ramp_depth, 1e-15));
 }
 
 TEST_CASE("Road: the road's friction scales a tyre's peak force and not its stiffness", "[road][tyre]")
@@ -322,8 +342,10 @@ TEST_CASE("Road: the road's friction scales a tyre's peak force and not its stif
         std::vector<RigidBodyForces> forces(2);
         auto lateral_force = [&](Real alpha) {
             // Forward at 20 m/s, sideways at -20 tan(alpha): slip angle alpha.
+            // The wheel spins at free rolling, 20 / R_eff with R_eff = 0.35 -
+            // 0.02 / 2 (task 7.3: the tyre takes the spin from the wheel).
             states[1] = RigidBodyState(Vec3(0.0, 0.0, 0.33), Quat::Identity(),
-                                       Vec3(20.0, -20.0 * std::tan(alpha), 0.0), Vec3::Zero());
+                                       Vec3(20.0, -20.0 * std::tan(alpha), 0.0), Vec3(0.0, 20.0 / 0.34, 0.0));
             forces.assign(2, RigidBodyForces{});
             tyre.apply(states, forces);
             return tyre.get_Fy();

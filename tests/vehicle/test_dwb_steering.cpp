@@ -36,8 +36,8 @@ namespace
 
         sim.run(0.1, 0.0005);
 
-        return {extract_toe(sim.states()[static_cast<std::size_t>(vh.corners[0].wheel_body)]),
-                extract_toe(sim.states()[static_cast<std::size_t>(vh.corners[1].wheel_body)])};
+        return {extract_toe(sim.states()[static_cast<std::size_t>(vh.corners[0].upright_body)]),
+                extract_toe(sim.states()[static_cast<std::size_t>(vh.corners[1].upright_body)])};
     }
 }
 

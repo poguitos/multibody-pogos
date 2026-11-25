@@ -313,7 +313,13 @@ change of coordinates, and the one data error it caught that no test could.
 and a tyre that sees nothing else; random roads from a spectrum, and why
 fixed amplitudes with random phases make each road's spectrum exact rather
 than right on average; a regression channel that measured rounding. *J:
-Phase 7, the road. D61.*
+Phase 7, the road. D61.* The wheel as a body on its spin joint: the contact
+point as geometry (a circle's lowest point against the road's normal) rather
+than a point of a body; a gyroscope as a test with an exact answer at one
+angle; a brake's stick as a state change, not a force; and how moving the
+spins from first-order states into the bodies moved their stiffness into
+every vehicle and took away an integrator's purpose. *J: Phase 7, the wheel.
+D62.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

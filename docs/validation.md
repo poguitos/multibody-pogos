@@ -26,7 +26,7 @@ journal entries (`documentation/`) say how each was obtained.
 | Statics, assembly, linearisation, kinematics | Closed forms; eig(K, M) in closed form | Mathematics | 1e-11 to 1e-16 | `test_kernel_statics.cpp`, `test_kernel_assembly.cpp`, `test_kernel_linearization.cpp` |
 | Force elements, contact, events | Finite differences of each law; closed-form motions | Mathematics | Derivatives 1e-6; motions 1e-5 to 1e-15 | `tests/forces/`, `test_kernel_events.cpp` |
 | A vehicle-sized stiff model | The HMMWV of Haug et al. (1999): explicit against implicit methods | Two families of method, one model | With joints 2.2e-7 m; with bushings 2e-6 to 4e-6 m (explicit) and 2.4e-7 m (implicit) | `test_kernel_hmmwv.cpp`, [hmmwv.md](hmmwv.md) |
-| Change detection | Stored references; deliberate mutations of the physics | The code's own past | A change of 1e-6 fails by 26 to 997 times the tolerance; 9 of 9 mutations caught | `tests/regression/`, nightly |
+| Change detection | Stored references; deliberate mutations of the physics | The code's own past | A change of 1e-6 fails by 30 to 996 times the tolerance; 9 of 9 mutations caught | `tests/regression/`, nightly |
 
 ## 1. Tree dynamics against Pinocchio
 
@@ -154,6 +154,13 @@ periods to 3e-11 s; a block slides down an incline with a = g (sin theta -
 mu cos theta) to 5e-15; a bouncing ball meets the ground at the closed-form
 times to 1.8e-14 s.
 
+The wheel (task 7.3, D62; `tests/vehicle/test_wheel.cpp`,
+`tests/forces/test_full_tire.cpp`): a wheel spinning on a pivot with its
+axle horizontal precesses at m g l / (I_s omega_s), exact for the heavy
+symmetric top at that angle, to 9e-15 rad after 3 s; a wheel turned about
+its axle keeps its contact point, depth, forces and slips to 1e-12; leaning
+and on an inclined plane, its contact point is the closed form's to 1e-12.
+
 ## 10. A vehicle-sized stiff model: the HMMWV
 
 Task 5.4 (D47, D48; [the HMMWV benchmark](hmmwv.md)). The fourteen-body HMMWV
@@ -182,7 +189,9 @@ drivetrain, statics and linearisation, kinematics, the lap model) against
 stored references, each channel within 1e-8 of its largest magnitude, on
 every commit; a relative change of 1e-6 in one physical parameter fails each
 by 26 to 997 times that tolerance, one of 1e-12 moves none by more than 5e-3
-of it. Nightly, nine one-line mutations of the physics must each make a test
+of it. (Since Phase 7 there are twelve fast scenarios and three long ones;
+after task 7.3, 30 to 996 times, and at most 1.4e-2: the table in
+`tests/regression/README.md`.) Nightly, nine one-line mutations of the physics must each make a test
 fail; all nine do.
 
 ## 12. Platforms and memory safety
@@ -238,3 +247,4 @@ python scripts\mutation_test.py --build "..." --test ... # the mutations (see th
 |---|---|---|
 | 1 | 9 November 2026 | The end of Phase 5 (milestone M1): sections 1 to 12 |
 | 1.1 | 9 November 2026 | The nightly's first runs: A02's 40 loops measured on both platforms; contradicting constraints named from 48 starts (D50) |
+| 1.2 | 25 November 2026 | Task 7.3: the wheel's precession and contact (section 9); change detection's figures after the wheels became bodies (section 11) |

@@ -57,7 +57,7 @@ TEST_CASE("Assembly: the sedan's disturbed suspension is assembled with the chas
     CHECK(r.position_residual < 1e-10);
     CHECK(r.velocity_residual < 1e-10);
     CHECK(r.acceleration_residual < 1e-8);
-    CHECK(r.degrees_of_freedom == 10);   // as validate() counts for the template vehicles
+    CHECK(r.degrees_of_freedom == 14);   // as validate() counts for the template vehicles
 
     // The chassis exactly as given.
     for (int i = cq; i < cq + model.nqs[chassis]; ++i) CHECK(sim.q(i) == given(i));

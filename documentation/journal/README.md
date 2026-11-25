@@ -104,3 +104,4 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 13 Nov 2026 | [Phase 6 retrospective](2026-11-13_phase-6-retrospective.md) | Phase 6 gate; H.6 for Phase 6 | see git log | At the time |
 | 15 Nov 2026 | [Phase 7: the vehicle layer in ISO 8855 axes](2026-11-15_phase-7-axes.md) | 7.1, F11, D60 | `d9f9466`, then see git log | At the time |
 | 24 Nov 2026 | [Phase 7: the road](2026-11-24_phase-7-road.md) | 7.2, D61 | see git log | At the time |
+| 25 Nov 2026 | [Phase 7: the wheel and its contact](2026-11-25_phase-7-wheel.md) | 7.3, F6, F8, D4, D62 | see git log | At the time |

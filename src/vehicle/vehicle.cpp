@@ -73,21 +73,26 @@ VehicleModel build_simple_vehicle(kernel::System& sys,
     }};
 
     const std::array<std::string, 4> names = {{"FL", "FR", "RL", "RR"}};
-    const auto I_wheel = RigidBodyInertia::from_solid_box(p.wheel_mass, p.wheel_half_extents);
     const auto prismatic = std::make_shared<kernel::PrismaticJointModel>();
 
     for (std::size_t c = 0; c < 4; ++c) {
-        // --- Wheel body on a prismatic joint from the chassis ---
-        vm.wheel_bodies[c] = sys.model.add_body(
+        // --- Carrier on a prismatic joint from the chassis, massless: the
+        // unsprung mass is the wheel's ---
+        vm.carrier_bodies[c] = sys.model.add_body(
             vm.chassis_body, prismatic, Transform3(R_susp, mount_pos[c]),
-            Transform3::FromRotation(R_susp), I_wheel, names[c]);
-        vm.wheel_joint_indices[c] = vm.wheel_bodies[c];
-        vm.susp_q[c] = sys.model.idx_q[vm.wheel_bodies[c]];
-        vm.susp_v[c] = sys.model.idx_v[vm.wheel_bodies[c]];
+            Transform3::FromRotation(R_susp), RigidBodyInertia{}, names[c] + "_carrier");
+        vm.wheel_joint_indices[c] = vm.carrier_bodies[c];
+        vm.susp_q[c] = sys.model.idx_q[vm.carrier_bodies[c]];
+        vm.susp_v[c] = sys.model.idx_v[vm.carrier_bodies[c]];
 
-        // --- Suspension spring-damper: chassis mount to wheel origin ---
+        // --- The wheel on its spin joint (task 7.3) ---
+        vm.wheel_bodies[c] = add_wheel(sys.model, vm.carrier_bodies[c], Vec3::Zero(), p.wheel_mass,
+                                       p.tire_free_radius, names[c]);
+        vm.spin_v[c] = sys.model.idx_v[vm.wheel_bodies[c]];
+
+        // --- Suspension spring-damper: chassis mount to the carrier's origin ---
         sys.force_elements.push_back(std::make_shared<LinearSpringDamper>(
-            vm.chassis_body, vm.wheel_bodies[c],
+            vm.chassis_body, vm.carrier_bodies[c],
             mount_pos[c], Vec3::Zero(),
             p.k_susp, p.c_susp, p.susp_rest_length));
 
@@ -103,6 +108,11 @@ VehicleModel build_simple_vehicle(kernel::System& sys,
     }
 
     return vm;
+}
+
+void roll_wheels(kernel::Simulator& sim, const VehicleModel& vm)
+{
+    for (std::size_t c = 0; c < 4; ++c) set_free_rolling(sim, vm.wheel_bodies[c], *vm.tires[c]);
 }
 
 void set_vehicle_equilibrium(kernel::Simulator& sim, const VehicleModel& vm)

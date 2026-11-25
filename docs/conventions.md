@@ -81,7 +81,8 @@ Signs in the ISO 8855 frame, as the code uses them:
 - Steering angle, yaw angle and yaw rate are positive counter-clockwise seen from above, that is, for a left turn.
 - Lateral acceleration is positive to the left.
 - Roll is positive when the right side goes down. Pitch is positive nose down.
-- The wheel frame has X along the intersection of the wheel plane with the road, Z along the road normal, Y to the left.
+- A wheel is a body on a spin joint about its Y axis, its origin at the axle centre (task 7.3, D62, `mbd/vehicle/wheel.hpp`): a forward roll is a positive rotation about Y. Toe and camber are read from the upright it turns on, never from the wheel.
+- The tyre's contact frame has X along the intersection of the wheel plane with the road, Z along the road normal, Y to the left. The contact point is found from the wheel plane and the road (the wheel circle's lowest point along the road's normal, brought onto the road's tangent plane), not fixed in the wheel: turning the wheel about its axle does not move it.
 - Longitudinal slip is positive under traction. The slip angle is defined as `alpha = -atan(v_y / |v_x|)`, with `v_y` the lateral velocity of the contact point, so that a positive slip angle produces a positive (leftward) lateral force. This is Pacejka's sign convention, not the ISO 8855 one, and matches the tyre model.
 - Camber is positive when the top of the wheel leans outward from the car. `extract_camber` and `extract_toe` return the angle toward +Y (the left) whatever the side: for a right wheel, ISO camber is the negative of `extract_camber`, and positive toe is toe-in.
 
@@ -98,7 +99,7 @@ Signs in the ISO 8855 frame, as the code uses them:
 | D1 | One kinematics kernel based on spatial vectors | Adopted, Phase 2 |
 | D2 | Quaternion coordinates for free and spherical joints | Adopted, Phase 2 |
 | D3 | ISO 8855 axes | Decided 2 Oct 2026; the vehicle layer moved by task 7.1 (D60) |
-| D4 | Wheels as rotating bodies with a spin joint | Adopted, Phase 7 |
+| D4 | Wheels as rotating bodies with a spin joint | Done, task 7.3 (D62) |
 | D5 | Compiled library instead of header-only | Done, task 2.8 |
 | D6 | CFD by coupling to OpenFOAM | **Decided 2 Oct 2026.** A CFD solver written from scratch is a stated goal for later, tracked as task 11.12 |
 | D7 | Real-time target | **Decided 2 Oct 2026.** Both: Windows soft real time first, then Linux hard real time |

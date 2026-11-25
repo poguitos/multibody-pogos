@@ -3,6 +3,7 @@
 #include <Eigen/Geometry>
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <utility>
 
 #include "mbd/vehicle/vehicle_template.hpp"
@@ -55,16 +56,17 @@ TEST_CASE("Dynamic template: all-DWB vehicle has correct topology",
     kernel::System sys;
     auto vh = build_vehicle(sys, tmpl);
 
-    // Bodies: 1 (ground) + 1 (chassis) + 1 (front rack) + 4*3 (LCA, upright, UCA) = 15
-    REQUIRE(sys.model.nbodies() == 15);
+    // Bodies: 1 (ground) + 1 (chassis) + 1 (front rack) + 4*4 (LCA, upright,
+    // UCA, wheel) = 19
+    REQUIRE(sys.model.nbodies() == 19);
 
-    // Velocities: 6 (chassis) + 1 (rack) + 4 * (1+3+1) = 27
-    REQUIRE(sys.model.nv == 27);
+    // Velocities: 6 (chassis) + 1 (rack) + 4 * (1+3+1+1) = 31
+    REQUIRE(sys.model.nv == 31);
 
     // Constraints: 4 corners * 2 (upper ball joint + tie rod) + the rack driver = 9
     REQUIRE(sys.constraints.size() == 9);
 
-    // Equations: 4 * (3 + 1) + 1 = 17, leaving 27 - 17 = 10 freedoms
+    // Equations: 4 * (3 + 1) + 1 = 17, leaving 31 - 17 = 14 freedoms
     REQUIRE(equation_count(sys) == 17);
 
     // Force elements: 4 springs + 4 tires = 8
@@ -84,11 +86,11 @@ TEST_CASE("Dynamic template: all-McPherson vehicle has correct topology",
     kernel::System sys;
     auto vh = build_vehicle(sys, tmpl);
 
-    // Bodies: 1 (ground) + 1 (chassis) + 1 (rack) + 4*2 = 11
-    REQUIRE(sys.model.nbodies() == 11);
+    // Bodies: 1 (ground) + 1 (chassis) + 1 (rack) + 4*3 (LCA, upright, wheel) = 15
+    REQUIRE(sys.model.nbodies() == 15);
 
-    // Velocities: 6 + 1 + 4 * (1+3) = 23
-    REQUIRE(sys.model.nv == 23);
+    // Velocities: 6 + 1 + 4 * (1+3+1) = 27
+    REQUIRE(sys.model.nv == 27);
 
     // Constraints: 4 * 2 + 1 = 9; equations 4 * (2 strut line + 1 tie rod) + 1 = 13
     REQUIRE(sys.constraints.size() == 9);
@@ -107,11 +109,11 @@ TEST_CASE("Dynamic template: mixed suspension (DWB front, simple rear)",
     kernel::System sys;
     auto vh = build_vehicle(sys, tmpl);
 
-    // Bodies: 1 + 1 + 1 (rack) + 2*3 (DWB) + 2*1 (simple) = 11
-    REQUIRE(sys.model.nbodies() == 11);
+    // Bodies: 1 + 1 + 1 (rack) + 2*4 (DWB) + 2*2 (simple) = 15
+    REQUIRE(sys.model.nbodies() == 15);
 
-    // Velocities: 6 + 1 + 2*5 (DWB) + 2*1 (simple) = 19
-    REQUIRE(sys.model.nv == 19);
+    // Velocities: 6 + 1 + 2*6 (DWB) + 2*2 (simple) = 23
+    REQUIRE(sys.model.nv == 23);
 
     // Constraints: 2 corners * 2 (only front DWB) + the rack driver = 5
     REQUIRE(sys.constraints.size() == 5);
@@ -154,10 +156,10 @@ TEST_CASE("Dynamic template: all-McPherson reference config satisfies constraint
 }
 
 // ============================================================================
-// Tire attachment: tire forces act on the upright, not a simple wheel
+// Tire attachment: tire forces act on the wheel, which turns on the upright
 // ============================================================================
 
-TEST_CASE("Dynamic template: DWB tire attaches to upright body",
+TEST_CASE("Dynamic template: DWB tire attaches to the wheel on the upright",
           "[tmpl_dyn][tires]")
 {
     using namespace mbd;
@@ -172,7 +174,9 @@ TEST_CASE("Dynamic template: DWB tire attaches to upright body",
     for (int c = 0; c < 4; ++c) {
         REQUIRE(vh.tire(c) != nullptr);
         REQUIRE(vh.tire(c)->wheel_body_idx == vh.wheel(c));
-        REQUIRE(sys.model.name[vh.wheel(c)] == "dyn_upright");
+        REQUIRE(sys.model.parent[vh.wheel(c)] == vh.upright(c));
+        REQUIRE(sys.model.name[vh.upright(c)] == "dyn_upright");
+        REQUIRE(sys.model.joint[vh.wheel(c)]->name() == std::string("revolute"));
     }
 }
 
@@ -210,8 +214,12 @@ TEST_CASE("Dynamic template: all-DWB vehicle settles under gravity",
         REQUIRE(std::abs(sim.v(i)) < 0.1);
     }
 
-    // Total tire load should approximately equal vehicle weight
-    const Real W_total = tmpl.total_mass() * g_accel;
+    // Total tire load should approximately equal vehicle weight: the model's
+    // (with the arms and uprights, which the template's total_mass() leaves
+    // out, F9)
+    Real mass = 0.0;
+    for (int b = 1; b < sys.model.nbodies(); ++b) mass += sys.model.inertia[static_cast<std::size_t>(b)].mass;
+    const Real W_total = mass * g_accel;
     REQUIRE_THAT(total_tire_load(sim, vh), WithinAbs(W_total, W_total * 0.05));
 }
 
@@ -230,9 +238,9 @@ TEST_CASE("Dynamic template: simple suspension still works (regression)",
     kernel::System sys;
     auto vh = build_vehicle(sys, tmpl);
 
-    // Topology: 6 bodies, 10 DOF (as before)
-    REQUIRE(sys.model.nbodies() == 6);
-    REQUIRE(sys.model.nv == 10);
+    // Topology: 10 bodies, 14 DOF (each corner a slider and a wheel, task 7.3)
+    REQUIRE(sys.model.nbodies() == 10);
+    REQUIRE(sys.model.nv == 14);
     REQUIRE(sys.constraints.empty());
 
     kernel::Simulator sim(sys);
@@ -333,15 +341,16 @@ TEST_CASE("Dynamic template: DWB vehicle corners with steering",
     REQUIRE(y_after - y_before > 0.05);
 }
 
-TEST_CASE("Template vehicles pass validate() with ten degrees of freedom", "[vehicle][validate]")
+TEST_CASE("Template vehicles pass validate() with fourteen degrees of freedom", "[vehicle][validate]")
 {
     using namespace mbd;
 
     // Whatever the suspension, the chassis keeps its six freedoms and each
-    // wheel one bump travel: the linkage joints' extra freedoms are removed
-    // by independent constraint equations, and a steered linkage axle's rack
-    // by its driver. Double wishbone: 27 velocities, 17 equations;
-    // McPherson: 23 and 13; simple: 10 and none.
+    // corner one bump travel and its wheel's spin (task 7.3): the linkage
+    // joints' extra freedoms are removed by independent constraint
+    // equations, and a steered linkage axle's rack by its driver. Double
+    // wishbone: 31 velocities, 17 equations; McPherson: 27 and 13; simple: 14
+    // and none.
     for (const SuspensionType type : {SuspensionType::Simple, SuspensionType::DoubleWishbone,
                                       SuspensionType::McPherson}) {
         auto tmpl = VehicleTemplate::DefaultSedan();
@@ -354,7 +363,7 @@ TEST_CASE("Template vehicles pass validate() with ten degrees of freedom", "[veh
         CHECK(r.ok());
         CHECK(r.warnings.empty());
         CHECK(r.redundant_equations == 0);
-        CHECK(r.degrees_of_freedom == 10);
+        CHECK(r.degrees_of_freedom == 14);
     }
 }
 

@@ -26,12 +26,15 @@ VehicleTemplate sedan()
 }
 
 /// How far the chassis origin moves in `duration` of simulation from the
-/// simulator's state.
+/// simulator's state. RK4 at 0.5 ms: at rest the wheels' spins (on their
+/// joints since task 7.3) are held by the tyres' slip below V_low, a motion
+/// that decays at about 3000 per second, which RK4 follows below 0.9 ms and
+/// not at 1 ms, where they chatter and the car creeps.
 Real chassis_drift(kernel::Simulator& sim, const VehicleHandle& vh, Real duration)
 {
     const int cq = sim.system.model.idx_q[static_cast<std::size_t>(vh.chassis_body)];
     const Vec3 start = sim.q.segment<3>(cq);
-    sim.run(duration, 1e-3);
+    sim.run(duration, 5e-4);
     return (sim.q.segment<3>(cq) - start).norm();
 }
 
@@ -55,15 +58,17 @@ TEST_CASE("Statics: the double-wishbone sedan settles in under 20 iterations", "
     CHECK(r.relaxation_steps == 0);
     CHECK(r.warnings.empty());
 
-    // Ten degrees of freedom, as validate() counts: three without stiffness
-    // at rest, the chassis's position on the ground and its heading (the
-    // tyres give no horizontal force without slip). Statics does not move
-    // along them but for second-order effects: in the free joint's own
+    // Fourteen degrees of freedom, as validate() counts: seven without
+    // stiffness at rest, the chassis's position on the ground and its
+    // heading (the tyres give no horizontal force without slip) and the four
+    // wheels' spin angles (task 7.3: a tyre's force depends on its wheel's
+    // spin rate, not on the angle it has turned through). Statics does not
+    // move along them but for second-order effects: in the free joint's own
     // coordinates (its rigid motion is an exponential), a rise dz with a
     // pitch or roll dth moves the others by about dth dz / 2.
-    CHECK(r.degrees_of_freedom == 10);
+    CHECK(r.degrees_of_freedom == 14);
     CHECK(r.supported == 7);
-    CHECK(r.neutral == 3);
+    CHECK(r.neutral == 7);
     const int cv = model.idx_v[static_cast<std::size_t>(vh.chassis_body)];
     // Free joint, ISO 8855 chassis axes: rotation (roll X, pitch Y, yaw Z),
     // then translation (forward X, lateral Y, up Z).
@@ -105,10 +110,11 @@ TEST_CASE("Statics: the sedan started 1 cm too high settles to the same equilibr
 {
     // 1 cm keeps every tyre loaded (their static deflection is about 1.9 cm).
     // From higher, with the wheels in the air, this template has no rebound
-    // stops and its tyre's contact point is fixed on the upright, so the
-    // hanging rear suspension can fold over and the "contact point" leave the
-    // ground: an equilibrium of the model, not of a car (journal: static
-    // equilibrium; the builders' task 7.x).
+    // stops and (when this was written, before task 7.3) its tyre's contact
+    // point was fixed on the upright, so the hanging rear suspension could
+    // fold over and the "contact point" leave the ground: an equilibrium of
+    // the model, not of a car (journal: static equilibrium; the builders'
+    // task 7.x).
     kernel::System sys;
     auto vh = build_vehicle(sys, sedan());
     const kernel::Model& model = sys.model;
@@ -130,16 +136,17 @@ TEST_CASE("Statics: the sedan started 1 cm too high settles to the same equilibr
     CHECK(std::abs(sim.q(cq + 2) - reference.q(cq + 2)) < 1e-6);
 }
 
-TEST_CASE("Linearisation: the sedan at rest has three neutral positions and no unstable mode",
+TEST_CASE("Linearisation: the sedan at rest has seven neutral positions and no unstable mode",
           "[vehicle][linearization]")
 {
-    // About its static equilibrium: ten degrees of freedom; the position on
-    // the ground and the heading have no stiffness, so three eigenvalues are
-    // zero. Their rates are not free: below V_low a tyre's slip force opposes
-    // any velocity of its contact, so they decay (real, negative
-    // eigenvalues). Springs, dampers and gravity about a stable equilibrium
-    // are passive: no eigenvalue may have a positive real part beyond the
-    // differences' error (relative 1e-6 of the largest).
+    // About its static equilibrium: fourteen degrees of freedom; the
+    // position on the ground, the heading and the four wheels' spin angles
+    // (task 7.3) have no stiffness, so seven eigenvalues are zero. Their
+    // rates are not free: below V_low a tyre's slip force opposes any
+    // velocity of its contact, and any spin of its wheel, so they decay
+    // (real, negative eigenvalues). Springs, dampers and gravity about a
+    // stable equilibrium are passive: no eigenvalue may have a positive real
+    // part beyond the differences' error (relative 1e-6 of the largest).
     kernel::System sys;
     auto vh = build_vehicle(sys, sedan());
     kernel::Simulator sim(sys);
@@ -149,7 +156,7 @@ TEST_CASE("Linearisation: the sedan at rest has three neutral positions and no u
 
     const kernel::LinearModel lm = kernel::linearize(sim);
     INFO(lm.summary(sys.model));
-    CHECK(lm.degrees_of_freedom == 10);
+    CHECK(lm.degrees_of_freedom == 14);
     CHECK(lm.warnings.empty());
     int zeros = 0;
     Real largest = 0.0, most_positive = -1e300;
@@ -159,6 +166,6 @@ TEST_CASE("Linearisation: the sedan at rest has three neutral positions and no u
         largest = std::max(largest, mode.natural_frequency);
         most_positive = std::max(most_positive, mode.eigenvalue.real());
     }
-    CHECK(zeros == 3);
+    CHECK(zeros == 7);
     CHECK(most_positive < 1e-6 * largest);
 }

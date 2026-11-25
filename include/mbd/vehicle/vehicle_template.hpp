@@ -22,6 +22,7 @@
 #include "mbd/vehicle/drivetrain_params.hpp"
 #include "mbd/vehicle/suspension/double_wishbone.hpp"
 #include "mbd/vehicle/suspension/mcpherson.hpp"
+#include "mbd/vehicle/wheel.hpp"
 
 #include <array>
 #include <cmath>
@@ -92,9 +93,11 @@ struct AxleConfig {
     Real k_arb{0.0};        ///< Roll stiffness [N/m]. Zero = no ARB.
     Real c_arb{0.0};        ///< Roll damping [Ns/m].
 
-    // Wheel/unsprung mass
+    /// The wheel's mass [kg], a uniform disc of the tyre's free radius
+    /// (wheel_inertia), on its spin joint. On a simple corner it is all the
+    /// unsprung mass (the slider carrying it has none); a linkage corner adds
+    /// its upright and arms.
     Real wheel_mass{40.0};
-    Vec3 wheel_half_extents{0.15, 0.15, 0.15};
 
     // Tire
     Real tire_free_radius{0.35};
@@ -190,7 +193,12 @@ struct SteeringRack {
 // ============================================================================
 
 struct CornerHandle {
-    BodyIndex wheel_body{0};       ///< Wheel/upright body (tire attaches here)
+    /// The body that carries the wheel: the upright of a linkage corner, the
+    /// slider of a simple one. It steers (linkage corners), takes the spring
+    /// and the anti-roll bar, and the brake reacts on it. Its origin is the
+    /// wheel centre; toe and camber are read from it.
+    BodyIndex upright_body{0};
+    BodyIndex wheel_body{0};       ///< The wheel, on its spin joint on the upright; the tyre's body
     BodyIndex lca_body{0};         ///< LCA body (0 for Simple suspension)
     BodyIndex uca_body{0};         ///< UCA body (0 for Simple/McPherson)
     FullTireForce* tire{nullptr};
@@ -222,6 +230,7 @@ struct VehicleHandle {
     FullTireForce* tire(int c) { return corners[c].tire; }
     const FullTireForce* tire(int c) const { return corners[c].tire; }
     BodyIndex wheel(int c) const { return corners[c].wheel_body; }
+    BodyIndex upright(int c) const { return corners[c].upright_body; }
 
     /// Steer by delta, the angle of a single front wheel at the axle's centre
     /// (bicycle model). Simple corners get their Ackermann angle directly as
@@ -338,7 +347,8 @@ Real calibrate_rack(const VehicleTemplate& tmpl, const AxleConfig& ax,
 /// The builder creates:
 ///   - Chassis on a free joint (body 1)
 ///   - A steering rack for each steered axle with linkage suspension
-///   - 4 corners with suspension, springs, dampers, and tires
+///   - 4 corners with suspension, springs, dampers, and tires, each wheel on
+///     its spin joint on the corner's upright (task 7.3)
 ///
 /// The vehicle layer uses ISO 8855 axes (X forward, Y left, Z up; plan task
 /// 7.1, mbd/vehicle/axes.hpp): the model's gravity is set to -Z. The tyres
@@ -352,6 +362,11 @@ VehicleHandle build_vehicle(kernel::System& sys,
 // ============================================================================
 // Equilibrium solver for the template-built vehicle
 // ============================================================================
+
+/// Set every wheel of the vehicle spinning at its free-rolling rate for the
+/// simulator's present state (set_free_rolling): after giving the chassis a
+/// speed, so that the tyres do not start by skidding.
+void roll_wheels(kernel::Simulator& sim, const VehicleHandle& vh);
 
 /// Place a template-built vehicle near its static equilibrium, at rest: the
 /// simulator's state is set and its kinematics refreshed.

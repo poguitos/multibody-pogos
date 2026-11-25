@@ -38,7 +38,8 @@ quoted here: `documentation/journal/data/2026-10-19_integrators-verified.md`.
 | `RadauIIA` | 5 (5.0) | Loses \|R\|^2 per step: 3e-6 in 1000 s | Its error control | Stiff mechanical models at any accuracy |
 | `LinearlyImplicitEuler` | 1 | Backward Euler's: (1 + (wh)^2)^(-1/2) per step, strongly dissipative | Accuracy; on stiff springs between turning bodies, an energy gain at long steps (k h^2 / m above about 25) | Real time; about 1 cm on the sedan |
 
-What the measurements show:
+What the measurements show (on the sedan, before task 7.3 made its wheel
+spins joints of the model: section 6):
 
 - **Every method converges at its order**, on the oscillator exactly and on
   the spatial models (free bodies, bushings, a closed loop) to within the
@@ -347,6 +348,11 @@ real-time model should keep k h^2 / m below about 25 for springs between
 turning bodies, or make such hinges joints.
 
 ## 6. The sedan
+
+*Measured before task 7.3 (D62), when the wheel spins were the drivetrain's
+first-order states. Since then the wheels are bodies on spin joints, their
+spins part of the multibody state (31 velocities), and multirate RK4 has no
+fast states on a vehicle: the numbers below describe the model before.*
 
 The double-wishbone sedan with its drivetrain (27 velocities, 4 wheel spins
 as states, 17 constraint equations), from its static equilibrium with

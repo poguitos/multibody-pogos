@@ -221,7 +221,7 @@ std::vector<Real> car_channels(const Simulator& sim, const VehicleHandle& vh)
     std::vector<Real> c{s.p_WB.x(), s.p_WB.y(), s.p_WB.z(), s.v_WB.x(), s.v_WB.y(), s.v_WB.z(),
                         s.w_WB.x(), s.w_WB.y(), s.w_WB.z()};
     for (int k = 0; k < 4; ++k) {
-        const RigidBodyState& w = sim.states()[static_cast<std::size_t>(vh.wheel(k))];
+        const RigidBodyState& w = sim.states()[static_cast<std::size_t>(vh.upright(k))];
         c.insert(c.end(), {vh.tire(k)->get_vertical_force(), vh.tire(k)->get_Fy(), extract_toe(w),
                            extract_camber(w)});
     }
@@ -348,7 +348,14 @@ Record sedan_rough_road(Real scale)
 }
 
 /// The sedan's static equilibrium (to 1e-9) and its modes at rest: every
-/// mode faster than 1e-3 rad/s (the three neutral directions excluded).
+/// mode faster than 1e-3 rad/s (the seven neutral directions excluded: the
+/// position on the ground, the heading, and since task 7.3 the four spin
+/// angles). The wheels' spins, held by their tyres' slip at rest, decay at
+/// about 3000 per second, ten times faster than the body's fastest mode:
+/// they have a channel of their own, so that the body's modes keep a
+/// tolerance of their own scale (each channel's is 1e-8 of its largest
+/// value; in one channel with the spins, a change of 1e-6 moved the body's
+/// modes by only 8.5 times it).
 Record sedan_modes(Real scale)
 {
     System sys;
@@ -361,10 +368,15 @@ Record sedan_modes(Real scale)
     options.tolerance = 1e-9;
     (void)static_equilibrium(sim, options);
     const LinearModel lin = linearize(sim);
-    Record r{"mode", {"natural frequency [rad/s]", "damping ratio"}, {}};
+    Record r{"mode", {"natural frequency [rad/s]", "damping ratio", "wheel spin decay rate [1/s]"}, {}};
     int k = 0;
     for (const Mode& m : lin.modes) {
-        if (m.natural_frequency > 1e-3) r.add(k++, {m.natural_frequency, m.damping_ratio});
+        if (m.natural_frequency <= 1e-3) continue;
+        if (!m.oscillatory() && m.natural_frequency > 1000.0) {
+            r.add(k++, {0.0, 0.0, m.natural_frequency});
+        } else {
+            r.add(k++, {m.natural_frequency, m.damping_ratio, 0.0});
+        }
     }
     return r;
 }

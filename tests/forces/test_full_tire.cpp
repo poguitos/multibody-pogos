@@ -27,10 +27,12 @@ namespace
     /// A single wheel for testing the tyre force element, which reads only the
     /// wheel's world state. q holds the position and a rotation vector, q_dot
     /// the world velocity of the wheel centre (its last three entries, rotation
-    /// rates, must stay zero: no test spins the wheel body).
+    /// rates, must stay zero); `spin` turns the wheel about its own axis, its
+    /// body Y (task 7.3: the tyre takes the spin from the wheel body).
     struct FreeWheel {
         Eigen::Matrix<mbd::Real, 6, 1> q = Eigen::Matrix<mbd::Real, 6, 1>::Zero();
         Eigen::Matrix<mbd::Real, 6, 1> q_dot = Eigen::Matrix<mbd::Real, 6, 1>::Zero();
+        mbd::Real spin{0.0};
         std::vector<mbd::RigidBodyState> states = std::vector<mbd::RigidBodyState>(2);
         std::vector<mbd::RigidBodyForces> forces = std::vector<mbd::RigidBodyForces>(2);
         std::shared_ptr<mbd::FullTireForce> tire;
@@ -38,8 +40,9 @@ namespace
         void compute_kinematics()
         {
             REQUIRE(q_dot.tail<3>().isZero());
-            states[1] = mbd::RigidBodyState(q.head<3>(), mbd::exp3(q.tail<3>()), q_dot.head<3>(),
-                                            mbd::Vec3::Zero());
+            const mbd::Quat orientation = mbd::exp3(q.tail<3>());
+            states[1] = mbd::RigidBodyState(q.head<3>(), orientation, q_dot.head<3>(),
+                                            spin * (orientation * mbd::Vec3::UnitY()));
         }
         void clear_forces() { forces.assign(2, mbd::RigidBodyForces{}); }
         void apply_force_elements()
@@ -124,18 +127,16 @@ TEST_CASE("FullTireForce: lateral velocity produces slip angle and Fy",
 
     auto [sys, tire_ptr] = make_free_wheel(40.0, R_free, k_z, 0.0);
     auto* tire = const_cast<mbd::FullTireForce*>(tire_ptr);
-    tire->auto_free_roll = false;
     // 20mm compression → Fz ≈ 4000 N
     const Real defl = 0.02;
     sys.q << 0.0, 0.0, R_free - defl, 0.0, 0.0, 0.0;
 
-    // Forward 20 m/s, lateral 1 m/s
+    // Forward 20 m/s, lateral 1 m/s; the wheel spinning at free rolling so
+    // kappa ≈ 0 (otherwise combined slip kills Fy)
     sys.q_dot << 20.0, 1.0, 0.0, 0.0, 0.0, 0.0;
-    sys.compute_kinematics();
-
-    // Set omega to free-rolling so kappa ≈ 0 (otherwise combined slip kills Fy)
     const Real R_eff = R_free - defl * 0.5;
-    tire->omega_wheel = 20.0 / R_eff;
+    sys.spin = 20.0 / R_eff;
+    sys.compute_kinematics();
 
     sys.clear_forces();
     sys.apply_force_elements();
@@ -174,8 +175,7 @@ TEST_CASE("FullTireForce: forward velocity with locked wheel produces slip ratio
 
     auto [sys, tire_ptr] = make_free_wheel(40.0, R_free, k_z, 0.0);
     auto* tire = const_cast<FullTireForce*>(tire_ptr);
-    tire->auto_free_roll = false;
-    tire->omega_wheel = 0.0;
+    sys.spin = 0.0;
 
     const Real defl = 0.02;
     sys.q << 0.0, 0.0, R_free - defl, 0.0, 0.0, 0.0;
@@ -204,24 +204,24 @@ TEST_CASE("FullTireForce: free-rolling wheel has near-zero slip ratio",
 
     auto [sys, tire_ptr] = make_free_wheel(40.0, R_free, k_z, 0.0);
     auto* tire = const_cast<mbd::FullTireForce*>(tire_ptr);
-    tire->auto_free_roll = false;
 
     const Real defl = 0.02;
     sys.q << 0.0, 0.0, R_free - defl, 0.0, 0.0, 0.0;
 
     const Real Vx = 20.0;
     sys.q_dot << Vx, 0.0, 0.0, 0.0, 0.0, 0.0;
-    sys.compute_kinematics();
 
-    // Set omega to match free-rolling: omega = Vx / R_eff
+    // The wheel spinning at free rolling: omega = Vx / R_eff
     const Real R_eff = R_free - defl * 0.5;
-    tire->omega_wheel = Vx / R_eff;
+    sys.spin = Vx / R_eff;
+    sys.compute_kinematics();
+    REQUIRE_THAT(tire->free_rolling_spin(sys.states), WithinAbs(Vx / R_eff, 1e-12));
 
     sys.clear_forces();
     sys.apply_force_elements();
 
-    // Slip ratio should be near zero
-    REQUIRE_THAT(tire->get_slip_ratio(), WithinAbs(0.0, 0.02));
+    // Slip ratio zero but for rounding: (Vx / R_eff) R_eff - Vx, over Vx
+    REQUIRE_THAT(tire->get_slip_ratio(), WithinAbs(0.0, 1e-14));
 
     // Fx should be near zero
     REQUIRE_THAT(tire->get_Fx(), WithinAbs(0.0, 50.0));
@@ -241,17 +241,16 @@ TEST_CASE("FullTireForce: combined slip produces both Fx and Fy",
 
     auto [sys, tire_ptr] = make_free_wheel(40.0, R_free, k_z, 0.0);
     auto* tire = const_cast<FullTireForce*>(tire_ptr);
-    tire->auto_free_roll = false;
 
     const Real defl = 0.02;
     sys.q << 0.0, 0.0, R_free - defl, 0.0, 0.0, 0.0;
 
-    // Forward at 20 m/s, lateral at 2 m/s, partial braking
+    // Forward at 20 m/s, lateral at 2 m/s, partial braking: the wheel turns
+    // slower than free rolling
     sys.q_dot << 20.0, 2.0, 0.0, 0.0, 0.0, 0.0;
-    sys.compute_kinematics();
-
     const Real R_eff = R_free - defl * 0.5;
-    tire->omega_wheel = 15.0 / R_eff; // Under free-rolling speed = braking
+    sys.spin = 15.0 / R_eff;
+    sys.compute_kinematics();
 
     sys.clear_forces();
     sys.apply_force_elements();
@@ -342,7 +341,8 @@ TEST_CASE("FullTireForce: rotated wheel produces correct force directions",
     sys.clear_forces();
     sys.apply_force_elements();
 
-    // Tire moves entirely sideways: Vx ≈ 0, Vy ≈ 20 → large slip angle
+    // Tire moves entirely sideways: Vx ≈ 0, Vy ≈ 20 → large slip angle. The
+    // wheel does not spin, and nothing moves it along its heading.
     REQUIRE(std::abs(tire->get_slip_angle()) > 0.5);
     REQUIRE(std::abs(tire->get_Fy()) > 500.0);
 
@@ -389,4 +389,116 @@ TEST_CASE("FullTireForce: telemetry matches internal state",
     REQUIRE_THAT(r.kappa, WithinAbs(tire->get_slip_ratio(), eps));
     REQUIRE_THAT(r.alpha, WithinAbs(tire->get_slip_angle(), eps));
     REQUIRE_THAT(r.Fz, WithinAbs(tire->get_vertical_force(), eps));
+}
+// ============================================================================
+// The contact from the wheel plane and the road (task 7.3, F8)
+// ============================================================================
+
+TEST_CASE("FullTireForce: a wheel turned about its axle keeps its contact point and its forces",
+          "[full_tire][contact]")
+{
+    // The plan's "done when" for task 7.3, first part: a pitching upright no
+    // longer moves the contact point. A wheel of free radius R = 0.35 m with
+    // its centre at (1, 0.5, R - 0.02) on level ground, moving forward at
+    // 20 m/s and spinning at 15 / R_eff, turned about its axle (its Y) by
+    // beta. Its lowest point is the bottom of its circle, (1, 0.5, -0.02),
+    // whatever beta: turning a circle in its own plane leaves it where it is.
+    // So for every beta the contact point is (1, 0.5, 0), the depth 0.02, the
+    // normal force k_z 0.02 = 4000 N, the slip ratio (15 - 20) / 20 = -0.25
+    // and the slip angle 0. A point fixed in the wheel at (0, 0, -R), as the
+    // contact was before, would have moved forward or back by R sin(beta):
+    // 0.10 m at 0.3 rad. The forces act at the contact point, so the moment
+    // about the axle is that of Fx at the arm R - 0.02 down to the road:
+    // (0, 0, -(R - 0.02)) x (Fx, 0, Fz) = (0, -(R - 0.02) Fx, 0), its Y part
+    // -(R - 0.02) Fx. Tolerances: rounding in turning the axis, 1e-12.
+    using namespace mbd;
+    const Real R_free = 0.35, k_z = 200000.0, defl = 0.02;
+    const Real R_eff = R_free - 0.5 * defl;
+    Real Fx_level = 0.0;
+    for (const Real beta : {0.0, 0.3, -1.0, 2.5}) {
+        INFO("beta " << beta);
+        auto [sys, tire] = make_free_wheel(40.0, R_free, k_z, 0.0);
+        sys.q << 1.0, 0.5, R_free - defl, 0.0, beta, 0.0;
+        sys.q_dot << 20.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+        sys.spin = 15.0 / R_eff;
+        sys.clear_forces();
+        sys.apply_force_elements();
+
+        require_vec3_near(tire->last_contact_pos_W, Vec3(1.0, 0.5, 0.0), 1e-12);
+        REQUIRE_THAT(tire->get_deflection(), WithinAbs(defl, 1e-12));
+        REQUIRE_THAT(tire->get_vertical_force(), WithinAbs(k_z * defl, 1e-6));
+        REQUIRE_THAT(tire->get_slip_ratio(), WithinAbs(-0.25, 1e-12));
+        REQUIRE_THAT(tire->get_slip_angle(), WithinAbs(0.0, 1e-12));
+        REQUIRE(tire->get_Fx() < -1000.0);
+        if (beta == 0.0) Fx_level = tire->get_Fx();
+        REQUIRE_THAT(tire->get_Fx(), WithinAbs(Fx_level, 1e-9 * std::abs(Fx_level)));
+        REQUIRE_THAT(tire->last_axle_moment, WithinAbs(-(R_free - defl) * tire->get_Fx(), 1e-9));
+    }
+}
+
+TEST_CASE("FullTireForce: a leaning wheel's contact point moves along its plane",
+          "[full_tire][contact]")
+{
+    // Camber: the wheel turned by gamma = 0.1 rad about X, its axis
+    // a = (0, cos g, sin g). The lowest point of its circle is along the
+    // part of -Z in its plane: -(z - (z.a) a) / |.| = (0, sin g, -cos g). With
+    // the centre at height R cos g - 0.02 the lowest point is 0.02 below the
+    // ground, at y + R sin g = 0.0349 m to the left of the centre, and so is
+    // the contact point, on the ground. The heading is a x z = (cos g, 0, 0),
+    // forward, and the lateral direction z x forward = Y.
+    using namespace mbd;
+    const Real R_free = 0.35, k_z = 200000.0, defl = 0.02, g = 0.1;
+    auto [sys, tire] = make_free_wheel(40.0, R_free, k_z, 0.0);
+    sys.q << 0.0, 0.0, R_free * std::cos(g) - defl, g, 0.0, 0.0;
+    sys.q_dot << 10.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+    sys.clear_forces();
+    sys.apply_force_elements();
+
+    require_vec3_near(tire->last_contact_pos_W, Vec3(0.0, R_free * std::sin(g), 0.0), 1e-12);
+    REQUIRE_THAT(tire->get_deflection(), WithinAbs(defl, 1e-12));
+    require_vec3_near(tire->last_forward_W, Vec3::UnitX(), 1e-15);
+    require_vec3_near(tire->last_lateral_W, Vec3::UnitY(), 1e-15);
+}
+
+namespace
+{
+    /// A plane rising along X at the angle theta: h = x tan(theta), its normal
+    /// (-sin theta, 0, cos theta).
+    class Incline final : public mbd::Road {
+    public:
+        explicit Incline(mbd::Real theta) : theta_(theta) {}
+        mbd::RoadPoint at(mbd::Real x, mbd::Real) const override
+        {
+            return {x * std::tan(theta_), mbd::Vec3(-std::sin(theta_), 0.0, std::cos(theta_)), 1.0};
+        }
+        const char* name() const override { return "incline"; }
+
+    private:
+        mbd::Real theta_;
+    };
+}
+
+TEST_CASE("FullTireForce: on an incline the contact point is below the centre along the road's normal",
+          "[full_tire][contact]")
+{
+    // A wheel standing upright (axis Y) on a plane rising at theta = 0.2 rad
+    // along X, its centre R - 0.02 from the plane along the normal n: at
+    // x = 2, z = 2 tan(theta) + (R - 0.02) / cos(theta). Its axis is normal to
+    // n, so its lowest point is c - R n, 0.02 below the plane, and the contact
+    // point c - (R - 0.02) n. The heading a x n = (cos theta, 0, sin theta):
+    // up the slope. The normal force k_z 0.02 = 4000 N acts along n.
+    using namespace mbd;
+    const Real R_free = 0.35, k_z = 200000.0, defl = 0.02, theta = 0.2;
+    auto [sys, tire] = make_free_wheel(40.0, R_free, k_z, 0.0);
+    tire->road = std::make_shared<Incline>(theta);
+    const Vec3 n(-std::sin(theta), 0.0, std::cos(theta));
+    const Vec3 centre(2.0, 0.0, 2.0 * std::tan(theta) + (R_free - defl) / std::cos(theta));
+    sys.q << centre.x(), centre.y(), centre.z(), 0.0, 0.0, 0.0;
+    sys.clear_forces();
+    sys.apply_force_elements();
+
+    require_vec3_near(tire->last_contact_pos_W, centre - (R_free - defl) * n, 1e-12);
+    REQUIRE_THAT(tire->get_deflection(), WithinAbs(defl, 1e-12));
+    require_vec3_near(tire->last_forward_W, Vec3(std::cos(theta), 0.0, std::sin(theta)), 1e-15);
+    require_vec3_near(sys.forces[1].f_W, k_z * defl * n, 1e-9);
 }

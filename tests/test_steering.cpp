@@ -109,6 +109,7 @@ TEST_CASE("Steering: steered tire develops lateral force from pure forward veloc
     // Give the vehicle forward speed
     sim.v(3) = 15.0;
     sim.initialize();
+    roll_wheels(sim, vm);   // the wheels rolling at the car's speed (task 7.3)
 
     // No steering: FL tire should have near-zero Fy
     sim.acceleration(sim.q, sim.v, sim.time);   // applies the force elements
@@ -148,6 +149,7 @@ TEST_CASE("Steering: vehicle turns left with positive steering angle",
     // Start already at speed to avoid violent transient
     sim.v(3) = 10.0;
     sim.initialize();
+    roll_wheels(sim, vm);   // the wheels rolling at the car's speed (task 7.3)
 
     const Real delta_steer = 0.03;
     const Real K_speed = 500.0;
@@ -193,6 +195,7 @@ TEST_CASE("Steering: vehicle turns right with negative steering angle",
 
     sim.v(3) = 10.0;
     sim.initialize();
+    roll_wheels(sim, vm);   // the wheels rolling at the car's speed (task 7.3)
 
     const Real delta_steer = -0.03;
     const Real K_speed = 500.0;
@@ -235,6 +238,7 @@ TEST_CASE("Steering: zero steering produces straight-line motion",
     vm.clear_steering();
     sim.v(3) = 10.0;
     sim.initialize();
+    roll_wheels(sim, vm);   // the wheels rolling at the car's speed (task 7.3)
 
     const Real K_speed = 500.0;
     const Real V_target = 10.0;
@@ -278,6 +282,7 @@ TEST_CASE("Steering: low-speed turn radius approximately matches kinematic predi
 
     sim.v(3) = 8.0;
     sim.initialize();
+    roll_wheels(sim, vm);   // the wheels rolling at the car's speed (task 7.3)
 
     const Real V_target = 8.0;
     const Real delta = 0.02;

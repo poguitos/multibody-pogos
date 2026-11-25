@@ -50,8 +50,10 @@ there. Branch `phase-7` starts from `v0.7.0`. Phase 7 (vehicle subsystems):
 task 7.1 is done (D60: the vehicle layer in ISO 8855 axes, X forward, Y left,
 Z up, decided in `mbd/vehicle/axes.hpp`), and 7.2 (D61: the road,
 `mbd/forces/road.hpp`, the tyres' only source of the ground; ISO 8608 random
-roads; the track surface in `mbd/analysis/track_surface.hpp`); 7.3, the wheel
-and its contact, is next. Conda environments for the project pin
+roads; the track surface in `mbd/analysis/track_surface.hpp`), and 7.3 (D62:
+the wheels bodies on spin joints, `mbd/vehicle/wheel.hpp`; the contact from
+the wheel plane and the road; the drivetrain without states, the engine's
+inertia left out until 7.8); 7.4, the tyre, is next. Conda environments for the project pin
 `"libblas=*=*openblas"` (MKL's NumPy crashes on this laptop). After a change to the bindings, reinstall `mbd-try`
 (an editable install whose module is older than its Python files stops with
 MBD-P011). The nightly workflow runs on schedule from `main`.

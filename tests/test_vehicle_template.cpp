@@ -31,14 +31,14 @@ TEST_CASE("Template: DefaultSedan has correct topology", "[template][topology]")
     kernel::System sys;
     auto vh = build_vehicle(sys, VehicleTemplate::DefaultSedan());
 
-    // ground + chassis + 4 wheels = 6 bodies
-    REQUIRE(sys.model.nbodies() == 6);
+    // ground + chassis + 4 sliders + 4 wheels = 10 bodies
+    REQUIRE(sys.model.nbodies() == 10);
 
-    // 6 (chassis) + 4 (prismatic) = 10 DOF
-    REQUIRE(sys.model.nv == 10);
+    // 6 (chassis) + 4 (prismatic) + 4 (spin) = 14 DOF
+    REQUIRE(sys.model.nv == 14);
 
-    // 5 joints (1 free + 4 prismatic): one per body but ground
-    REQUIRE(sys.model.nbodies() - 1 == 5);
+    // 9 joints (1 free + 4 prismatic + 4 revolute): one per body but ground
+    REQUIRE(sys.model.nbodies() - 1 == 9);
 
     // 8 force elements (4 springs + 4 tires), no constraints
     REQUIRE(sys.force_elements.size() == 8);
@@ -55,13 +55,14 @@ TEST_CASE("Template: SportsCar preset builds successfully", "[template][topology
     kernel::System sys;
     auto vh = build_vehicle(sys, VehicleTemplate::SportsCar());
 
-    // DWB front + DWB rear: ground + chassis + front steering rack + 4*3 = 15 bodies
-    REQUIRE(sys.model.nbodies() == 15);
+    // DWB front + DWB rear: ground + chassis + front steering rack + 4*4
+    // (LCA, upright, UCA, wheel) = 19 bodies
+    REQUIRE(sys.model.nbodies() == 19);
     REQUIRE(vh.rack_body[0] > 0);
     REQUIRE(vh.rack_body[1] == 0);
-    // Velocities: 6 (chassis) + 1 (rack) + 4*(1+3+1) = 27. The rack's driver
+    // Velocities: 6 (chassis) + 1 (rack) + 4*(1+3+1+1) = 31. The rack's driver
     // takes its freedom away again.
-    REQUIRE(sys.model.nv == 27);
+    REQUIRE(sys.model.nv == 31);
 }
 
 TEST_CASE("Template: FWDHatchback preset builds successfully", "[template][topology]")
@@ -71,11 +72,12 @@ TEST_CASE("Template: FWDHatchback preset builds successfully", "[template][topol
     kernel::System sys;
     auto vh = build_vehicle(sys, VehicleTemplate::FWDHatchback());
 
-    // McPherson front (2 bodies each, steered: plus a rack) + Simple rear (1 body each)
-    // Bodies: 1 (ground) + 1 (chassis) + 1 (rack) + 2*2 (MC front) + 2*1 (simple rear) = 9
-    REQUIRE(sys.model.nbodies() == 9);
-    // Velocities: 6 (chassis) + 1 (rack) + 2*(1+3) (MC front) + 2*1 (simple rear) = 17
-    REQUIRE(sys.model.nv == 17);
+    // McPherson front (3 bodies each with the wheel, steered: plus a rack) +
+    // Simple rear (slider and wheel)
+    // Bodies: 1 (ground) + 1 (chassis) + 1 (rack) + 2*3 (MC front) + 2*2 (simple rear) = 13
+    REQUIRE(sys.model.nbodies() == 13);
+    // Velocities: 6 (chassis) + 1 (rack) + 2*(1+3+1) (MC front) + 2*(1+1) (simple rear) = 21
+    REQUIRE(sys.model.nv == 21);
     REQUIRE(vh.rack_body[0] > 0);
 }
 
@@ -97,7 +99,11 @@ TEST_CASE("Template: DefaultSedan reaches static equilibrium", "[template][equil
     sim.q(2) += 0.02; // Small perturbation of the chassis height (ISO Z)
     sim.initialize();
 
-    sim.run(5.0, 0.001);
+    // RK4 at 0.5 ms: at rest each wheel's spin, on its joint since task 7.3,
+    // is held by its tyre's slip below V_low, a motion that decays at about
+    // 3000 per second, which RK4 follows below 0.9 ms (2.785 / h) and not at
+    // 1 ms, where the spins chatter by a few hundredths of a rad/s.
+    sim.run(5.0, 0.0005);
 
     // Velocities should be near zero
     for (int i = 0; i < sys.model.nv; ++i) {
@@ -396,7 +402,7 @@ TEST_CASE("Template: symmetric bounce keeps corners equal",
 
     // Left/right symmetry: FL=FR and RL=RR (suspension travel of each corner)
     // Front/rear may differ due to different spring rates
-    auto travel = [&](int c) { return sim.q(sys.model.idx_q[vh.wheel(c)]); };
+    auto travel = [&](int c) { return sim.q(sys.model.idx_q[vh.upright(c)]); };
     REQUIRE_THAT(travel(1), WithinAbs(travel(0), 1e-5)); // FR == FL
     REQUIRE_THAT(travel(3), WithinAbs(travel(2), 1e-5)); // RR == RL
 }

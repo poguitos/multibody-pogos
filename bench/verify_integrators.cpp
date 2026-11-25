@@ -834,6 +834,9 @@ void sedan(const std::string& dir)
             s.runs.push_back(m.adaptive ? run(make, m, T, 0.01, v) : run(make, m, T, v, 0.0));
         }
     };
+    // Since task 7.3 (D62) the wheel spins are joints of the model, not the
+    // drivetrain's states: the sedan has no fast states, and these runs are
+    // single-rate RK4 at their steps, kept to show it.
     Method mr = kRK4;
     mr.name = "multirate RK4 (fast steps 0.5 ms)";
     sweep(kRK4, {1e-3, 5e-4, 2.5e-4, 1e-4});
