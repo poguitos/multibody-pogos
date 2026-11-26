@@ -435,3 +435,28 @@ What the numbers show:
   run of consecutive ancestors as an Eigen segment operation, 6.5 times its
   scalar time on a binary tree of 64; plain loops over runs of L^T's columns
   keep both cases fast (data, section 2).
+
+## Task 7.5: the tyres, 26 November 2026
+
+`build\bench\mbd_bench.exe`, pinned to logical processor 2 at high priority,
+one run, **on battery power** (`Win32_Battery.BatteryStatus` 1, 68 %
+charge): the rows compare with each other, not with the tables above, which
+were taken on mains. One evaluation of each tyre at a combined slip (kappa
+= -0.05, alpha = 0.04 rad, gamma = 0.01 rad, 4000 N, 20 m/s), and one RK4 step
+of 1 ms of the double-wishbone sedan on four of it, moving at 30 % throttle:
+
+| Tyre | One evaluation [us] | The sedan's RK4 step of 1 ms [us] |
+|---|---|---|
+| Magic Formula (the Appendix 3 tyre) | 1.345 | 325.4 |
+| linear with saturation | 0.034 | 289.1 |
+| Fiala | 0.100 | 290.6 |
+| brush | 0.067 | 289.8 |
+
+The simple tyres evaluate 13 to 40 times faster than the Magic Formula. On
+the sedan that is 11 % of a step: the tyre on a wheel evaluates its model
+twice per evaluation (its characteristics for the slips, then its forces),
+so four tyres in four stages make 32 Magic Formula evaluations a step, 43
+us, of which the simple tyres take 1 to 3; the rest of the step is the
+vehicle's. A real-time budget gains about a tenth from a simple tyre on this
+car; evaluating the Magic Formula once per evaluation would gain half of
+that without one.

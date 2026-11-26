@@ -126,22 +126,39 @@ Real TireContactForce::get_vertical_force(const std::vector<RigidBodyState>& sta
     return std::max(Real(0.0), f_z);
 }
 
+namespace {
+
+std::shared_ptr<const TyreModel> not_null(std::shared_ptr<const TyreModel> model)
+{
+    MBD_THROW_IF(!model, "MBD-F011: FullTireForce: the tyre model is null");
+    return model;
+}
+
+} // namespace
+
 FullTireForce::FullTireForce(BodyIndex wheel_idx,
                              const MagicFormulaParameters& parameters,
                              std::shared_ptr<const Road> on_road)
+    : FullTireForce(wheel_idx, std::make_shared<MagicFormulaTyre>(parameters), std::move(on_road))
+{
+}
+
+FullTireForce::FullTireForce(BodyIndex wheel_idx,
+                             std::shared_ptr<const TyreModel> model,
+                             std::shared_ptr<const Road> on_road)
     : wheel_body_idx(wheel_idx)
-    , tyre(parameters)
-    , R_free(parameters.UNLOADED_RADIUS)
-    , k_z(parameters.VERTICAL_STIFFNESS)
-    , c_z(parameters.VERTICAL_DAMPING)
+    , tyre(not_null(std::move(model)))
+    , R_free(tyre->body().free_radius)
+    , k_z(tyre->body().vertical_stiffness)
+    , c_z(tyre->body().vertical_damping)
     , road(road_or_level(std::move(on_road)))
-    , V_low(parameters.VXLOW)
+    , V_low(tyre->body().low_speed)
 {
     MBD_THROW_IF(R_free <= 0.0, "MBD-F011: FullTireForce: free radius must be > 0");
     MBD_THROW_IF(k_z < 0.0, "MBD-F011: FullTireForce: vertical stiffness must be >= 0");
     MBD_THROW_IF(c_z < 0.0, "MBD-F011: FullTireForce: vertical damping must be >= 0");
     MBD_THROW_IF(!(V_low > 0.0), "MBD-F011: FullTireForce: VXLOW must be > 0");
-    const MagicFormulaOutput nominal = tyre.characteristics(parameters.FNOMIN, 0.0);
+    const TyreOutput nominal = tyre->characteristics(tyre->body().nominal_load, 0.0);
     sigma_kappa_nominal_ = nominal.sigma_kappa;
     sigma_alpha_nominal_ = nominal.sigma_alpha;
     MBD_THROW_IF(!(sigma_kappa_nominal_ > 0.0) || !(sigma_alpha_nominal_ > 0.0),
@@ -184,7 +201,7 @@ void FullTireForce::apply(const std::vector<RigidBodyState>& states,
     last_Fz = Fz;
     in_contact_ = Fz > 0.0;
     if (!in_contact_) {
-        last_output = MagicFormulaOutput{};
+        last_output = TyreOutput{};
         last_kappa = 0.0;
         last_alpha = 0.0;
         last_My = 0.0;
@@ -196,7 +213,7 @@ void FullTireForce::apply(const std::vector<RigidBodyState>& states,
     // low-speed damping; or the steady-state slips ---
     last_gamma = std::asin(std::clamp(axis.dot(n), Real(-1.0), Real(1.0)));
     const Real side = mirrored ? -1.0 : 1.0;   // a mirrored tyre: alpha and gamma negated
-    const MagicFormulaOutput c = tyre.characteristics(Fz, side * last_gamma, -1.0, contact.friction);
+    const TyreOutput c = tyre->characteristics(Fz, side * last_gamma, -1.0, contact.friction);
     last_sigma_kappa = std::max(c.sigma_kappa, sigma_min);
     last_sigma_alpha = std::max(c.sigma_alpha, sigma_min);
     kappa_sliding_ = c.Kxk > 0.0 ? 3.0 * c.mux * Fz / c.Kxk : 0.0;                          // (8.114)
@@ -216,21 +233,21 @@ void FullTireForce::apply(const std::vector<RigidBodyState>& states,
     last_alpha = std::atan(tan_alpha);
 
     // --- The Magic Formula ---
-    MagicFormulaInput in;
+    TyreInput in;
     in.Fz = Fz;
     in.kappa = kappa;
     in.alpha = side * last_alpha;
     in.gamma = side * last_gamma;
     in.Vcx = Vx;
     in.friction = contact.friction;
-    last_output = tyre.evaluate(in);
+    last_output = tyre->evaluate(in);
     if (mirrored) {
         for (Real* m : {&last_output.Fy, &last_output.Fy0, &last_output.Mx, &last_output.Mz, &last_output.Mz0,
                         &last_output.Mzr}) {
             *m = -*m;
         }
     }
-    const MagicFormulaOutput& o = last_output;
+    const TyreOutput& o = last_output;
 
     // The rolling resistance against the wheel's rolling: the formula's
     // moment for rolling forwards, scaled by the rolling speed over V_roll

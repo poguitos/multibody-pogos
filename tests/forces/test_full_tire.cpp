@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "mbd/forces/simple_tyres.hpp"
 #include "mbd/forces/tire.hpp"
 #include "mbd/kernel/simulator.hpp"
 #include "mbd/spatial/spatial.hpp"
@@ -216,7 +217,7 @@ TEST_CASE("FullTireForce: without lag the slips are the steady-state ones and th
     in.kappa = -0.25;
     in.alpha = std::atan(0.05);
     in.Vcx = 20.0;
-    const MagicFormulaOutput o = tire->tyre.evaluate(in);
+    const MagicFormulaOutput o = tire->tyre->evaluate(in);
     REQUIRE(o.Fx < -1000.0);   // braking
     REQUIRE(o.Fy < -500.0);    // against the leftward slide
     REQUIRE_THAT(tire->get_Fx(), WithinRel(o.Fx, 1e-12));
@@ -243,7 +244,7 @@ TEST_CASE("FullTireForce: forward velocity with locked wheel produces slip ratio
     in.Fz = 4000.0;
     in.kappa = -1.0;
     in.Vcx = 20.0;
-    REQUIRE_THAT(tire->get_Fx(), WithinRel(tire->tyre.evaluate(in).Fx, 1e-12));
+    REQUIRE_THAT(tire->get_Fx(), WithinRel(tire->tyre->evaluate(in).Fx, 1e-12));
     REQUIRE(tire->get_Fx() < -0.5 * 1.0422 * 4000.0);   // braking, at least half the peak
 }
 
@@ -325,7 +326,7 @@ TEST_CASE("FullTireForce: a leaning wheel's inclination and camber thrust",
     in.Fz = 4000.0;
     in.gamma = g;
     in.Vcx = 10.0;
-    REQUIRE_THAT(tire->get_Fy(), WithinRel(tire->tyre.evaluate(in).Fy, 1e-12));
+    REQUIRE_THAT(tire->get_Fy(), WithinRel(tire->tyre->evaluate(in).Fy, 1e-12));
     REQUIRE(tire->get_Fy() < -200.0);
 }
 
@@ -771,4 +772,45 @@ TEST_CASE("FullTireForce: a tyre mounted on the other side of the car is mirrore
     CHECK_FALSE(t.mirrored);
     t.mount(false);
     CHECK(t.mirrored);
+}
+
+TEST_CASE("FullTireForce: on any tyre model, the lag's steady state is the model's steady state",
+          "[full_tire][lag][simple]")
+{
+    // Task 7.5: the tyre on a wheel with each simple tyre (its body the
+    // Appendix 3 tyre's: radius 0.3135 m, stiffness 209651 N/m). The wheel
+    // 0.02 m into the ground and not moving vertically (Fz = 209651 x 0.02),
+    // at Vx = 20 and Vy = 1 m/s, spinning at 15 / R_eff: kappa = -0.25,
+    // tan(alpha) = 0.05. At u = sigma_kappa (-0.25) and v = sigma_alpha 0.05,
+    // the model's lengths at that load, both rates vanish and the forces and
+    // moment are the model's at those slips: to rounding.
+    using namespace mbd;
+    const std::shared_ptr<const TyreModel> models[] = {std::make_shared<LinearTyre>(LinearTyreParams{}),
+                                                       std::make_shared<FialaTyre>(FialaTyreParams{}),
+                                                       std::make_shared<BrushTyre>(BrushTyreParams{})};
+    for (const auto& model : models) {
+        INFO(model->name());
+        FreeWheel w;
+        w.tire = std::make_shared<FullTireForce>(1, model);
+        const Real R = w.tire->R_free, defl = 0.02, Fz = 209651.0 * defl;
+        REQUIRE(R == 0.3135);
+        w.q << 0.0, 0.0, R - defl, 0.0, 0.0, 0.0;
+        w.q_dot << 20.0, 1.0, 0.0, 0.0, 0.0, 0.0;
+        w.spin = 15.0 / (R - 0.5 * defl);
+        const TyreOutput c = model->characteristics(Fz, 0.0);
+        const Vec2 r = rates_at(w, -0.25 * c.sigma_kappa, 0.05 * c.sigma_alpha);
+        CHECK_THAT(r(0), WithinAbs(0.0, 1e-12));
+        CHECK_THAT(r(1), WithinAbs(0.0, 1e-12));
+        CHECK_THAT(w.tire->get_vertical_force(), WithinRel(Fz, 1e-12));
+        TyreInput in;
+        in.Fz = Fz;
+        in.kappa = -0.25;
+        in.alpha = std::atan(0.05);
+        in.Vcx = 20.0;
+        const TyreOutput o = model->evaluate(in);
+        CHECK_THAT(w.tire->get_Fx(), WithinRel(o.Fx, 1e-11));
+        CHECK_THAT(w.tire->get_Fy(), WithinRel(o.Fy, 1e-11));
+        CHECK_THAT(w.tire->get_Mz(), WithinRel(o.Mz, 1e-11));
+        CHECK(w.tire->size() == 2);
+    }
 }

@@ -37,6 +37,8 @@ add_library(multibody_core
     forces/contact.cpp
     forces/road.cpp
     forces/magic_formula.cpp
+    forces/simple_tyres.cpp
+    forces/tyre_model.cpp
     vehicle/suspension/double_wishbone.cpp
     vehicle/suspension/mcpherson.cpp
     vehicle/suspension/multilink.cpp

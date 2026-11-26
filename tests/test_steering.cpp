@@ -122,7 +122,7 @@ TEST_CASE("Steering: steered tire develops lateral force from pure forward veloc
     in.Fz = vm.tires[0]->get_vertical_force();
     in.Vcx = vm.tires[0]->last_Vx;
     REQUIRE_THAT(vm.tires[0]->get_slip_angle(), WithinAbs(0.0, 1e-12));
-    REQUIRE_THAT(Fy_no_steer, WithinAbs(vm.tires[0]->tyre.evaluate(in).Fy, 1e-6));
+    REQUIRE_THAT(Fy_no_steer, WithinAbs(vm.tires[0]->tyre->evaluate(in).Fy, 1e-6));
 
     // Apply 0.05 rad left steering to FL tire only
     vm.tires[0]->steer_angle = 0.05;

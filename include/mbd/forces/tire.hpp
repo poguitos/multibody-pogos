@@ -89,13 +89,14 @@ public:
 // Full tyre force element: the vertical contact and the Magic Formula, lagged
 // ============================================================================
 //
-// The tyre of task 7.4 (D63, D64). A Magic Formula parameter set
-// (mbd/forces/magic_formula.hpp, read from a .tir file by
-// mbd/io/tir_file.hpp) gives everything: the free radius (UNLOADED_RADIUS),
-// the vertical stiffness and damping (VERTICAL_STIFFNESS, VERTICAL_DAMPING)
-// of the contact above, and the forces in the road plane and the moments.
-// They act at the contact point, in the tyre's W axes there: x the heading,
-// y to its left, z the road's normal (ISO).
+// The tyre of tasks 7.4 and 7.5 (D63, D64, D65). Its model
+// (mbd/forces/tyre_model.hpp) gives everything: the Magic Formula of a
+// parameter set (mbd/forces/magic_formula.hpp, read from a .tir file by
+// mbd/io/tir_file.hpp), or a simple tyre (mbd/forces/simple_tyres.hpp). Its
+// body() gives the free radius, the vertical stiffness and damping of the
+// contact above and the low speed; its evaluate() the forces in the road
+// plane and the moments. They act at the contact point, in the tyre's W axes
+// there: x the heading, y to its left, z the road's normal (ISO).
 //
 // The wheel (ISO 8855, docs/conventions.md): its origin at the axle centre,
 // its Y the spin axis (to the left on a car), a forward roll a positive
@@ -131,11 +132,11 @@ class FullTireForce : public ForceElement, public kernel::StateElement {
 public:
     BodyIndex wheel_body_idx;  ///< The wheel: origin at the axle centre, Y its spin axis
 
-    MagicFormulaTyre tyre;     ///< The forces and moments, from the parameter set
+    std::shared_ptr<const TyreModel> tyre;   ///< The forces and moments (never null)
 
-    Real R_free;               ///< Free radius [m]: the set's UNLOADED_RADIUS
-    Real k_z;                  ///< Vertical stiffness [N/m]: VERTICAL_STIFFNESS
-    Real c_z;                  ///< Vertical damping [N s/m]: VERTICAL_DAMPING
+    Real R_free;               ///< Free radius [m]: the model's (UNLOADED_RADIUS)
+    Real k_z;                  ///< Vertical stiffness [N/m]: the model's (VERTICAL_STIFFNESS)
+    Real c_z;                  ///< Vertical damping [N s/m]: the model's (VERTICAL_DAMPING)
     std::shared_ptr<const Road> road;  ///< The ground (never null): height, normal, friction
 
     /// The angle by which the wheel plane is turned about the road's normal
@@ -154,11 +155,11 @@ public:
 
     /// Mount the tyre on the vehicle's right side (true) or its left: sets
     /// `mirrored`. The vehicle builders call it for every corner.
-    void mount(bool right_side) { mirrored = right_side != (tyre.parameters().side == TyreSide::Right); }
+    void mount(bool right_side) { mirrored = right_side != (tyre->body().side == TyreSide::Right); }
 
     // --- The lag (set before a simulator is made) ---
     bool lag{true};            ///< Two deflection states; without, the steady-state slips
-    Real V_low;                ///< [m/s] Below it, the low-speed damping and limit: the set's VXLOW
+    Real V_low;                ///< [m/s] Below it, the low-speed damping and limit: the model's (VXLOW)
     Real k_V_low0{770.0};      ///< [N s/m] The low-speed damping at rest (Pacejka's Table 8.4)
     Real sigma_min{0.02};      ///< [m] The shortest relaxation length (Pacejka's Table 8.4)
     Real limit_factor{1.0};    ///< A of (8.112): the deflection is held past A times full sliding
@@ -168,7 +169,7 @@ public:
     Real V_roll{0.01};
 
     // --- Cached at each apply() ---
-    mutable MagicFormulaOutput last_output;   ///< The Magic Formula's outputs (zero off the road)
+    mutable TyreOutput last_output;   ///< The model's outputs (zero off the road)
     mutable Real last_kappa{0.0};       ///< The longitudinal slip the Magic Formula took
     mutable Real last_alpha{0.0};       ///< The slip angle it took [rad], ISO: positive to the left
     mutable Real last_gamma{0.0};       ///< The inclination [rad]
@@ -191,13 +192,20 @@ public:
     /// off the road.
     mutable Real last_axle_moment{0.0};
 
-    /// The tyre of `parameters` on `wheel_idx`, on `on_road` (a level road at
-    /// height 0 if none is given). Throws MBD-F011 for a free radius that is
-    /// not positive or a negative stiffness or damping, MBD-F053 for a set the
-    /// Magic Formula cannot evaluate, MBD-F054 for one without relaxation
-    /// lengths.
+    /// The Magic Formula tyre of `parameters` on `wheel_idx`, on `on_road` (a
+    /// level road at height 0 if none is given). Throws MBD-F011 for a free
+    /// radius that is not positive or a negative stiffness or damping,
+    /// MBD-F053 for a set the Magic Formula cannot evaluate, MBD-F054 for one
+    /// without relaxation lengths.
     FullTireForce(BodyIndex wheel_idx,
                   const MagicFormulaParameters& parameters,
+                  std::shared_ptr<const Road> on_road = nullptr);
+
+    /// The tyre `model` on `wheel_idx` (task 7.5), on `on_road`. Throws
+    /// MBD-F011 for a model that is null or whose body is not valid,
+    /// MBD-F054 for one without relaxation lengths.
+    FullTireForce(BodyIndex wheel_idx,
+                  std::shared_ptr<const TyreModel> model,
                   std::shared_ptr<const Road> on_road = nullptr);
 
     const char* name() const override { return "tyre"; }

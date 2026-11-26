@@ -56,6 +56,19 @@ struct VehicleParams {
     /// VERTICAL_DAMPING); Pacejka's Appendix 3 tyre, a 205/60R15, unless set
     /// (mbd/io/tir_file.hpp reads one from a file).
     MagicFormulaParameters tyre{pacejka_appendix3_tyre()};
+    /// A tyre model in place of `tyre`'s Magic Formula (task 7.5: a simple
+    /// tyre, mbd/forces/simple_tyres.hpp); null, the Magic Formula of `tyre`.
+    std::shared_ptr<const TyreModel> tyre_model;
+
+    /// The tyre's radius, vertical stiffness, damping and low speed: the
+    /// model's if there is one, else the Magic Formula's.
+    TyreBody tyre_body() const { return tyre_model ? tyre_model->body() : MagicFormulaTyre::tyre_body(tyre); }
+
+    /// The tyre's law: `tyre_model`, else the Magic Formula of `tyre`.
+    std::shared_ptr<const TyreModel> make_tyre() const
+    {
+        return tyre_model ? tyre_model : std::make_shared<MagicFormulaTyre>(tyre);
+    }
 
     // --- Derived quantities ---
 
@@ -71,12 +84,12 @@ struct VehicleParams {
 
     Real tire_deflection_eq() const
     {
-        return weight_per_wheel() / tyre.VERTICAL_STIFFNESS;
+        return weight_per_wheel() / tyre_body().vertical_stiffness;
     }
 
     Real wheel_center_height_eq() const
     {
-        return tyre.UNLOADED_RADIUS - tire_deflection_eq();
+        return tyre_body().free_radius - tire_deflection_eq();
     }
 
     Real spring_force_eq() const

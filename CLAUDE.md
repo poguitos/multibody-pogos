@@ -58,7 +58,10 @@ and 5.2 from .tir files, `mbd/forces/magic_formula.hpp`, `docs/tyres.md`,
 checked against MFeval, whose curves are in `tests/forces/data/mfeval/`; on a
 wheel its slips lag by the tread's deflections, two states per tyre that the
 simulator attaches by itself; every vehicle's tyre, the book's Appendix 3
-tyre by default); 7.5, simple tyres, is next. Conda environments for the project pin
+tyre by default), and 7.5 (D65: simple tyres behind one interface,
+`mbd/forces/tyre_model.hpp` and `mbd/forces/simple_tyres.hpp`: linear with
+saturation, Adams's Fiala, Pacejka's brush model; vehicles take any model
+through `tyre_model`); 7.6, suspensions, is next. Conda environments for the project pin
 `"libblas=*=*openblas"` (MKL's NumPy crashes on this laptop). After a change to the bindings, reinstall `mbd-try`
 (an editable install whose module is older than its Python files stops with
 MBD-P011). The nightly workflow runs on schedule from `main`.

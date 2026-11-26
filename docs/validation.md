@@ -177,7 +177,12 @@ stays put (no drift over 5 s to 1e-5 m), rolled back by a hand calculation's
 3.38 mm (3.50 measured), where without the lag it creeps at the hand
 calculation's 4.64 mm/s (4.68). MF 5.2's rolling resistance and relaxation
 lengths have MFeval as their only source; rolling backwards is not
-compared.
+compared. The simple tyres (task 7.5, D65): each against its closed forms to
+rounding (the linear tyre's circle; the Fiala tyre's two branches and the
+brush model's pure side slip it shares; the brush model's (3.11) to (3.14)
+and (3.48) to (3.50), its torque's peak, isotropy, the locked wheel), and a
+car on each held on the slope; not against another code (Chrono's Fiala
+needs PyChrono's vehicle module).
 
 ## 10. A vehicle-sized stiff model: the HMMWV
 

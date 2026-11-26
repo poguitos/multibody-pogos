@@ -101,6 +101,7 @@ mbd_add_test_exe(test_forces
     forces/test_road.cpp
     forces/test_magic_formula.cpp
     forces/test_magic_formula_mfeval.cpp
+    forces/test_simple_tyres.cpp
     test_force_elements.cpp
 )
 

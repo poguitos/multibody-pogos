@@ -1,6 +1,6 @@
 // Timing of the dynamics algorithms (plan task 2.10), of the integrators on
-// the sedan (task 4.5), and of the mass matrix factorized densely and along
-// the tree (task 4.8).
+// the sedan (task 4.5), of the mass matrix factorized densely and along the
+// tree (task 4.8), and of the tyres (tasks 7.4, 7.5).
 //
 // Built on request only:  scripts\build.ps1 -Target mbd_bench
 // Run:                    build\bench\mbd_bench.exe
@@ -21,6 +21,7 @@
 #include <Eigen/SparseCholesky>
 #include <Eigen/SparseCore>
 
+#include "mbd/forces/simple_tyres.hpp"
 #include "mbd/kernel/algorithms.hpp"
 #include "mbd/kernel/constrained_dynamics.hpp"
 #include "mbd/kernel/simulator.hpp"
@@ -326,6 +327,42 @@ int main()
                     steps[steps.size() / 2], steps[steps.size() * 99 / 100], steps[steps.size() * 999 / 1000],
                     steps.back(), static_cast<double>(st.evaluations) / static_cast<double>(st.steps),
                     static_cast<double>(st.newton_iterations) / static_cast<double>(st.steps));
+    }
+
+    // The tyres (tasks 7.4, 7.5): one evaluation of each model at a combined
+    // slip and the Appendix 3 tyre's nominal load, and one RK4 step of 1 ms
+    // of the double-wishbone sedan on four of it, moving as above.
+    std::printf("\n| Tyre | one evaluation [us] | the sedan's RK4 step of 1 ms [us] |\n|---|---|---|\n");
+    const std::shared_ptr<const TyreModel> tyres[] = {std::make_shared<MagicFormulaTyre>(pacejka_appendix3_tyre()),
+                                                      std::make_shared<LinearTyre>(LinearTyreParams{}),
+                                                      std::make_shared<FialaTyre>(FialaTyreParams{}),
+                                                      std::make_shared<BrushTyre>(BrushTyreParams{})};
+    for (const auto& tyre : tyres) {
+        TyreInput in;
+        in.Fz = 4000.0;
+        in.kappa = -0.05;
+        in.alpha = 0.04;
+        in.gamma = 0.01;
+        in.Vcx = 20.0;
+        const double evaluation = time_per_call_us([&] { volatile double x = tyre->evaluate(in).Fy; (void)x; });
+
+        auto tmpl = VehicleTemplate::DefaultSedan();
+        tmpl.front_axle.suspension_type = SuspensionType::DoubleWishbone;
+        tmpl.rear_axle.suspension_type  = SuspensionType::DoubleWishbone;
+        tmpl.front_axle.tyre_model = tmpl.rear_axle.tyre_model = tyre;
+        kernel::System sys;
+        auto vh = build_vehicle(sys, tmpl);
+        kernel::Simulator sim(sys);
+        sim.method = kernel::Integrator::RK4;
+        set_vehicle_equilibrium(sim, vh);
+        sim.initialize();
+        Drivetrain dt(tmpl.drivetrain);
+        dt.initialize(sim, vh);
+        dt.connect(sim, vh);
+        dt.throttle = 0.3;
+        sim.run(0.2, 0.001);
+        const double step = time_per_call_us([&] { sim.step(0.001); });
+        std::printf("| %s | %.3f | %.1f |\n", tyre->name(), evaluation, step);
     }
     return 0;
 }

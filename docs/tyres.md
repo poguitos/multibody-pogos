@@ -1,9 +1,9 @@
 # Tyres
 
-Plan task 7.4 (decisions D63, D64): the Magic Formula tyre, from a tyre
-property file (.tir), in its two versions MF 6.1 and MF 5.2, and the tyre on
-a wheel, its slips lagging behind the motion over its relaxation lengths,
-valid down to rest. This page says what it computes, from which equations,
+Plan tasks 7.4 and 7.5 (decisions D63, D64, D65): the Magic Formula tyre,
+from a tyre property file (.tir), in its two versions MF 6.1 and MF 5.2; the
+tyre on a wheel, its slips lagging behind the motion over its relaxation
+lengths, valid down to rest; and three simple tyres beside it. This page says what it computes, from which equations,
 how it was checked, and what it leaves out.
 
 | What | Where |
@@ -11,6 +11,8 @@ how it was checked, and what it leaves out.
 | The tyre: steady-state forces and moments | `mbd/forces/magic_formula.hpp` |
 | The .tir reader | `mbd/io/tir_file.hpp` |
 | The tyre on a wheel: contact, lag, mirroring | `mbd/forces/tire.hpp` (`FullTireForce`) |
+| Any tyre's law: the interface | `mbd/forces/tyre_model.hpp` (`TyreModel`) |
+| Simple tyres: linear, Fiala, brush | `mbd/forces/simple_tyres.hpp`; tests `tests/forces/test_simple_tyres.cpp` |
 | Tests: identities at the nominal state | `tests/forces/test_magic_formula.cpp` |
 | Tests: the tyre on a wheel | `tests/forces/test_full_tire.cpp`; the car on a slope, `tests/test_drivetrain.cpp` |
 | Tests: against MFeval, an independent implementation | `tests/forces/test_magic_formula_mfeval.cpp` |
@@ -200,6 +202,74 @@ aligning moments negated coming out. The vehicle builders mount every
 corner (`FullTireForce::mount(right_side)`), so a car's left and right tyres
 from one file push against each other at zero slip (their ply steer and
 conicity) instead of steering the car.
+
+## Simple tyres
+
+Task 7.5 (D65), `mbd/forces/simple_tyres.hpp`: three tyres of a few
+parameters and closed forms, kept for real-time use and for teaching. Each is
+a `TyreModel` (`mbd/forces/tyre_model.hpp`), the interface the Magic Formula
+implements too, so the tyre on a wheel, its lag, and the vehicles take any of
+them:
+
+```cpp
+#include "mbd/forces/simple_tyres.hpp"
+
+mbd::VehicleParams vp;                                          // the simple car
+vp.tyre_model = std::make_shared<mbd::FialaTyre>(mbd::FialaTyreParams{});
+// or, on a template: tmpl.front_axle.tyre_model = ...;
+// or on one wheel: FullTireForce(wheel, std::make_shared<mbd::BrushTyre>(p));
+```
+
+| Tyre | Forces | Aligning torque | Source |
+|---|---|---|---|
+| `LinearTyre` | Fx = Kxk kappa, Fy = Kya alpha, the stiffnesses in proportion to the load; the force brought back onto the friction circle mu Fz | -t Fy, a constant trail t | |
+| `FialaTyre` | Fy the brush model's at pure side slip (3.11), in tan(alpha), with C_alpha; Fx = C_kappa kappa up to kappa_c = mu Fz / (2 C_kappa), then mu Fz - (mu Fz)^2 / (4 \|kappa\| C_kappa); the stiffnesses constant; mu from mu_max at no slip to mu_min at a combined slip sqrt(kappa^2 + tan^2 alpha) of 1 | the brush model's (3.12), the tyre's width for the half contact length | MSC Adams's Fiala tyre, as Project Chrono's `ChFialaTire` (BSD-3) has it |
+| `BrushTyre` | the isotropic brush model with a parabolic pressure distribution: the theoretical slip s = (kappa, -tan alpha) / (1 + kappa), the force mu Fz (3 theta s - 3 (theta s)^2 + (theta s)^3) along it up to full sliding at theta s = 1, theta = C / (3 mu Fz), C = 2 c_p a^2 in proportion to the load and a growing as its square root | -t Fy with the trail of (3.13) at theta s | Pacejka, 3rd ed., section 3.2, (3.11) to (3.14), (3.34), (3.46) to (3.50) |
+
+Common to the three: the rolling resistance My = -f_r R0 Fz against the
+rolling; no overturning moment, no camber, no pressure, no shifts; the
+relaxation lengths the slip stiffnesses over the carcass's stiffnesses, as
+MF 6.1's, so that at rest each holds by the carcass's spring. The defaults
+describe roughly the Appendix 3 tyre at its nominal load (4000 N): its slip
+stiffnesses (86748 N, 53356 N/rad; the brush model's one stiffness is the
+cornering stiffness), friction 1, a trail of 0.028 m (the brush model's a / 3
+with a = 0.075 m), f_r = 0.007, the carcass's stiffnesses 358066 and 102673
+N/m, the radius, vertical stiffness and damping.
+
+What each leaves out, by its design: the linear tyre has no peak and no
+interaction but the circle; the Fiala tyre's two forces do not reduce each
+other, so their sum can pass mu Fz at combined slip (as Adams's has it), and
+its stiffnesses do not follow the load; the brush model has one stiffness in
+both directions, while a real tyre's longitudinal one is often half as large
+again, and its aligning torque never changes sign. Chrono's Fiala takes its
+rolling resistance as a length times the load; here it is a coefficient
+times the radius, as for the other two. The book's own "Fiala" model (1954)
+has a flexible carcass and no combined slip; the industry's Fiala tyre is
+the one here.
+
+**How they were checked** (`tests/forces/test_simple_tyres.cpp`): each
+against its closed forms, written out in the test from the source: the
+linear tyre's stiffnesses, circle and trail; Fiala's longitudinal force on
+both branches and continuous at kappa_c, its side force and torque equal to
+the brush model's (3.11), (3.12) with the width (the torque's peak 27 mu Fz
+w / 256 at theta s = 1/4), full sliding, the friction falling with the
+combined slip; the brush model's (3.11) to (3.14) at four slip angles, its
+torque's peak 27 mu Fz a / 256, isotropy in the theoretical slip (the
+book's Figure 3.8), combined slip (3.48) to (3.50), the locked wheel's mu Fz
+cos(alpha) and sin(alpha), the scaling with load; all to rounding. On a
+wheel each model's lag settles to its steady state, and a car on each, held
+on its brakes on a 10 % slope, stays put and rolls back by the hand
+calculation shared with the Magic Formula (`tests/test_drivetrain.cpp`).
+
+**Their cost** (`build\bench\mbd_bench.exe`, pinned to a performance core,
+26 November 2026, on battery power: compare the rows with each other): one
+evaluation at a combined slip, the Magic Formula 1.35 us, the linear tyre
+0.034, Fiala 0.100, the brush model 0.067, 13 to 40 times less; one RK4 step
+of 1 ms of the double-wishbone sedan, 325 us on the Magic Formula and 289 to
+291 us on a simple tyre, 11 % less: the Magic Formula's 32 evaluations a
+step (four tyres, four stages, two each: its characteristics, then its
+forces) are what the simple tyres save; the rest of the step is the
+vehicle's. `docs/performance.md` has the table.
 
 ## Reading .tir files
 

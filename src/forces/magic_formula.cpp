@@ -261,19 +261,6 @@ MagicFormulaOutput MagicFormulaTyre::evaluate(const MagicFormulaInput& in) const
     return out;
 }
 
-MagicFormulaOutput MagicFormulaTyre::characteristics(Real Fz, Real gamma, Real pressure, Real friction) const
-{
-    MagicFormulaInput in;
-    in.Fz = Fz;
-    in.gamma = gamma;
-    in.pressure = pressure;
-    in.friction = friction;
-    in.kappa = 0.0;
-    in.alpha = 0.0;
-    in.Vcx = 0.0;
-    return evaluate(in);
-}
-
 MagicFormulaParameters pacejka_appendix3_tyre()
 {
     // Every value of Table A3.1 that is not 0, as the file has them; the

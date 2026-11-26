@@ -104,6 +104,19 @@ struct AxleConfig {
     /// VERTICAL_STIFFNESS, VERTICAL_DAMPING); Pacejka's Appendix 3 tyre, a
     /// 205/60R15, unless set (mbd/io/tir_file.hpp reads one from a file).
     MagicFormulaParameters tyre{pacejka_appendix3_tyre()};
+    /// A tyre model in place of `tyre`'s Magic Formula (task 7.5: a simple
+    /// tyre, mbd/forces/simple_tyres.hpp); null, the Magic Formula of `tyre`.
+    std::shared_ptr<const TyreModel> tyre_model;
+
+    /// The tyre's radius, vertical stiffness, damping and low speed: the
+    /// model's if there is one, else the Magic Formula's.
+    TyreBody tyre_body() const { return tyre_model ? tyre_model->body() : MagicFormulaTyre::tyre_body(tyre); }
+
+    /// The tyre's law: `tyre_model`, else the Magic Formula of `tyre`.
+    std::shared_ptr<const TyreModel> make_tyre() const
+    {
+        return tyre_model ? tyre_model : std::make_shared<MagicFormulaTyre>(tyre);
+    }
 
     // Hardpoints (used only when suspension_type != Simple)
     DwbHardpoints dwb;

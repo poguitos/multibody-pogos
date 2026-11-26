@@ -5,9 +5,11 @@
 #include <cmath>
 #include <algorithm>
 #include <iomanip>
+#include <memory>
 #include <string>
 #include <utility>
 
+#include "mbd/forces/simple_tyres.hpp"
 #include "mbd/vehicle/drivetrain.hpp"
 #include "mbd/vehicle/vehicle_template.hpp"
 
@@ -49,6 +51,63 @@ namespace
         mbd::VehicleModel vm = mbd::build_simple_vehicle(sys, vp);
         for (mbd::FullTireForce* t : vm.tires) t->lag = false;
         return vm;
+    }
+
+    /// The simple car of `vp` on a slope of 10 %, facing up it, its brakes
+    /// full on from rest, for 10 s (RK4 at 1 ms): gravity turned by
+    /// atan(0.1) over a level road. The chassis's mean position over 5-6 s
+    /// and 9-10 s, its speed at the end, how far it moved back, and whether
+    /// every wheel ended locked.
+    struct SlopeRun {
+        mbd::Real mean_early, mean_late, speed_end, moved_back;
+        bool locked;
+    };
+    SlopeRun held_on_slope(const mbd::VehicleParams& vp, bool lag)
+    {
+        using namespace mbd;
+        const Real beta = std::atan(0.1);
+        kernel::System sys;
+        auto vm = build_simple_vehicle(sys, vp);
+        sys.model.gravity = g_accel * Vec3(-std::sin(beta), 0.0, -std::cos(beta));   // after: the builder sets it
+        for (FullTireForce* t : vm.tires) t->lag = lag;
+        kernel::Simulator sim(sys);
+        sim.method = kernel::Integrator::RK4;
+        set_vehicle_equilibrium(sim, vm);
+        sim.initialize();
+        const Real x0 = sim.states()[static_cast<std::size_t>(vm.chassis_body)].p_WB.x();
+
+        Drivetrain dt;
+        dt.initialize(sim, vm);
+        dt.throttle = 0.0;
+        dt.brake = 1.0;
+        dt.connect(sim, vm);
+
+        SlopeRun r{0.0, 0.0, 0.0, 0.0, true};
+        for (int i = 1; i <= 10000; ++i) {
+            sim.step(0.001);
+            const Real x = sim.states()[static_cast<std::size_t>(vm.chassis_body)].p_WB.x();
+            if (i > 5000 && i <= 6000) r.mean_early += x / 1000.0;
+            if (i > 9000) r.mean_late += x / 1000.0;
+        }
+        r.speed_end = vx(sim);
+        r.moved_back = x0 - r.mean_late;
+        for (int c = 0; c < 4; ++c) r.locked = r.locked && dt.wheel_locked[c];
+        return r;
+    }
+
+    /// How far that car rolls back by hand (the slope test below): the
+    /// tyres' carcass springs c_x and the pitch on the springs and tyres.
+    mbd::Real slope_roll_back(const mbd::VehicleParams& vp, mbd::Real cx)
+    {
+        using namespace mbd;
+        const Real beta = std::atan(0.1);
+        const Real load = vp.total_mass() * g_accel * std::sin(beta);
+        const Real h = vp.chassis_height_eq(), z_w = vp.wheel_center_height_eq();
+        const Real kt = vp.tyre_body().vertical_stiffness;
+        const Real k = vp.k_susp * kt / (vp.k_susp + kt);
+        const Real k_pitch = 2.0 * k * (vp.front_axle_x * vp.front_axle_x + vp.rear_axle_x * vp.rear_axle_x);
+        const Real M = load * h - 4.0 * vp.wheel_mass * g_accel * std::sin(beta) * (h - z_w);
+        return load / (4.0 * cx) + h * M / k_pitch;
     }
 }
 
@@ -548,56 +607,15 @@ TEST_CASE("Drivetrain: a car held on its brakes on a slope stays put",
     // 5-10 s; allowed 10 % (the axles' loads, and the shifts, which fade
     // in with the speed's square: 5e-5 of them at this speed).
     using namespace mbd;
-    const Real beta = std::atan(0.1);
-    struct Run {
-        Real mean_early, mean_late, speed_end, moved_back;
-        bool locked;
-    };
-    auto run = [&](bool lag) {
-        kernel::System sys;
-        VehicleParams vp;
-        auto vm = build_simple_vehicle(sys, vp);
-        sys.model.gravity = g_accel * Vec3(-std::sin(beta), 0.0, -std::cos(beta));   // after: the builder sets it
-        for (FullTireForce* t : vm.tires) t->lag = lag;
-        kernel::Simulator sim(sys);
-        sim.method = kernel::Integrator::RK4;
-        set_vehicle_equilibrium(sim, vm);
-        sim.initialize();
-        const Real x0 = sim.states()[static_cast<std::size_t>(vm.chassis_body)].p_WB.x();
-
-        Drivetrain dt;
-        dt.initialize(sim, vm);
-        dt.throttle = 0.0;
-        dt.brake = 1.0;
-        dt.connect(sim, vm);
-
-        Run r{0.0, 0.0, 0.0, 0.0, true};
-        for (int i = 1; i <= 10000; ++i) {
-            sim.step(0.001);
-            const Real x = sim.states()[static_cast<std::size_t>(vm.chassis_body)].p_WB.x();
-            if (i > 5000 && i <= 6000) r.mean_early += x / 1000.0;
-            if (i > 9000) r.mean_late += x / 1000.0;
-        }
-        r.speed_end = vx(sim);
-        r.moved_back = x0 - r.mean_late;
-        for (int c = 0; c < 4; ++c) r.locked = r.locked && dt.wheel_locked[c];
-        return r;
-    };
-
     VehicleParams vp;
     const MagicFormulaTyre tyre(vp.tyre);
     const MagicFormulaOutput at_rest = tyre.characteristics(vp.weight_per_wheel(), 0.0);
     REQUIRE(at_rest.Fx == 0.0);   // faded out at rest
-    const Real load = vp.total_mass() * g_accel * std::sin(beta);
-    const Real cx = at_rest.Kxk / at_rest.sigma_kappa;
-    const Real h = vp.chassis_height_eq(), z_w = vp.wheel_center_height_eq();
-    const Real k = vp.k_susp * vp.tyre.VERTICAL_STIFFNESS / (vp.k_susp + vp.tyre.VERTICAL_STIFFNESS);
-    const Real k_pitch = 2.0 * k * (vp.front_axle_x * vp.front_axle_x + vp.rear_axle_x * vp.rear_axle_x);
-    const Real M = load * h - 4.0 * vp.wheel_mass * g_accel * std::sin(beta) * (h - z_w);
-    const Real x_static = load / (4.0 * cx) + h * M / k_pitch;
+    const Real load = vp.total_mass() * g_accel * std::sin(std::atan(0.1));
+    const Real x_static = slope_roll_back(vp, at_rest.Kxk / at_rest.sigma_kappa);
     const Real v_creep = load * vp.tyre.VXLOW / (4.0 * at_rest.Kxk);
 
-    const Run held = run(true);
+    const SlopeRun held = held_on_slope(vp, true);
     INFO("with the lag: rolled back " << held.moved_back << " m (by hand " << x_static << "), means "
          << held.mean_early << " and " << held.mean_late << " m, speed at 10 s " << held.speed_end << " m/s");
     CHECK(held.locked);
@@ -606,11 +624,41 @@ TEST_CASE("Drivetrain: a car held on its brakes on a slope stays put",
     CHECK(held.moved_back > 0.98 * x_static);
     CHECK(held.moved_back < 1.10 * x_static);
 
-    const Run crept = run(false);
+    const SlopeRun crept = held_on_slope(vp, false);
     const Real creep = (crept.mean_early - crept.mean_late) / 4.0;
     INFO("without the lag: crept " << creep << " m/s (by hand " << v_creep << ")");
     CHECK(crept.locked);
     CHECK_THAT(creep, WithinRel(v_creep, 0.1));
+}
+
+TEST_CASE("Drivetrain: a car on a simple tyre, held on its brakes on a slope, stays put too",
+          "[drivetrain][braking][slope][simple]")
+{
+    // Task 7.5: the slope test above with each simple tyre (D65). Their
+    // relaxation lengths are the slip stiffnesses over the same carcass
+    // stiffness c_x = 358066 N/m (whether the stiffness grows with the load,
+    // linear and brush, or not, Fiala), so at rest each holds by the same
+    // spring and the car rolls back by the same hand calculation, 3.38 mm,
+    // allowed from 2 % short to 10 % beyond as above; it stays put: the
+    // means over 5-6 s and 9-10 s within 1e-5 m, the speed at 10 s under
+    // 1e-5 m/s.
+    using namespace mbd;
+    VehicleParams vp;
+    const Real x_static = slope_roll_back(vp, 358066.0);
+    const std::shared_ptr<const TyreModel> models[] = {std::make_shared<LinearTyre>(LinearTyreParams{}),
+                                                       std::make_shared<FialaTyre>(FialaTyreParams{}),
+                                                       std::make_shared<BrushTyre>(BrushTyreParams{})};
+    for (const auto& model : models) {
+        vp.tyre_model = model;
+        const SlopeRun held = held_on_slope(vp, true);
+        INFO(model->name() << ": rolled back " << held.moved_back << " m (by hand " << x_static << "), means "
+             << held.mean_early << " and " << held.mean_late << " m, speed at 10 s " << held.speed_end << " m/s");
+        CHECK(held.locked);
+        CHECK(std::abs(held.mean_late - held.mean_early) < 1e-5);
+        CHECK(std::abs(held.speed_end) < 1e-5);
+        CHECK(held.moved_back > 0.98 * x_static);
+        CHECK(held.moved_back < 1.10 * x_static);
+    }
 }
 
 TEST_CASE("Drivetrain: Dormand-Prince reproduces RK4's braking deceleration",

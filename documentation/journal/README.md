@@ -106,3 +106,4 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 24 Nov 2026 | [Phase 7: the road](2026-11-24_phase-7-road.md) | 7.2, D61 | see git log | At the time |
 | 25 Nov 2026 | [Phase 7: the wheel and its contact](2026-11-25_phase-7-wheel.md) | 7.3, F6, F8, D4, D62 | see git log | At the time |
 | 25 Nov 2026 | [Phase 7: the tyre](2026-11-25_phase-7-tyre.md) | 7.4, F7, D63, D64 | `0e5515a`, then see git log | At the time |
+| 26 Nov 2026 | [Phase 7: the simple tyres](2026-11-26_phase-7-simple-tyres.md) | 7.5, D65 | see git log | At the time |

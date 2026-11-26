@@ -77,6 +77,13 @@ struct PacejkaTireParams {
     /// and the curvature's sign terms are left out, and the cornering
     /// stiffness is taken positive, this formula's convention.
     static PacejkaTireParams FromMagicFormula(const MagicFormulaParameters& mf);
+
+    /// Any tyre model reduced to this formula about its nominal load (task
+    /// 7.5): the slip stiffnesses and friction of its characteristics() there
+    /// and their slopes in the load increment (central differences of 1e-3);
+    /// the shape and curvature factors and the combined weights the default
+    /// passenger car's.
+    static PacejkaTireParams FromTyreModel(const TyreModel& model);
 };
 
 // ============================================================================

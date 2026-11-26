@@ -771,8 +771,15 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
 
 ### MBD-F011
 
-`FullTireForce: free radius must be > 0`, `vertical stiffness must be >= 0` or
-`vertical damping must be >= 0`
+`FullTireForce: free radius must be > 0`, `vertical stiffness must be >= 0`,
+`vertical damping must be >= 0`, `VXLOW must be > 0` or `the tyre model is null`
+
+- **Means:** the tyre on a wheel was given a model whose body (radius,
+  vertical stiffness and damping, low speed) cannot carry a wheel, or no
+  model (task 7.5: `FullTireForce(wheel, model)`).
+- **What to do:** check the tyre's parameters (UNLOADED_RADIUS,
+  VERTICAL_STIFFNESS, VERTICAL_DAMPING, VXLOW of a .tir file; the fields of a
+  simple tyre's parameters), and pass a model.
 
 ### MBD-F020
 
@@ -857,6 +864,17 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
   zero, for MF 5.2 PTX1, or PTY1 and PTY2.
 - **What to do:** use a .tir file that has them, or give them (a measured
   relaxation length sigma gives a stiffness of the slip stiffness over sigma).
+
+### MBD-F055
+
+`<model> tyre: <parameter> must be > 0` or `must be >= 0`
+
+- **Means:** a simple tyre (`LinearTyre`, `FialaTyre`, `BrushTyre`,
+  `mbd/forces/simple_tyres.hpp`, task 7.5) was given a parameter it cannot
+  use: a radius, nominal load, low speed, slip stiffness, friction, half
+  contact length or carcass stiffness that is not positive, or a stiffness,
+  damping, rolling resistance, trail or width that is negative.
+- **What to do:** correct the parameter the message names.
 
 ## A: analysis
 

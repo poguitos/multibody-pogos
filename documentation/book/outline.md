@@ -329,6 +329,11 @@ check instead; the tyre's lag as a state of the tread, a spring at rest and
 a first-order lag in distance when rolling, and the car on a slope that
 crept for a lack of it; why a fitted curve's shifts must fade at rest, and
 why a car's right tyres are mirrored. *J: Phase 7, the tyre. D63, D64.*
+Simple tyres beside it: the brush model of chapter 3 as running code, the
+theoretical slip that makes combined slip one-dimensional, a central
+difference that is not the slope; what "Fiala" means in the books and in
+the codes; and what a simple tyre saves in a vehicle's step (a tenth). *J:
+Phase 7, the simple tyres. D65.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

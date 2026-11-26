@@ -75,6 +75,7 @@ and the journal entry of the work refers to them by number
 | D62 | The wheel as a body on a spin joint; the contact from the wheel plane and the road; the drivetrain without states, the engine's inertia left out until 7.8 | 25 Nov 2026 | In force, task 7.3 |
 | D63 | The Magic Formula tyre: TNO's MF-Tyre 6.1 as published, where the book differs; MF 5.2 as 6.1 with 5.2's forms; checked against MFeval | 25 Nov 2026 | In force, task 7.4 |
 | D64 | The tyre on a wheel: the Magic Formula of a parameter set, its slips lagging by the semi-non-linear model, mirrored by side, faded at rest; every vehicle's tyre | 25 Nov 2026 | In force, task 7.4 |
+| D65 | Simple tyres behind one interface: linear with saturation, Adams's Fiala, Pacejka's brush model | 26 Nov 2026 | In force, task 7.5 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -3006,3 +3007,70 @@ and the journal entry of the work refers to them by number
   - Rolling backwards: the deflections' equations use |Vx| and give slips
     that oppose the sliding; the trail and residual torque change sign with
     Vcx. Not compared with any reference.
+
+## D65. Simple tyres behind one interface: linear with saturation, Adams's Fiala, Pacejka's brush model
+
+- **Context.** Task 7.5: "Simple tyres. Linear with saturation, Fiala and
+  brush models, kept for real-time use and for teaching." The plan gives it
+  no "done when". After task 7.4 the tyre on a wheel (`FullTireForce`) held a
+  Magic Formula; the old simple formula (`mbd/forces/pacejka.hpp`) was left to
+  the bicycle model. "Fiala" names two things: in Pacejka's book (section
+  3.1) Fiala's 1954 model has a flexible carcass and pure slip only, its
+  formulas not printed; in multibody codes (MSC Adams, Project Chrono's
+  `ChFialaTire`) the Fiala tyre is the brush model's pure side slip with a
+  longitudinal force of its own and a friction falling with slip. The book
+  gives the brush model in full (section 3.2), with combined slip for the
+  isotropic case. PyChrono's vehicle module, which would have let Chrono's
+  Fiala be run, is not in the cross-check environment.
+- **Decision.**
+  - **One interface**, `TyreModel` (`mbd/forces/tyre_model.hpp`): evaluate()
+    the forces and moments from load, slips, inclination, speed, pressure
+    and road friction; characteristics() the slip stiffnesses, friction and
+    relaxation lengths at a load (by default evaluate() at zero slip); body()
+    the radius, vertical stiffness and damping, nominal load, low speed and
+    side. The Magic Formula implements it; its input and output became the
+    interface's (`MagicFormulaInput` and `MagicFormulaOutput` are names for
+    them). `FullTireForce` holds a `std::shared_ptr<const TyreModel>`; its
+    lag, low-speed terms and mirroring apply to any model.
+  - **Three simple tyres** (`mbd/forces/simple_tyres.hpp`): `LinearTyre`
+    (stiffnesses in proportion to the load, the friction circle, a constant
+    trail); `FialaTyre`, the industry's Fiala as Chrono has it (read for
+    this, BSD-3, kept outside the repository); `BrushTyre`, the book's
+    isotropic brush model with a parabolic pressure distribution, its
+    contact length growing as the square root of the load. Common to the
+    three: rolling resistance f_r R0 Fz, the relaxation lengths the slip
+    stiffnesses over the carcass's stiffnesses, defaults near the Appendix 3
+    tyre at its nominal load; MBD-F055 for a parameter they cannot use.
+  - **Vehicles** take any model: `VehicleParams::tyre_model` and
+    `AxleConfig::tyre_model`, null for the Magic Formula of `tyre`;
+    `tyre_body()` and `make_tyre()` give the one in use. The bicycle model
+    reduces any model to its simple formula
+    (`PacejkaTireParams::FromTyreModel`).
+  - **"Done when"**, set here as the plan gave none: each model reproduces
+    its closed forms, its stiffnesses and its friction limit; carries a
+    vehicle (the car held on its brakes on a slope stays put on each); and
+    its cost per evaluation and per vehicle step is measured against the
+    Magic Formula's.
+- **Alternatives.**
+  - The book's Fiala (flexible carcass): its formulas are not in the book,
+    and no multibody code uses it under that name.
+  - The brush model with different stiffnesses in x and y: its combined slip
+    has no closed form (the book restricts itself to the isotropic case);
+    the Magic Formula serves for a realistic tyre.
+  - A friction ellipse for Fiala's combined slip: Adams's and Chrono's Fiala
+    have none; a tyre called Fiala should behave as theirs.
+  - Simple tyres as separate force elements: the lag, the low-speed terms,
+    the mirroring and the contact would be written again for each.
+  - A virtual call per evaluation against a template: the call costs
+    nanoseconds against microseconds of the Magic Formula and the step.
+- **Consequences.**
+  - `FullTireForce::tyre` is a pointer (`tire->tyre->evaluate`); the Magic
+    Formula's `characteristics()` is the interface's.
+  - The cost, in `docs/performance.md`: one evaluation 0.034 to 0.100 us
+    against the Magic Formula's 1.35 (13 to 40 times less); one RK4 step of
+    the double-wishbone sedan 289 to 291 us against 325, 11 % less, because
+    the tyre on a wheel evaluates its model twice per evaluation and the
+    rest of the step is the vehicle's (measured on battery power, one run:
+    the rows compare with each other).
+  - The simple tyres have no shifts, so at rest they need no fade; their
+    aligning torque has no residual part and does not change sign.

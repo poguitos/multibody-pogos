@@ -42,14 +42,11 @@
 // motion; the comparison with MFeval is at Vcx > 0 only.
 
 #include "mbd/core/core.hpp"
+#include "mbd/forces/tyre_model.hpp"
 
 #include <string>
 
 namespace mbd {
-
-/// The side of a vehicle a tyre's parameters describe (a .tir file's
-/// TYRESIDE): a tyre mounted on the other side is evaluated mirrored.
-enum class TyreSide { Left, Right };
 
 /// Which Magic Formula a parameter set is evaluated with.
 enum class MagicFormulaVersion {
@@ -149,40 +146,18 @@ struct MagicFormulaParameters {
 #undef MBD_MF_MEMBER
 };
 
-/// The tyre's state for one evaluation.
-struct MagicFormulaInput {
-    Real Fz{0.0};         ///< Normal load [N]; the outputs are zero at Fz <= 0
-    Real kappa{0.0};      ///< Longitudinal slip, -Vsx / |Vcx| [-]
-    Real alpha{0.0};      ///< Slip angle [rad], tan(alpha) = Vcy / |Vcx|; it enters the formulas as it is
-    Real gamma{0.0};      ///< Inclination angle [rad], ISO
-    /// Forward speed of the contact centre [m/s]: its sign, and with the slips
-    /// the slip speed (Vsx = -kappa |Vcx|, Vcy = tan(alpha) |Vcx|) of LMUV,
-    /// and the rolling resistance.
-    Real Vcx{10.0};
-    Real pressure{-1.0};  ///< Inflation pressure [Pa]; below 0, the file's INFLPRES
-    /// The road's friction, a scale on the tyre's own (1: the surface its
-    /// parameters were measured on): it multiplies LMUX and LMUY, as TNO
-    /// scales a road's friction.
-    Real friction{1.0};
-};
+/// The tyre's state for one evaluation (mbd/forces/tyre_model.hpp). The slip
+/// angle enters the formulas as it is; a pressure below 0 is the file's
+/// INFLPRES; the road's friction multiplies LMUX and LMUY, as TNO scales a
+/// road's friction.
+using MagicFormulaInput = TyreInput;
 
-/// The forces and moments, and the quantities behind them (W axes, at the
-/// contact point, on the tyre).
-struct MagicFormulaOutput {
-    Real Fx{0.0}, Fy{0.0}, Fz{0.0}, Mx{0.0}, My{0.0}, Mz{0.0};
-    Real Fx0{0.0}, Fy0{0.0}, Mz0{0.0};   ///< At pure slip
-    Real Kxk{0.0};          ///< Longitudinal slip stiffness dFx0/dkappa at kappa_x = 0 [N]
-    Real Kya{0.0};          ///< Cornering stiffness dFy0/dalpha at alpha_y = 0 [N/rad]
-    Real mux{0.0}, muy{0.0};
-    Real trail{0.0};        ///< Pneumatic trail t [m]
-    Real Mzr{0.0};          ///< Residual aligning torque [N m]
-    Real s{0.0};            ///< Moment arm of Fx in Mz [m]
-    Real sigma_kappa{0.0};  ///< Longitudinal relaxation length [m]
-    Real sigma_alpha{0.0};  ///< Lateral relaxation length [m]
-};
+/// The forces and moments, and the quantities behind them
+/// (mbd/forces/tyre_model.hpp).
+using MagicFormulaOutput = TyreOutput;
 
 /// A Magic Formula tyre: evaluate its forces and moments.
-class MagicFormulaTyre {
+class MagicFormulaTyre final : public TyreModel {
 public:
     /// Checks the parameters: FNOMIN, UNLOADED_RADIUS, LONGVL, LFZO and, for
     /// MF 6.1, NOMPRES positive (MBD-F053).
@@ -190,15 +165,23 @@ public:
 
     const MagicFormulaParameters& parameters() const { return p_; }
 
-    /// The steady-state forces and moments (combined slip).
-    MagicFormulaOutput evaluate(const MagicFormulaInput& in) const;
+    const char* name() const override { return "Magic Formula"; }
 
-    /// The quantities that do not depend on the slips, at a load, an
-    /// inclination, a pressure (below 0, INFLPRES) and a road's friction:
-    /// the outputs Kxk, Kya, mux, muy, sigma_kappa and sigma_alpha of
-    /// evaluate() at zero slip (the friction falling with slip speed, LMUV,
-    /// taken at zero slip speed). The tyre's lag needs them before its slips.
-    MagicFormulaOutput characteristics(Real Fz, Real gamma, Real pressure = -1.0, Real friction = 1.0) const;
+    /// The steady-state forces and moments (combined slip).
+    MagicFormulaOutput evaluate(const MagicFormulaInput& in) const override;
+
+    // characteristics(): TyreModel's, evaluate() at zero slip and zero speed
+    // (the friction falling with slip speed, LMUV, at zero slip speed).
+
+    /// UNLOADED_RADIUS, VERTICAL_STIFFNESS, VERTICAL_DAMPING, FNOMIN, VXLOW,
+    /// TYRESIDE.
+    TyreBody body() const override { return tyre_body(p_); }
+
+    /// The same from a parameter set.
+    static TyreBody tyre_body(const MagicFormulaParameters& p)
+    {
+        return {p.UNLOADED_RADIUS, p.VERTICAL_STIFFNESS, p.VERTICAL_DAMPING, p.FNOMIN, p.VXLOW, p.side};
+    }
 
 private:
     MagicFormulaParameters p_;

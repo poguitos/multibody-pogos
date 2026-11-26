@@ -2,6 +2,26 @@
 
 namespace mbd {
 
+PacejkaTireParams PacejkaTireParams::FromTyreModel(const TyreModel& model)
+{
+    PacejkaTireParams p = DefaultPassengerCar();
+    const Real Fz0 = model.body().nominal_load;
+    const Real h = 1e-3;
+    const TyreOutput c = model.characteristics(Fz0, 0.0);
+    const TyreOutput lo = model.characteristics(Fz0 * (1.0 - h), 0.0);
+    const TyreOutput hi = model.characteristics(Fz0 * (1.0 + h), 0.0);
+    p.longitudinal.Fz0 = p.lateral.Fz0 = Fz0;
+    p.longitudinal.K0 = c.Kxk;
+    p.longitudinal.K_Fz = (hi.Kxk - lo.Kxk) / (2.0 * h);
+    p.longitudinal.mu0 = c.mux;
+    p.longitudinal.mu_Fz = (hi.mux - lo.mux) / (2.0 * h);
+    p.lateral.K0 = std::abs(c.Kya);
+    p.lateral.K_Fz = (std::abs(hi.Kya) - std::abs(lo.Kya)) / (2.0 * h);
+    p.lateral.mu0 = c.muy;
+    p.lateral.mu_Fz = (hi.muy - lo.muy) / (2.0 * h);
+    return p;
+}
+
 PacejkaTireParams PacejkaTireParams::FromMagicFormula(const MagicFormulaParameters& m)
 {
     PacejkaTireParams p = DefaultPassengerCar();
