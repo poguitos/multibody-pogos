@@ -82,6 +82,9 @@ def test_a_curve_shows_what_it_was_made_from():
     assert table.is_table() and table.table_x() == [0.0, 0.01, 0.02] and table.table_y() == [0.0, 2000.0, 8000.0]
     line = mbd.Curve.linear(150.0, -3.0)
     assert not line.is_table() and line.line_slope() == 150.0 and line.line_offset() == -3.0
+    shape = mbd.Curve.bushing(stiffness=400.0, linear_range=0.05, stop=0.12, stop_stiffness=9000.0)
+    assert shape.is_bushing() and not shape.is_table() and not shape.is_zero()
+    assert shape.bushing_shape() == {"stiffness": 400.0, "linear_range": 0.05, "stop": 0.12, "stop_stiffness": 9000.0}
 
 
 class Pair(mbd.StateElement):

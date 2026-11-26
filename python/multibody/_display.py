@@ -144,6 +144,9 @@ def curve_repr(curve):
     # every number in full, so that the text reads back as the same curve.
     if curve.is_table():
         return f"Curve.table({curve.table_x()!r}, {curve.table_y()!r})"
+    if curve.is_bushing():
+        shape = ", ".join(f"{key}={value!r}" for key, value in curve.bushing_shape().items())
+        return f"Curve.bushing({shape})"
     if curve.is_zero():
         return "Curve()"
     if curve.line_offset() == 0.0:

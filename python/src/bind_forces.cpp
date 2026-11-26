@@ -78,20 +78,44 @@ void bind_forces(py::module_& m)
     using namespace pybind11::literals;
     using namespace mbd::kernel;
 
-    py::class_<Curve>(m, "Curve", "A force law: zero, linear, or a smooth curve through tabulated points.")
+    py::class_<Curve>(m, "Curve",
+                      "A force law: zero, linear, a smooth curve through tabulated points, or a bushing's shape.")
         .def(py::init<>(), "The zero function.")
         .def_static("linear", &Curve::linear, "slope"_a, "offset"_a = 0.0, "f(x) = offset + slope x.")
         .def_static("table", &Curve::table, "x"_a, "y"_a,
                     "Through the points (x[k], y[k]); x strictly increasing, at least two points.")
+        .def_static(
+            "bushing",
+            [](Real stiffness, Real linear_range, Real stop, Real stop_stiffness) {
+                return Curve::bushing(BushingShape{stiffness, linear_range, stop, stop_stiffness});
+            },
+            py::kw_only(), "stiffness"_a, "linear_range"_a, "stop"_a, "stop_stiffness"_a,
+            "A bushing's characteristic by its shape (task 7.6): odd in x, slope `stiffness` over |x| <= "
+            "linear_range, rising smoothly to stop_stiffness at |x| = stop, straight beyond.")
         .def("value", &Curve::value, "x"_a, "f(x).")
         .def("slope", &Curve::slope, "x"_a, "df/dx at x.")
         .def("integral", &Curve::integral, "a"_a, "b"_a, "The integral from a to b: a spring's stored energy.")
+        .def("is_increasing", &Curve::is_increasing, "True when the curve rises everywhere, so that it has an inverse.")
+        .def("inverse", &Curve::inverse, "y"_a, "The x at which f(x) = y, for a curve that rises everywhere.")
         .def("is_zero", &Curve::is_zero, "True for the zero function.")
         .def("is_table", &Curve::is_table, "True for a curve through tabulated points (Curve.table).")
-        .def("table_x", &Curve::table_x, "A table's x values, as given (empty for a line).")
-        .def("table_y", &Curve::table_y, "A table's y values, as given (empty for a line).")
-        .def("line_slope", &Curve::line_slope, "A line's slope (Curve.linear); 0 for a table.")
-        .def("line_offset", &Curve::line_offset, "A line's offset (Curve.linear); 0 for a table.")
+        .def("table_x", &Curve::table_x, "A table's x values, as given (empty for a line or a shape).")
+        .def("table_y", &Curve::table_y, "A table's y values, as given (empty for a line or a shape).")
+        .def("line_slope", &Curve::line_slope, "A line's slope (Curve.linear); 0 for a table or a shape.")
+        .def("line_offset", &Curve::line_offset, "A line's offset (Curve.linear); 0 for a table or a shape.")
+        .def("is_bushing", &Curve::is_bushing, "True for a curve given by a bushing's shape (Curve.bushing).")
+        .def(
+            "bushing_shape",
+            [](const Curve& c) {
+                const BushingShape& p = c.bushing_shape();
+                py::dict d;
+                d["stiffness"] = p.stiffness;
+                d["linear_range"] = p.linear_range;
+                d["stop"] = p.stop;
+                d["stop_stiffness"] = p.stop_stiffness;
+                return d;
+            },
+            "A shape's four numbers by their keywords (zeros for a line or a table).")
         .def("__call__", &Curve::value, "x"_a);
 
     py::class_<LawValue>(m, "LawValue", "A force law's value at a coordinate and rate, with its derivatives.")

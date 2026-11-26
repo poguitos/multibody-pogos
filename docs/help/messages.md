@@ -876,6 +876,58 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
   damping, rolling resistance, trail or width that is negative.
 - **What to do:** correct the parameter the message names.
 
+### MBD-F056
+
+`Curve::bushing: the stiffnesses, linear range and stop must be finite and >= 0`
+or `the stop must not come before the end of the linear range`
+
+- **Means:** a bushing's curve given by its shape (`Curve::bushing`,
+  `BushingShape`, task 7.6) was given a negative or non-finite number, or a
+  stop (where the slope reaches the stop's stiffness) closer to zero than the
+  end of the linear range.
+- **What to do:** give linear_range <= stop; a stop equal to the linear
+  range changes the slope at once.
+
+### MBD-F057
+
+`Curve::inverse: the curve must rise everywhere (...)`
+
+- **Means:** a curve was inverted (a damper's force against its rate, by a
+  `MaxwellDamper`) that does not rise everywhere: the zero curve, a line
+  whose slope is not positive, a table whose values do not rise or whose
+  interpolation is flat at an end, or a bushing shape with a zero stiffness.
+  `Curve::is_increasing()` says whether a curve can be inverted.
+- **Usual causes:** a damper table whose force falls off quickly toward its
+  ends: the interpolation's end slope, extrapolated from the last two
+  secants, comes out negative and is set to zero, so the curve stops rising
+  past its last point. Add a point further out, or make the last secants
+  fall more gently.
+
+### MBD-F058
+
+`MaxwellDamper: the damper's curve must rise everywhere (...)` or `the
+series stiffness's curve must rise everywhere`
+
+- **Means:** a damper with a stiffness in series (`MaxwellDamper`,
+  `mbd/forces/hysteresis.hpp`, task 7.6) inverts its damper's curve at every
+  evaluation, and its series stiffness must give a force that grows with its
+  extension; one of the two does not rise everywhere (see MBD-F057).
+- **What to do:** as for MBD-F057.
+
+### MBD-F059
+
+`BoucWenBushing: <axis>: Bouc-Wen needs A > 0, beta + gamma > 0, beta >= gamma
+and n >= 1`, or `the stiffness must be finite and >= 0, and the parameters
+finite`
+
+- **Means:** an axis of a Bouc-Wen bushing (`BoucWenBushing`, task 7.6) with
+  hysteresis (a stiffness above zero) has parameters outside the class this
+  program accepts. With A > 0, beta + gamma > 0 and beta >= gamma the
+  hysteretic variable stays bounded for any motion (Ikhouane, Manosa and
+  Rodellar, 2007); n >= 1 keeps its rate defined where z is zero.
+- **What to do:** correct the axis the message names; a stiffness of zero
+  leaves an axis without hysteresis, its other parameters unread.
+
 ## A: analysis
 
 ### MBD-A001
@@ -926,6 +978,18 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
 - **Usual causes:** a folder in the path that does not exist, a file open in
   another program (a spreadsheet keeps CSV files locked on Windows), or a full
   disk.
+
+### MBD-A030
+
+`run_damper_dyno: the amplitude and frequency must be > 0, ...`, `no element
+to test`, `the element maker returned no element`, or `DynoRecord::energy:
+no cycle <k> in the record`
+
+- **Means:** the virtual damper dyno (`run_damper_dyno`,
+  `mbd/analysis/damper_dyno.hpp`, task 7.6) was given settings it cannot run
+  (a stroke, frequency or length out of range, a zero axis, fewer than one
+  cycle or four steps a cycle) or nothing to test, or a record was asked for
+  a cycle it does not hold (cycles count from 0).
 
 ## I: model files
 

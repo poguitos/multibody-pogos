@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 namespace mbd {
@@ -21,6 +22,61 @@ Real end_slope(Real h0, Real h1, Real d0, Real d1)
         m = 3.0 * d0;
     }
     return m;
+}
+
+// A bushing shape's force, slope and integral from 0 at x >= 0 (BushingShape:
+// odd force, even slope and integral). With w = b - a and s = (x - a) / w:
+//   slope  k + (k_s - k)(3 s^2 - 2 s^3)          in the progressive range,
+//   force  k x + (k_s - k) w (s^3 - s^4 / 2)     its integral from a,
+//   energy k x^2 / 2 + (k_s - k) w^2 (s^4 / 4 - s^5 / 10).
+// At s = 1 the last two add (k_s - k) w / 2 and 0.15 (k_s - k) w^2.
+struct ShapeValue {
+    Real force, slope, energy;
+};
+
+ShapeValue shape_at(const BushingShape& p, Real x)
+{
+    const Real k = p.stiffness, ks = p.stop_stiffness, a = p.linear_range, b = p.stop;
+    if (x <= a) return {k * x, k, 0.5 * k * x * x};
+    const Real w = b - a;
+    if (x < b) {
+        const Real s = (x - a) / w;
+        const Real s2 = s * s, s3 = s2 * s;
+        return {k * x + (ks - k) * w * (s3 - 0.5 * s3 * s),
+                k + (ks - k) * (3.0 * s2 - 2.0 * s3),
+                0.5 * k * x * x + (ks - k) * w * w * (0.25 * s3 * s - 0.1 * s3 * s2)};
+    }
+    const Real f_b = k * b + 0.5 * (ks - k) * w;
+    const Real e_b = 0.5 * k * b * b + 0.15 * (ks - k) * w * w;
+    const Real d = x - b;
+    return {f_b + ks * d, ks, e_b + f_b * d + 0.5 * ks * d * d};
+}
+
+// The x in [lo, hi] at which f(x) = y, for f rising on the interval with
+// f(lo) <= y <= f(hi): Newton's method kept inside a bracket that shrinks
+// at every step, bisecting where a Newton step would leave it.
+template <class F, class DF>
+Real solve_rising(const F& f, const DF& df, Real y, Real lo, Real hi)
+{
+    const Real f_lo = f(lo), f_hi = f(hi);
+    if (y <= f_lo) return lo;
+    if (y >= f_hi) return hi;
+    Real x = lo + (hi - lo) * (y - f_lo) / (f_hi - f_lo);
+    for (int it = 0; it < 200; ++it) {
+        const Real g = f(x) - y;
+        if (g == 0.0) return x;
+        if (g < 0.0) lo = x; else hi = x;
+        const Real d = df(x);
+        Real next = (d > 0.0) ? x - g / d : 0.5 * (lo + hi);
+        if (!(next > lo && next < hi)) next = 0.5 * (lo + hi);
+        const Real eps = std::numeric_limits<Real>::epsilon();
+        if (std::abs(next - x) <= 2.0 * eps * (std::abs(x) + std::abs(next))
+            || hi - lo <= 2.0 * eps * (std::abs(lo) + std::abs(hi))) {
+            return next;
+        }
+        x = next;
+    }
+    return x;
 }
 
 } // namespace
@@ -85,8 +141,65 @@ Curve Curve::table(std::vector<Real> x, std::vector<Real> y)
     return c;
 }
 
+Curve Curve::bushing(const BushingShape& shape)
+{
+    const BushingShape& p = shape;
+    const bool finite = std::isfinite(p.stiffness) && std::isfinite(p.linear_range) && std::isfinite(p.stop)
+                     && std::isfinite(p.stop_stiffness);
+    MBD_THROW_IF(!finite || p.stiffness < 0.0 || p.linear_range < 0.0 || p.stop_stiffness < 0.0,
+                 "MBD-F056: Curve::bushing: the stiffnesses, linear range and stop must be finite and >= 0");
+    MBD_THROW_IF(!(p.stop >= p.linear_range),
+                 "MBD-F056: Curve::bushing: the stop must not come before the end of the linear range");
+    Curve c;
+    c.shaped_ = true;
+    c.shape_ = p;
+    return c;
+}
+
+bool Curve::is_increasing() const
+{
+    if (shaped_) return shape_.stiffness > 0.0 && shape_.stop_stiffness > 0.0;
+    if (xs_.empty()) return slope_ > 0.0;
+    for (std::size_t k = 1; k < ys_.size(); ++k) {
+        if (!(ys_[k] > ys_[k - 1])) return false;
+    }
+    return ms_.front() > 0.0 && ms_.back() > 0.0;
+}
+
+Real Curve::inverse(Real y) const
+{
+    MBD_THROW_IF(!is_increasing(),
+                 "MBD-F057: Curve::inverse: the curve must rise everywhere (a line with a positive slope, a table "
+                 "with rising values and positive end slopes, a bushing shape with positive stiffnesses)");
+    if (std::isnan(y)) return y;
+    if (shaped_) {
+        const BushingShape& p = shape_;
+        const Real m = std::abs(y);
+        const Real f_a = p.stiffness * p.linear_range;
+        const Real f_b = p.stiffness * p.stop + 0.5 * (p.stop_stiffness - p.stiffness) * (p.stop - p.linear_range);
+        Real x;
+        if (m <= f_a) {
+            x = m / p.stiffness;
+        } else if (m >= f_b) {
+            x = p.stop + (m - f_b) / p.stop_stiffness;
+        } else {
+            x = solve_rising([&](Real u) { return shape_at(p, u).force; },
+                             [&](Real u) { return shape_at(p, u).slope; }, m, p.linear_range, p.stop);
+        }
+        return y < 0.0 ? -x : x;
+    }
+    if (xs_.empty()) return (y - offset_) / slope_;
+    if (y <= ys_.front()) return xs_.front() + (y - ys_.front()) / ms_.front();
+    if (y >= ys_.back()) return xs_.back() + (y - ys_.back()) / ms_.back();
+    const std::size_t k = static_cast<std::size_t>(
+        std::upper_bound(ys_.begin(), ys_.end(), y) - ys_.begin()) - 1;
+    return solve_rising([this](Real u) { return value(u); }, [this](Real u) { return slope(u); }, y, xs_[k],
+                        xs_[k + 1]);
+}
+
 Real Curve::primitive(Real x) const
 {
+    if (shaped_) return shape_at(shape_, std::abs(x)).energy;
     if (xs_.empty()) return offset_ * x + 0.5 * slope_ * x * x;
     if (std::isnan(x)) return x;   // no interval to look up (see value())
     if (x <= xs_.front()) {
@@ -117,6 +230,11 @@ Real Curve::integral(Real a, Real b) const
 
 Real Curve::value(Real x) const
 {
+    if (shaped_) {
+        if (std::isnan(x)) return x;
+        const Real f = shape_at(shape_, std::abs(x)).force;
+        return x < 0.0 ? -f : f;
+    }
     if (xs_.empty()) return offset_ + slope_ * x;
     // NaN fails every comparison: past both ends' tests, upper_bound would
     // return end() and the interval would be the one past the last point,
@@ -140,6 +258,7 @@ Real Curve::value(Real x) const
 
 Real Curve::slope(Real x) const
 {
+    if (shaped_) return std::isnan(x) ? x : shape_at(shape_, std::abs(x)).slope;
     if (xs_.empty()) return slope_;
     if (std::isnan(x)) return x;   // no interval to look up (see value())
     if (x <= xs_.front()) return ms_.front();

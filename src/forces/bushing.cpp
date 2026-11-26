@@ -53,8 +53,12 @@ void Bushing::apply(const std::vector<RigidBodyState>& states,
 {
     Vec6 x, x_dot;
     deflection(states, x, x_dot);
-    const Vec6 load = law(x, x_dot).load;
+    apply_load(states, law(x, x_dot).load, forces);
+}
 
+void Bushing::apply_load(const std::vector<RigidBodyState>& states, const Vec6& load,
+                         std::vector<RigidBodyForces>& forces) const
+{
     const auto& s1 = states[static_cast<std::size_t>(body1_)];
     const auto& s2 = states[static_cast<std::size_t>(body2_)];
     const Quat q1 = s1.q_WB * X_1M_.q;

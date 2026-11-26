@@ -328,6 +328,24 @@ friction, limit stops that push but never pull); such elements go in
 `law()` returns its force with the derivatives with respect to its own
 coordinate and rate, for statics, linearisation and implicit integration.
 
+**Hysteresis** (task 7.6, decision D66, `forces/hysteresis.hpp`). A bushing's
+curve can be given by its shape, `Curve::bushing`: linear over a range, then
+progressive, its slope rising smoothly to the stop's slope, then straight;
+four numbers that an optimisation can move. Two elements have states of
+their own and are integrated with the bodies (see state elements below).
+`MaxwellDamper` is a damper with a stiffness in series (a top mount, the
+oil's and gas's compliance): its state is the series stiffness's extension,
+its force that stiffness's, and its damper's curve is inverted at each
+evaluation (it must rise everywhere, `Curve::is_increasing`). It starts
+relaxed and carries no force at rest, so statics sees none from it.
+`BoucWenBushing` is a six-axis bushing with Bouc-Wen hysteresis on any of
+its axes: k z added to the bushing's own curves, z following Wen's equation,
+one state per axis. The virtual damper dyno, `run_damper_dyno`
+(`analysis/damper_dyno.hpp`), holds one end of an element and drives the
+other through a sinusoidal stroke, recording force against stroke and
+velocity and the energy each loop takes in; the elements' tests run on it
+against closed forms (`tests/forces/test_hysteresis.cpp`).
+
 **Contact** (task 3.8, decision D28, `forces/contact.hpp`). `PlaneContact`
 puts spheres (radius zero: points) on one body against the XY plane of a
 marker on another, the ground or any body. The normal force is ADAMS's

@@ -39,6 +39,7 @@ add_library(multibody_core
     forces/magic_formula.cpp
     forces/simple_tyres.cpp
     forces/tyre_model.cpp
+    forces/hysteresis.cpp
     vehicle/suspension/double_wishbone.cpp
     vehicle/suspension/mcpherson.cpp
     vehicle/suspension/multilink.cpp
@@ -54,6 +55,7 @@ add_library(multibody_core
     analysis/lap_speed_profile.cpp
     analysis/optimization.cpp
     analysis/recorder.cpp
+    analysis/damper_dyno.cpp
     io/model_file.cpp
     io/tir_file.cpp
 )

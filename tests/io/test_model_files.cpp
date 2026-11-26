@@ -138,7 +138,9 @@ System every_kind()
     BushingParams bp;
     bp.stiffness = {Curve::linear(1e5), Curve::linear(2e5), Curve::table({-0.01, 0.0, 0.01}, {-900.0, 0.0, 1100.0})};
     bp.damping = {Curve::linear(100.0), Curve(), Curve::linear(300.0)};
-    bp.rotational_stiffness = {Curve::linear(500.0), Curve(), Curve::linear(700.0)};
+    // A bushing's shape (task 7.6) about Y: its four numbers, written and read.
+    bp.rotational_stiffness = {Curve::linear(500.0), Curve::bushing({400.0, 0.05, 0.12, 9000.0}),
+                               Curve::linear(700.0)};
     f.push_back(std::make_shared<Bushing>(b7, frame(0.2, Vec3(0, 0, 1), Vec3(0.3, 0, 0)), b8, Transform3(), bp));
     ContactParams cp;
     cp.stiffness = 1e5;
@@ -213,6 +215,7 @@ TEST_CASE("Model files: a system with every kind of part survives a round trip u
     CHECK_THAT(text, ContainsSubstring(R"("name": "revolute closure")"));
     CHECK_THAT(text, ContainsSubstring(R"("upper_limit": "inf")"));
     CHECK_THAT(text, ContainsSubstring(R"("name": "arm \"left\"")"));
+    CHECK_THAT(text, ContainsSubstring(R"("linear_range": 0.05)"));
 
     // The same dynamics, bit for bit, at a generic state.
     mbd_test::Rng rng(29);

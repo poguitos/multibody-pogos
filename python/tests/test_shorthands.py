@@ -116,6 +116,10 @@ def test_objects_show_what_they_hold():
     assert repr(table) == "Curve.table([-0.1, 0.0, 0.3], [-50.0, 0.0, 0.30000000000000004])"
     rebuilt = eval(repr(table), {"Curve": mbd.Curve})
     assert rebuilt.table_x() == table.table_x() and rebuilt.table_y() == table.table_y()
+    shape = mbd.Curve.bushing(stiffness=400.0, linear_range=0.05, stop=0.1 + 0.02, stop_stiffness=9000.0)
+    assert repr(shape) == ("Curve.bushing(stiffness=400.0, linear_range=0.05, stop=0.12000000000000001, "
+                           "stop_stiffness=9000.0)")
+    assert eval(repr(shape), {"Curve": mbd.Curve}).bushing_shape() == shape.bushing_shape()
 
 
 def test_a_mode_shows_its_frequency_and_damping():

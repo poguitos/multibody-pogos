@@ -53,6 +53,12 @@ public:
 
     BushingLaw law(const Vec6& x, const Vec6& x_dot) const;
 
+    /// Apply `load`, [moment; force] on body 2 in marker 1's axes, the force
+    /// at marker 2's origin, to body 2 and, reversed, to body 1: what apply()
+    /// does with the law's load (and BoucWenBushing with its own).
+    void apply_load(const std::vector<RigidBodyState>& states, const Vec6& load,
+                    std::vector<RigidBodyForces>& forces) const;
+
     /// The markers, each in its body's frame, and the settings.
     const Transform3& X_1M() const { return X_1M_; }
     const Transform3& X_2M() const { return X_2M_; }

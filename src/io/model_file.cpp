@@ -155,6 +155,14 @@ Json curve(const Curve& c, const std::string& where)
     if (c.is_table()) {
         j["x"] = reals(c.table_x(), where);
         j["y"] = reals(c.table_y(), where);
+    } else if (c.is_bushing()) {
+        const BushingShape& p = c.bushing_shape();
+        Json s;
+        s["stiffness"] = real(p.stiffness, where);
+        s["linear_range"] = real(p.linear_range, where);
+        s["stop"] = real(p.stop, where);
+        s["stop_stiffness"] = real(p.stop_stiffness, where);
+        j["shape"] = s;
     } else {
         j["slope"] = real(c.line_slope(), where);
         j["offset"] = real(c.line_offset(), where);
@@ -631,11 +639,24 @@ auto made(const std::string& where, Make&& make) -> decltype(make())
 
 Curve curve(const Json& j, const std::string& where)
 {
-    const Fields f(j, where, {"slope", "offset", "x", "y"});
+    const Fields f(j, where, {"slope", "offset", "x", "y", "shape"});
+    const int kinds = (f.has("x") || f.has("y")) + (f.has("slope") || f.has("offset")) + f.has("shape");
+    if (kinds > 1) {
+        fail("MBD-I006", where, "a curve is either a table (x, y), a line (slope, offset) or a bushing's shape");
+    }
     if (f.has("x") || f.has("y")) {
-        if (f.has("slope") || f.has("offset")) fail("MBD-I006", where, "a curve is either a table (x, y) or a line (slope, offset)");
         const std::vector<Real> x = reals(f["x"], f.at("x")), y = reals(f["y"], f.at("y"));
         return made(where, [&] { return Curve::table(x, y); });
+    }
+    if (f.has("shape")) {
+        const std::string at = f.at("shape");
+        const Fields s(f["shape"], at, {"stiffness", "linear_range", "stop", "stop_stiffness"});
+        BushingShape p;   // each number optional, its default the C++ one
+        if (s.has("stiffness")) p.stiffness = real(s["stiffness"], s.at("stiffness"));
+        if (s.has("linear_range")) p.linear_range = real(s["linear_range"], s.at("linear_range"));
+        if (s.has("stop")) p.stop = real(s["stop"], s.at("stop"));
+        if (s.has("stop_stiffness")) p.stop_stiffness = real(s["stop_stiffness"], s.at("stop_stiffness"));
+        return made(at, [&] { return Curve::bushing(p); });
     }
     return Curve::linear(f.has("slope") ? real(f["slope"], f.at("slope")) : 0.0,
                          f.has("offset") ? real(f["offset"], f.at("offset")) : 0.0);

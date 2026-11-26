@@ -28,8 +28,9 @@ kind of part).
 **Nothing is left out without a word.** What a file cannot hold is refused
 when writing (MBD-I008): a force written as code (`UserForce`), a time
 function given as code (only a constant can be written), the vehicle layer's
-elements, and any element, constraint or joint written in C++ that the
-format does not know. Reading checks every key: an unknown one, usually a
+elements, the elements with states of their own (the Maxwell damper and the
+Bouc-Wen bushing of task 7.6 among them), and any element, constraint or
+joint written in C++ that the format does not know. Reading checks every key: an unknown one, usually a
 misspelling, is an error (MBD-I004), as is a key given twice. Every error
 names its place in the file (`docs/help/messages.md`, area I).
 
@@ -104,8 +105,11 @@ the program wrote is kept exactly.
 **A marker** (a frame fixed on a body) is `{"body": b, "X_BM": transform}`.
 
 **A curve** is a line `{"slope": k, "offset": c}` (each defaulting to 0, so
-`{}` is the zero curve) or a table `{"x": [...], "y": [...]}`, x strictly
-increasing, at least two points (`Curve.linear`, `Curve.table`).
+`{}` is the zero curve), a table `{"x": [...], "y": [...]}`, x strictly
+increasing, at least two points (`Curve.linear`, `Curve.table`), or a
+bushing's shape `{"shape": {"stiffness": k, "linear_range": a, "stop": b,
+"stop_stiffness": k_s}}` (`Curve.bushing`, task 7.6; each number defaulting
+to 0). A file with a shape cannot be read by a program older than task 7.6.
 
 ## Bodies
 

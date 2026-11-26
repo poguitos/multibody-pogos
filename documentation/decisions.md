@@ -76,6 +76,7 @@ and the journal entry of the work refers to them by number
 | D63 | The Magic Formula tyre: TNO's MF-Tyre 6.1 as published, where the book differs; MF 5.2 as 6.1 with 5.2's forms; checked against MFeval | 25 Nov 2026 | In force, task 7.4 |
 | D64 | The tyre on a wheel: the Magic Formula of a parameter set, its slips lagging by the semi-non-linear model, mirrored by side, faded at rest; every vehicle's tyre | 25 Nov 2026 | In force, task 7.4 |
 | D65 | Simple tyres behind one interface: linear with saturation, Adams's Fiala, Pacejka's brush model | 26 Nov 2026 | In force, task 7.5 |
+| D66 | Hysteresis as state elements: a damper with a series stiffness and a Bouc-Wen bushing, checked on a virtual dyno; bushing curves by their shape | 26 Nov 2026 | In force, task 7.6 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -3074,3 +3075,96 @@ and the journal entry of the work refers to them by number
     the rows compare with each other).
   - The simple tyres have no shifts, so at rest they need no fade; their
     aligning torque has no residual part and does not change sign.
+
+## D66. Hysteresis as state elements: a damper with a series stiffness and a Bouc-Wen bushing, checked on a virtual dyno; bushing curves by their shape
+
+- **Context.** Task 7.6 carries three items that D42 adopted from external
+  sources: a damper with a stiffness in series (a Maxwell element: the top
+  mount's compliance and the oil's and gas's) and a Bouc-Wen bushing, both as
+  state elements (task 4.1, D30), checked on a virtual damper dyno (a
+  sinusoidal stroke; force against stroke and against velocity); and bushing
+  curves given by a few shape parameters (linear range, progressive end,
+  stop), so that optimisation can move their shape. Half of the task's "done
+  when" is the series damper's loop against its closed-form steady-state
+  response. The force library had curves as lines or tables (D24), a
+  two-point spring-damper with stops and a six-axis bushing, none with
+  states of its own. The task's other half, the suspensions, is D67.
+- **Decision.**
+  - **A bushing's curve by its shape** (`Curve::bushing`, `BushingShape`):
+    odd in the deflection, straight with slope k over |x| <= a, then its
+    slope rising from k to k_s along a cubic that is flat at both ends,
+    until |x| = b, then straight with slope k_s. Four numbers, each a
+    physical quantity; the force has a continuous second derivative, so
+    Newton's method and the implicit integrators meet no kink. A new kind of
+    `Curve`, not a resampled table: the parameters stay what they are, for
+    an optimisation to move. Model files hold it (`{"shape": {...}}`), and
+    Python makes it (`Curve.bushing`) and shows it as that call.
+  - **A rising curve has an inverse** (`Curve::inverse`, to rounding;
+    `Curve::is_increasing`; MBD-F057 for a curve that does not rise
+    everywhere): a Newton step kept inside the bracket of a table's interval
+    or a shape's range.
+  - **`MaxwellDamper`** (`mbd/forces/hysteresis.hpp`): two points and one
+    state, the series stiffness's extension s. Its force is series(s); the
+    state's rate is the length's rate less the damper's own rate,
+    damper^-1(series(s)) (MBD-F058 for curves that do not rise). The state
+    starts at zero: a Maxwell element carries no force at rest, and statics,
+    which holds the states where they are, sees none from it.
+  - **`BoucWenBushing`**: the six-axis bushing, its own curves kept, with
+    Bouc-Wen hysteresis k z on any axis, z one state per axis following
+    Wen's equation; A > 0, beta + gamma > 0, beta >= gamma and n >= 1
+    (bounded for any motion; MBD-F059 otherwise). Bouc-Wen's usual alpha k x
+    is the bushing's elastic curve, so no parameter is given twice.
+  - Both take what their rates need from the bodies (the length's rate, the
+    deflections' rates) in apply() and keep it for rates(), as the tyre's
+    lag does, so that the linearly implicit method's derivatives reach it.
+  - **The virtual damper dyno** (`run_damper_dyno`,
+    `mbd/analysis/damper_dyno.hpp`): any force element between the ground
+    and a body on a prismatic joint driven through a sine, run by the
+    kernel's simulator with any method and step control; after each step
+    the forces are evaluated at the step's end state and the element's
+    force on the driven body read, against the stroke; the energy a loop
+    takes in is the integral of force times velocity over its cycle
+    (MBD-A030 for settings it cannot use).
+- **Alternatives.**
+  - The shape as a resampled table (as Chindamo, Magri and Gadola resample
+    into Adams/Car tables): its derivatives with respect to the parameters
+    would be piecewise, and a file would hold numbers no one chose.
+  - The Maxwell element's state as the damper's stroke, with a reference
+    length: it needs the length at which the element is relaxed, and
+    statics would see the series stiffness as a spring around the starting
+    position.
+  - The series stiffness inside `SpringDamper`: every spring-damper would
+    become a state element, and the plain element's model files and tests
+    would change for a feature most do not use.
+  - The dyno's energy as the sum of force times the stroke's changes: it is
+    short by sin(w h) / (w h), 6.6e-6 at 1000 steps a cycle; force times
+    velocity by the trapezoidal rule is exact for a periodic loop.
+  - The dyno's force from its driver's multiplier, as a rig's load cell
+    reads it: the element's own force on the driven body is the same number
+    without a constraint solve, for any element.
+  - The Python interface for the new elements: as for the tyres (task 7.5),
+    left for later; `Curve` is bound because curves come from model files.
+- **Consequences.**
+  - The series damper's loop is its closed-form steady state: on the dyno
+    (25 mm at 10 Hz, tau = 0.01 s, RK4 at h = tau / 100) the force follows
+    the exact response from rest within 7.8e-8 N of 2666 N; in the third
+    cycle the loop is the steady state within 4.6e-6 N (the transient's
+    exp(-20), as predicted), its in-phase and quadrature parts U K' =
+    1415.22 N and U K'' = 2252.39 N and its energy pi U^2 K'' = 176.902 J
+    to 1e-8; the energy a cycle peaks at w tau = 1 as K'' does. Radau IIA
+    at steps ten times tau, where RK4 cannot step, misses the steady state
+    by 1.748e-7 N, the error its coefficients give for this system.
+  - Bouc-Wen's force follows its exact branches (n = 1, composed along the
+    stroke; n = 2, the tanh of a first loading) within 2.4e-6 N of the 250
+    N hysteretic force, through two loops, against a bound of 2.3e-4 N from
+    RK4's error at the rate's kinks; its loop is the same at 0.1 and 10 Hz
+    to 8e-10 N; about a rotation axis through a driven hinge, the same.
+  - A Maxwell element in parallel with a spring leaves the spring's static
+    deflection, in statics and after a released motion; with a tabulated
+    damper the rig's work equals the damper's loss and the mount's energy
+    to 1.7e-4 J of 195 J, the trapezoidal rule's estimate.
+  - The new elements are not in model files (MBD-I008 by their names) nor
+    in Python.
+- **Record.** Journal: Phase 7, suspensions; `include/mbd/forces/curve.hpp`,
+  `include/mbd/forces/hysteresis.hpp`, `include/mbd/analysis/damper_dyno.hpp`,
+  `tests/forces/test_hysteresis.cpp`, `docs/kernel.md`, `docs/model-files.md`.
