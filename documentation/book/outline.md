@@ -345,7 +345,11 @@ branch nearest the other side; why a steering input must carry its rate
 into the equations (F10); Ackermann behaviour as a property of a planar
 linkage, not a formula (the textbook's rule for a track rod behind the axle
 gives half of it with a rack ahead); a column's compliance as a freedom of
-its own. *J: Phase 7, the steering. D68.*
+its own. *J: Phase 7, the steering. D68.* The powertrain: a driveline as
+states beside the bodies, and why inertias reflected through a gear ratio
+decide which integrator can carry it; anti-squat as virtual work, where
+the reaction of a torque goes deciding between the wheel centre's path and
+the contact's. *J: Phase 7, the powertrain. D69.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

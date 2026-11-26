@@ -108,4 +108,5 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 25 Nov 2026 | [Phase 7: the tyre](2026-11-25_phase-7-tyre.md) | 7.4, F7, D63, D64 | `0e5515a`, then see git log | At the time |
 | 26 Nov 2026 | [Phase 7: the simple tyres](2026-11-26_phase-7-simple-tyres.md) | 7.5, D65 | see git log | At the time |
 | 26 Nov 2026 | [Phase 7: the suspensions](2026-11-26_phase-7-suspensions.md) | 7.6, F9, F10, D66, D67 | `7de111b`, then see git log | At the time |
-| 27 Nov 2026 | [Phase 7: the steering](2026-11-27_phase-7-steering.md) | 7.7, F9, F10, D68 | see git log | At the time |
+| 27 Nov 2026 | [Phase 7: the steering](2026-11-27_phase-7-steering.md) | 7.7, F9, F10, D68 | `e84b194` | At the time |
+| 27 Nov 2026 | [Phase 7: the powertrain](2026-11-27_phase-7-powertrain.md) | 7.8, F6, D69 | see git log | At the time |

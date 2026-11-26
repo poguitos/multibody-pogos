@@ -216,6 +216,12 @@ their closed forms. The gear (`JointCoupler`) passes the constraints'
 derivative checks and turns a rack and pinion through 15.6 turns as one
 inertia, to rounding.
 
+The powertrain (task 7.8, D69; [powertrain.md](powertrain.md)): anti-squat
+from the constraint multipliers equals its geometric value to rounding,
+the drive's reaction on the chassis or on the arm; a torque converter's
+stall, the differentials' rigid limits and engine braking against closed
+forms.
+
 ## 10. A vehicle-sized stiff model: the HMMWV
 
 Task 5.4 (D47, D48; [the HMMWV benchmark](hmmwv.md)). The fourteen-body HMMWV

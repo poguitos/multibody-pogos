@@ -69,7 +69,8 @@ springs set by virtual work to hold the design position, the vehicle
 layer's messages in area V), and 7.7 (D68: steering by the rack's travel,
 the steering wheel's angle or a torque, through a column whose pinion is
 geared to the rack by `kernel::JointCoupler`; commands held or as functions
-of time); 7.8, the powertrain, is next. Conda environments for the project pin
+of time), and 7.8 (D69: `Powertrain`, a state element beside the
+template's `Drivetrain`, `docs/powertrain.md`); 7.9, brakes, is next. Conda environments for the project pin
 `"libblas=*=*openblas"` (MKL's NumPy crashes on this laptop). After a change to the bindings, reinstall `mbd-try`
 (an editable install whose module is older than its Python files stops with
 MBD-P011). The nightly workflow runs on schedule from `main`.

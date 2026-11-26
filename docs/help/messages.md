@@ -1074,6 +1074,17 @@ is not steered by a torque on its steering wheel`, or `add_steering_column:
   `set_steering` (an angle) or `steer` (a function of time) for the rack's
   travel or the wheel's angle, `set_steering_torque` or `steer` for a torque.
 
+### MBD-V006
+
+`Powertrain: a ratio, inertia, stiffness, capacity or time that is not
+positive, an efficiency outside (0, 1], a front share outside [0, 1], or a
+converter's stall ratio below 1 or coupling point outside (0, 1)`
+
+- **Means:** the powertrain (`Powertrain`, `mbd/vehicle/powertrain.hpp`, task
+  7.8) was given settings it cannot use; the message lists the bounds.
+- **What to do:** correct `PowertrainParams` (an empty list of gear ratios
+  is refused too).
+
 ## I: model files
 
 Every message names its place in the file, as a path from the top:

@@ -79,6 +79,7 @@ and the journal entry of the work refers to them by number
 | D66 | Hysteresis as state elements: a damper with a series stiffness and a Bouc-Wen bushing, checked on a virtual dyno; bushing curves by their shape | 26 Nov 2026 | In force, task 7.6 |
 | D67 | Suspensions from the kernel's joints, their parts' masses from their joints, springs set by virtual work to hold the design position | 26 Nov 2026 | In force, task 7.6 |
 | D68 | Steering: a rack geared to a pinion by a joint coupler, a compliant column to a steering wheel, the input the rack's travel, the wheel's angle or a torque, as held values or functions of time | 27 Nov 2026 | In force, task 7.7 |
+| D69 | The powertrain as a state element: an engine with its own speed, a converter or clutch, a gearbox with shift time, differentials and compliant half-shafts, reacting on the housing and the chassis | 27 Nov 2026 | In force, task 7.8 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -3332,3 +3333,66 @@ and the journal entry of the work refers to them by number
 - **Record.** Journal: Phase 7, steering; `docs/suspensions.md` (Steering),
   `docs/kernel.md`, `tests/vehicle/test_steering_system.cpp`,
   `tests/kernel/test_kernel_constraints.cpp`.
+
+## D69. The powertrain as a state element: an engine with its own speed, a converter or clutch, a gearbox with shift time, differentials and compliant half-shafts, reacting on the housing and the chassis
+
+- **Context.** Task 7.8: "The engine's inertia, left out by task 7.3 (D62),
+  returns with the engine's own speed. Engine map with engine braking,
+  clutch or torque converter, gearbox with shift time and hysteresis, open,
+  locked and limited-slip differentials, half-shaft compliance, a centre
+  differential, and an electric motor option. A hysteretic driveline
+  isolator (Bouc-Wen) as a state element (D42). Reactions applied to the
+  correct bodies. Done when anti-squat matches the geometric value." The
+  template's `Drivetrain` (tasks 1.7, 4.1, 7.3) has no states: an engine
+  speed tied to the driven wheels, equal torques to them, the brakes, and
+  every vehicle scenario steered and braked by it.
+- **Decision.**
+  - **A new element, `Powertrain`** (`mbd/vehicle/powertrain.hpp`), beside
+    the `Drivetrain`, which stays the vehicles' default: a state element
+    whose states are the engine's speed, each driven axle's carrier and
+    spider speeds and its half-shafts' twists (and Bouc-Wen variables). The
+    wheels stay bodies; the powertrain acts on them through the shafts'
+    torques.
+  - **The parts' laws**: an engine map of a full-load and a drag curve
+    blended by the throttle (fuel cut above the redline, idle control
+    below idle) or a motor's (peak torque, then constant power, with
+    regeneration); a torque converter of pump torque w_e (w_e - w_t) / K^2
+    and a torque ratio falling linearly to 1 at the coupling point, or a
+    smoothed clutch, or a direct coupling for a motor; a gearbox shifting at
+    two speeds (the gap is the hysteresis) whose torque falls to zero and
+    back over the shift time, the ratio changing midway; open, locked or
+    limited-slip differentials (viscous and a clutch pack); a centre
+    differential's torque split with a viscous coupling; half-shafts as
+    springs and dampers, with optional Bouc-Wen hysteresis.
+  - **Inertias that keep it explicit**: the gearbox's input side and a
+    direct motor carried by the carriers as J g^2.
+  - **Reactions**: each shaft's torque on its wheel and against the
+    differential's housing (the chassis, or a solid axle); the rate of the
+    hidden parts' angular momentum against the chassis.
+  - **The test of anti-squat**: on trailing arms, the shafts' torques
+    reacting on the chassis, from the bump drivers' multipliers, against the
+    wheel centre's path.
+- **Alternatives.**
+  - Replacing the `Drivetrain`: every vehicle scenario and dozens of tests
+    would move for a model that the existing users do not ask for; the
+    powertrain is one connect away.
+  - The driveline's shafts as bodies on joints, geared by couplers (task
+    7.7): a position-level gear between unbounded spins is ambiguous (each
+    angle is read modulo a turn), and three-way relations (a differential)
+    need a constraint the kernel lacks.
+  - Massless side gears with an algebraic split: it needs a damper in every
+    shaft to be solvable; small inertias keep everything an ODE.
+  - A torque converter by tables of K and TR: the closed forms let the
+    test be exact; tables can replace them later.
+- **Consequences.**
+  - Anti-squat: 40 % from the multipliers and from the geometry, to
+    rounding; 640 % both ways when the torque reacts on the arm.
+  - The converter's stall (207.846 rad/s, 3381 N m a shaft) to 1e-9; the
+    differentials' rigid limits to 1e-6; engine braking to 1e-9; the shift's
+    torque through zero.
+  - The template's `engine.inertia`, unread since task 7.3, is read by
+    `EngineMap::from`.
+  - Not in model files or Python; the `Drivetrain`'s brakes remain the
+    vehicles' (task 7.9 gives brakes of their own).
+- **Record.** Journal: Phase 7, the powertrain; `docs/powertrain.md`,
+  `tests/vehicle/test_powertrain.cpp`.
