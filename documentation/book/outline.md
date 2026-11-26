@@ -349,7 +349,11 @@ its own. *J: Phase 7, the steering. D68.* The powertrain: a driveline as
 states beside the bodies, and why inertias reflected through a gear ratio
 decide which integrator can carry it; anti-squat as virtual work, where
 the reaction of a torque goes deciding between the wheel centre's path and
-the contact's. *J: Phase 7, the powertrain. D69.*
+the contact's. *J: Phase 7, the powertrain. D69.* The brakes: the
+stopping distance as v^2 / (2 d) corrected in closed form by the pressure's
+lag and the wheels' inertia; dry friction that locks a wheel; an anti-lock
+controller's gain on a tyre whose friction falls past its peak. *J: Phase
+7, the brakes. D70.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

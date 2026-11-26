@@ -80,6 +80,7 @@ and the journal entry of the work refers to them by number
 | D67 | Suspensions from the kernel's joints, their parts' masses from their joints, springs set by virtual work to hold the design position | 26 Nov 2026 | In force, task 7.6 |
 | D68 | Steering: a rack geared to a pinion by a joint coupler, a compliant column to a steering wheel, the input the rack's travel, the wheel's angle or a torque, as held values or functions of time | 27 Nov 2026 | In force, task 7.7 |
 | D69 | The powertrain as a state element: an engine with its own speed, a converter or clutch, a gearbox with shift time, differentials and compliant half-shafts, reacting on the housing and the chassis | 27 Nov 2026 | In force, task 7.8 |
+| D70 | The brakes as a state element: line pressures lagging the pedal, a proportioning valve, dry friction that locks a wheel, a slip-switched anti-lock controller | 27 Nov 2026 | In force, task 7.9 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -3396,3 +3397,62 @@ and the journal entry of the work refers to them by number
     vehicles' (task 7.9 gives brakes of their own).
 - **Record.** Journal: Phase 7, the powertrain; `docs/powertrain.md`,
   `tests/vehicle/test_powertrain.cpp`.
+
+## D70. The brakes as a state element: line pressures lagging the pedal, a proportioning valve, dry friction that locks a wheel, a slip-switched anti-lock controller
+
+- **Context.** Task 7.9: "Brakes (F5, F6). Pedal to pressure to torque per
+  wheel, bias, locked-wheel handling, and an optional anti-lock controller.
+  Done when stopping distance matches a hand calculation." The template's
+  `Drivetrain` brakes inside it, without states: a torque equal to the pedal
+  times a maximum, split by a bias, as dry friction that locks a wheel (D62).
+  The powertrain of task 7.8 (D69) has no brakes.
+- **Decision.**
+  - **A new element, `BrakeSystem`** (`mbd/vehicle/brakes.hpp`), connected
+    to a vehicle's four corners like the powertrain: a state element whose
+    four states are the wheels' line pressures, each following its target
+    as p' = (target - p) / tau. The target is the master cylinder's pressure
+    (the pedal times a maximum); the rear's passes a proportioning valve
+    (above a knee it rises by a fraction of the master's).
+  - **Torque per wheel** is the axle's gain times the pressure; the bias is
+    the ratio of the gains.
+  - **Locking** is the `Drivetrain`'s dry friction, copied: the torque
+    opposes the spin's direction at the step's start; a wheel that reaches
+    rest while the brake can hold the other torques is locked, its spin set
+    to rest at each step's end, and released when they exceed the brake.
+    The other torques are the tyre's moment about the axle and an optional
+    drive (`drive_torque`, for the powertrain's shafts). The torque reacts
+    on the upright.
+  - **The anti-lock controller** switches each wheel's target to zero when
+    its braking slip (from its tyre, Vsx / |Vx|) passes a release threshold,
+    and back to the pedal's below an apply threshold, above a minimum
+    speed.
+  - **The test of the stopping distance**: the simple car on stiff linear
+    tyres without rolling resistance, against the closed form with the
+    pressure's lag and the wheels' inertia.
+- **Alternatives.**
+  - Moving the brakes out of the `Drivetrain`: every scenario that brakes
+    would move; the two coexist, the `Drivetrain`'s for the existing cars.
+  - Brakes inside the powertrain: a car without the powertrain (the
+    template's drivetrain, or none) could not have them, and the anti-lock
+    controller belongs with the brakes.
+  - A smooth friction law (tanh of the spin) instead of locking: it needs a
+    slip speed small against the wheels' speeds, which makes the wheel's
+    equation stiff where the car stops; the lock logic was already proven
+    in the `Drivetrain`.
+  - Pressure as an algebraic function of the pedal: the response time is
+    what makes the stopping distance differ from v^2 / (2 d), and what the
+    anti-lock controller cycles against.
+  - An anti-lock controller on the wheels' decelerations, as production
+    units do: more thresholds and no closed form to test against; the slip
+    switch shows the effect on the stopping distance.
+- **Consequences.**
+  - The stopping distance from 20 m/s at half pedal: 31.6219 m and 3.109 s
+    against 31.5954 m and 3.11036 s by hand (8.4e-4 and 4.4e-4 relative,
+    allowed 3e-3). Locked wheels on friction 0.3 decelerate at 2.94202
+    m/s^2 against 2.943. On the Magic Formula tyre the controller shortens
+    the stop from 100.5 m to 85.3 m.
+  - MBD-V007 for settings and corners the brakes cannot use.
+  - Not in model files or Python; the `Drivetrain`'s brakes remain the
+    template's.
+- **Record.** Journal: Phase 7, the brakes; `docs/brakes.md`,
+  `tests/vehicle/test_brakes.cpp`.

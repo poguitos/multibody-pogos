@@ -222,6 +222,12 @@ the drive's reaction on the chassis or on the arm; a torque converter's
 stall, the differentials' rigid limits and engine braking against closed
 forms.
 
+The brakes (task 7.9, D70; [brakes.md](brakes.md)): the stopping distance
+from 20 m/s against the closed form with the pressure's lag and the
+wheels' inertia, to 8.4e-4; locked wheels sliding at mu g, to 3.3e-4. The
+anti-lock controller's effect (a shorter stop, no wheel locked) is checked
+only in direction.
+
 ## 10. A vehicle-sized stiff model: the HMMWV
 
 Task 5.4 (D47, D48; [the HMMWV benchmark](hmmwv.md)). The fourteen-body HMMWV

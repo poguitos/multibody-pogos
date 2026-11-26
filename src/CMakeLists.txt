@@ -51,6 +51,7 @@ add_library(multibody_core
     vehicle/corners.cpp
     vehicle/drivetrain.cpp
     vehicle/powertrain.cpp
+    vehicle/brakes.cpp
     vehicle/wheel.cpp
     analysis/position_kinematics.cpp
     analysis/bicycle_model.cpp

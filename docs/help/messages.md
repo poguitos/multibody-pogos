@@ -1085,6 +1085,24 @@ converter's stall ratio below 1 or coupling point outside (0, 1)`
 - **What to do:** correct `PowertrainParams` (an empty list of gear ratios
   is refused too).
 
+### MBD-V007
+
+`BrakeSystem: a pressure, gain, slope or time that is negative (a response
+or lock time that is not positive), or an anti-lock release slip not above
+its apply slip` / `BrakeSystem: each corner needs its tyre, and a wheel on a
+spin joint on its upright` / `BrakeSystem: end_step from a simulator it is
+not connected to`
+
+- **Means:** the brakes (`BrakeSystem`, `mbd/vehicle/brakes.hpp`, task 7.9)
+  were given settings they cannot use, connected to corners that are not a
+  wheel spinning on its upright with a tyre, or stepped by a simulator other
+  than the one they were connected to.
+- **What to do:** correct `BrakeSystemParams` (the anti-lock controller
+  needs `abs_release_slip > abs_apply_slip >= 0`); connect the brakes to a
+  vehicle built by the template or by `build_simple_vehicle`, or give
+  corners whose wheel's parent is the upright named; one `BrakeSystem` per
+  simulator.
+
 ## I: model files
 
 Every message names its place in the file, as a path from the top:
