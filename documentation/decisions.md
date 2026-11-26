@@ -77,6 +77,7 @@ and the journal entry of the work refers to them by number
 | D64 | The tyre on a wheel: the Magic Formula of a parameter set, its slips lagging by the semi-non-linear model, mirrored by side, faded at rest; every vehicle's tyre | 25 Nov 2026 | In force, task 7.4 |
 | D65 | Simple tyres behind one interface: linear with saturation, Adams's Fiala, Pacejka's brush model | 26 Nov 2026 | In force, task 7.5 |
 | D66 | Hysteresis as state elements: a damper with a series stiffness and a Bouc-Wen bushing, checked on a virtual dyno; bushing curves by their shape | 26 Nov 2026 | In force, task 7.6 |
+| D67 | Suspensions from the kernel's joints, their parts' masses from their joints, springs set by virtual work to hold the design position | 26 Nov 2026 | In force, task 7.6 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -3168,3 +3169,98 @@ and the journal entry of the work refers to them by number
 - **Record.** Journal: Phase 7, suspensions; `include/mbd/forces/curve.hpp`,
   `include/mbd/forces/hysteresis.hpp`, `include/mbd/analysis/damper_dyno.hpp`,
   `tests/forces/test_hysteresis.cpp`, `docs/kernel.md`, `docs/model-files.md`.
+
+## D67. Suspensions from the kernel's joints, their parts' masses from their joints, springs set by virtual work to hold the design position
+
+- **Context.** Task 7.6 asks for double wishbone, McPherson, five-link and
+  trailing-arm suspensions, a solid axle as an option, built from the
+  constraint primitives with real masses and centres of mass; coil-over and
+  pushrod layouts; damper curves, bump stops and an anti-roll bar acting
+  through drop links; done when the motion ratio from the geometry equals
+  the one from virtual work (with the series damper's loop, D66). Finding F9
+  had measured the double-wishbone and McPherson cars: each arm's centre of
+  mass at its pivot, fixed boxes for inertias, springs preloaded for 4000 N
+  whatever the car, and set_vehicle_equilibrium leaving the chassis
+  accelerating at 1.08 m/s^2 with a coordinate at 73. The five-link existed
+  only as a kinematic corner on the ground; there was no trailing arm or
+  solid axle; the spring was a linear spring-damper and the bar a force
+  element on the wheels' heights.
+- **Decision.**
+  - **Mechanisms** (`src/vehicle/corners.cpp`,
+    `mbd/vehicle/suspension/*.hpp`): the double wishbone and McPherson as
+    they were; the five-link a free upright held by five distances, its toe
+    link on the rack when steered; the trailing arm one hinge carrying the
+    hub; the solid axle a free axle carrying both wheels on two lower
+    trailing links, a central upper link and a Panhard rod (heave and roll).
+    A trailing arm or solid axle is not steered (MBD-V002). One builder
+    makes each corner's mechanism for the vehicle, for the rack's
+    calibration and for analysis (`build_corner_rig`: the corner on a fixed
+    chassis with bump drivers).
+  - **Masses from joints** (`mbd/vehicle/suspension/mass.hpp`): an arm a
+    rod from its pivot to its outer joint; an upright its mass among its
+    joints and its wheel centre; a solid axle a rod between its wheel
+    centres; a five-link's links massless; the template's total mass every
+    body's.
+  - **The spring unit**: coil-over or pushrod (a distance to a rocker on a
+    hinge, double wishbone only), a `SpringDamper` with the damper's curve,
+    a second one for the stops measured from the design length (a stop's
+    clearance from the spring's free length would be negative for a
+    preloaded spring), and a `MaxwellDamper` in place of the damper when a
+    top mount is given (D66).
+  - **Springs set by virtual work**: each axle's tyre load at rest from the
+    masses the builder made and where they lie; each corner's motion at its
+    design position, per unit of wheel travel, from Kinematics' velocities;
+    the spring force at which the virtual powers of the spring, the tyre's
+    load, its overturning moment at rest and the parts' weights add to zero;
+    the spring's free length from it. set_vehicle_equilibrium puts every
+    corner at its design position, the chassis raised and pitched to the
+    tyres' loaded radii; a mixed car's simple corners are mounted so that
+    their wheel centres too are at the chassis frame's Z = 0 there. A car of
+    simple corners only keeps its earlier placement.
+  - **The bar through drop links**: two halves on hinges about the lateral
+    axis, a torsion spring between them of k_arb / r^2 (r the half's turn
+    per unit of wheel travel), drop links as distances; opt-in
+    (`arb_links.enabled`), the force element kept otherwise.
+  - **The motion ratio's check**: from the geometry, the unit's rate of
+    extension along the motion (a velocity solve); from virtual work, the
+    bump drivers' multipliers against a known spring force at rest (a force
+    solve).
+- **Alternatives.**
+  - Each link of a five-link as a body: with ball joints at both ends it
+    spins freely about its own axis (a freedom with no stiffness), and its
+    mass is a few per cent of the upright's.
+  - The springs' preload from statics on the whole car: it gives an
+    equilibrium but not the design position, which the user chose with the
+    hardpoints.
+  - Keeping the 4000 N preload and placing the car by statics alone: every
+    car would settle away from its hardpoints' design, differently for each.
+  - The tyre's moments left out of the virtual work: the Magic Formula's
+    overturning moment at rest (R0 Fz QSX1, about 10 N m) does work along a
+    corner whose camber changes, and left the double wishbones and
+    McPherson 0.13 to 0.8 m/s^2 from rest.
+  - The bar through drop links by default: it would move the regression
+    scenario with bars for no gain in what it tests; it is one flag.
+  - A mixed car's simple corners mounted at Z = 0, as before: the chassis
+    must then pitch by about 4.5 degrees to put every wheel on the road.
+- **Consequences.**
+  - The plan's test: the motion ratio from the geometry and from virtual
+    work agree within 8.9e-16 for the double wishbone (coil-over -0.990,
+    pushrod -0.704), McPherson (-0.889), five-link (-1.002), trailing arm
+    (-10/9 by its levers) and solid axle (-2 for its two units in heave).
+  - Every linkage car is placed within 0.028 m/s^2 of rest (gravity turned
+    by the chassis's pitch of about 3.5e-4 rad); statics moves the chassis by
+    under 1e-5 m in one or two iterations.
+  - The regression scenarios `sports-car-turn` and `hatchback-brake` were
+    written again: both had started far from rest (the sports car with 4596
+    N on a front tyre 50 ms in, where it settles near 3600, rising 2.7 cm
+    before its manoeuvre; the hatchback placed 11 cm above its McPherson's
+    design, its front tyres off the ground 50 ms in, with 0.061 rad of
+    camber). `wishbone-sweep` moved by 1.3e-15
+    (the masses weigh Kinematics' Newton steps) and was left as it was.
+  - The vehicle layer has its own message area, V.
+  - Joints are ideal: no bushings in the linkages (task 9.1); steering is
+    still the rack of task 2.7 (F10, task 7.7); the chassis's centre of mass
+    still at its origin (F9's cg_offset, task 7.11).
+- **Record.** Journal: Phase 7, suspensions; `docs/suspensions.md`,
+  `src/vehicle/corners.cpp`, `include/mbd/vehicle/suspension/`,
+  `tests/vehicle/test_suspensions.cpp`.

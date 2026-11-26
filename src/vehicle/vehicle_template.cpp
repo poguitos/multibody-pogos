@@ -1,5 +1,9 @@
 #include "mbd/vehicle/vehicle_template.hpp"
 
+#include <algorithm>
+
+#include "mbd/kernel/algorithms.hpp"
+#include "mbd/kernel/forces.hpp"
 #include "mbd/vehicle/axes.hpp"
 
 namespace mbd {
@@ -140,7 +144,7 @@ std::pair<AntiRollBar*, AntiRollBar*> VehicleHandle::install_anti_roll_bars(
     AntiRollBar* front_arb = nullptr;
     AntiRollBar* rear_arb  = nullptr;
 
-    if (tmpl.front_axle.k_arb > 0.0) {
+    if (tmpl.front_axle.k_arb > 0.0 && !detail::anti_roll_bar_on_links(tmpl.front_axle)) {
         auto arb = std::make_shared<AntiRollBar>(
             chassis_body,
             corners[0].upright_body,  // FL
@@ -152,7 +156,7 @@ std::pair<AntiRollBar*, AntiRollBar*> VehicleHandle::install_anti_roll_bars(
         sys.force_elements.push_back(std::move(arb));
     }
 
-    if (tmpl.rear_axle.k_arb > 0.0) {
+    if (tmpl.rear_axle.k_arb > 0.0 && !detail::anti_roll_bar_on_links(tmpl.rear_axle)) {
         auto arb = std::make_shared<AntiRollBar>(
             chassis_body,
             corners[2].upright_body,  // RL
@@ -248,59 +252,6 @@ DoubleWishboneParams detail::make_dwb_params_for_corner(
     return p;
 }
 
-Real detail::precompressed_rest_length(Real reference_distance, Real k_spring)
-{
-    const Real representative_corner_load = 4000.0;  // N
-    return reference_distance + representative_corner_load / k_spring;
-}
-
-CornerHandle detail::build_dwb_corner(
-    kernel::System& sys,
-    BodyIndex chassis_body,
-    const Vec3& wheel_center_chassis,
-    const AxleConfig& axle,
-    bool is_right_side,
-    BodyIndex tierod_body)
-{
-    CornerHandle ch;
-    ch.type = SuspensionType::DoubleWishbone;
-
-    const auto p = make_dwb_params_for_corner(
-        wheel_center_chassis, axle.dwb, is_right_side,
-        axle.arm_mass, axle.upright_mass);
-    const auto dwb = build_double_wishbone_corner_dynamic(sys, chassis_body, p, tierod_body);
-
-    ch.lca_body     = dwb.lca_body;
-    ch.uca_body     = dwb.uca_body;
-    ch.upright_body = dwb.upright_body;
-    ch.wheel_body   = add_wheel(sys.model, dwb.upright_body, Vec3::Zero(), axle.wheel_mass,
-                                axle.tyre_body().free_radius, is_right_side ? "dwb_wheel_R" : "dwb_wheel_L");
-    ch.on_rack      = tierod_body != chassis_body;
-    ch.tierod_constraint_idx = dwb.tierod_constraint_idx;
-
-    // Spring-damper: from chassis mount (above LCA outer) to LCA outer point.
-    // This models a coil-over-arm spring layout. The LCA body frame has the
-    // chassis axes at the reference, origin at lca_pivot.
-    const Vec3 spring_chassis_mount = p.lca_outer + Vec3(0.0, 0.0, 0.30);
-    const Vec3 spring_lca_attach_body = p.lca_outer - p.lca_pivot;
-    const Real ref_distance = (spring_chassis_mount - p.lca_outer).norm();
-
-    sys.force_elements.push_back(std::make_shared<LinearSpringDamper>(
-        chassis_body, dwb.lca_body,
-        spring_chassis_mount,
-        spring_lca_attach_body,
-        axle.k_spring, axle.c_damper,
-        precompressed_rest_length(ref_distance, axle.k_spring)));
-
-    // Tyre: on the wheel, which turns on the upright (the wheel centre is the
-    // upright's origin)
-    auto tire = std::make_shared<FullTireForce>(ch.wheel_body, axle.make_tyre());
-    ch.tire = tire.get();
-    sys.force_elements.push_back(std::move(tire));
-
-    return ch;
-}
-
 McPhersonParams detail::make_mcpherson_params_for_corner(
     const Vec3& wheel_center_chassis,
     const McPhersonHardpoints& hp,
@@ -327,50 +278,6 @@ McPhersonParams detail::make_mcpherson_params_for_corner(
     return p;
 }
 
-CornerHandle detail::build_mcpherson_corner(
-    kernel::System& sys,
-    BodyIndex chassis_body,
-    const Vec3& wheel_center_chassis,
-    const AxleConfig& axle,
-    bool is_right_side,
-    BodyIndex tierod_body)
-{
-    CornerHandle ch;
-    ch.type = SuspensionType::McPherson;
-
-    const auto p = make_mcpherson_params_for_corner(
-        wheel_center_chassis, axle.mcpherson, is_right_side,
-        axle.arm_mass, axle.upright_mass);
-    const auto mc = mbd::build_mcpherson_corner_dynamic(sys, chassis_body, p, tierod_body);
-
-    ch.lca_body     = mc.lca_body;
-    ch.uca_body     = 0; // no UCA in McPherson
-    ch.upright_body = mc.upright_body;
-    ch.wheel_body   = add_wheel(sys.model, mc.upright_body, Vec3::Zero(), axle.wheel_mass,
-                                axle.tyre_body().free_radius, is_right_side ? "mcpherson_wheel_R" : "mcpherson_wheel_L");
-    ch.on_rack    = tierod_body != chassis_body;
-    ch.tierod_constraint_idx = mc.tierod_constraint_idx;
-
-    // Spring-damper along the strut: from the top mount (chassis) to the
-    // strut's lower attachment on the upright.
-    const Vec3 spring_upright_attach = p.strut_lower - p.wheel_center;
-    const Real ref_distance = (p.strut_top_mount - p.strut_lower).norm();
-
-    sys.force_elements.push_back(std::make_shared<LinearSpringDamper>(
-        chassis_body, mc.upright_body,
-        p.strut_top_mount,
-        spring_upright_attach,
-        axle.k_spring, axle.c_damper,
-        precompressed_rest_length(ref_distance, axle.k_spring)));
-
-    // Tyre: on the wheel, which turns on the upright
-    auto tire = std::make_shared<FullTireForce>(ch.wheel_body, axle.make_tyre());
-    ch.tire = tire.get();
-    sys.force_elements.push_back(std::move(tire));
-
-    return ch;
-}
-
 BodyIndex detail::add_steering_rack(kernel::System& sys, BodyIndex chassis_body,
                                     const std::shared_ptr<SteeringRack>& rack,
                                     const std::string& name)
@@ -381,7 +288,7 @@ BodyIndex detail::add_steering_rack(kernel::System& sys, BodyIndex chassis_body,
     const BodyIndex body = sys.model.add_body(
         chassis_body, std::make_shared<kernel::PrismaticJointModel>(),
         Transform3::FromRotation(R_rack), Transform3::FromRotation(R_rack),
-        RigidBodyInertia::from_solid_box(1.0, Vec3(0.02, 0.4, 0.02)), name);
+        RigidBodyInertia::from_solid_box(steering_rack_mass, Vec3(0.02, 0.4, 0.02)), name);
     sys.constraints.push_back(std::make_shared<kernel::JointDriver>(
         sys.model, body,
         kernel::TimeFunction([rack](Real) { return rack->travel; },
@@ -393,6 +300,10 @@ BodyIndex detail::add_steering_rack(kernel::System& sys, BodyIndex chassis_body,
 Real detail::calibrate_rack(const VehicleTemplate& tmpl, const AxleConfig& ax,
                             const Vec3& wheel_center_chassis, bool is_right)
 {
+    if (ax.suspension_type != SuspensionType::DoubleWishbone && ax.suspension_type != SuspensionType::McPherson
+        && ax.suspension_type != SuspensionType::FiveLink) {
+        return 0.0;
+    }
     kernel::System calib;
     const BodyIndex chassis = calib.model.add_body(
         0, std::make_shared<kernel::FixedJointModel>(), Transform3::Identity(),
@@ -400,19 +311,8 @@ Real detail::calibrate_rack(const VehicleTemplate& tmpl, const AxleConfig& ax,
         RigidBodyInertia::from_solid_box(10000.0, tmpl.chassis.half_extents), "calib_chassis");
     auto rack = std::make_shared<SteeringRack>();
     const BodyIndex rack_body = add_steering_rack(calib, chassis, rack, "calib_rack");
-
-    BodyIndex upright = 0;
-    if (ax.suspension_type == SuspensionType::DoubleWishbone) {
-        const auto p = make_dwb_params_for_corner(wheel_center_chassis, ax.dwb, is_right,
-                                                  ax.arm_mass, ax.upright_mass);
-        upright = build_double_wishbone_corner_dynamic(calib, chassis, p, rack_body).upright_body;
-    } else if (ax.suspension_type == SuspensionType::McPherson) {
-        const auto p = make_mcpherson_params_for_corner(wheel_center_chassis, ax.mcpherson,
-                                                        is_right, ax.arm_mass, ax.upright_mass);
-        upright = build_mcpherson_corner_dynamic(calib, chassis, p, rack_body).upright_body;
-    } else {
-        return 0.0;
-    }
+    const BodyIndex upright =
+        build_linkage_corner(calib, chassis, wheel_center_chassis, ax, is_right, rack_body, "calib").upright_body;
 
     Kinematics k(calib);
     if (!k.solve(50, 1e-10)) return 0.0;
@@ -465,26 +365,140 @@ VehicleHandle build_vehicle(kernel::System& sys,
         {Vec3(-tmpl.rear_axle_x,  -tmpl.rear_axle.half_track,  0.0), tmpl.rear_axle,  true,  "RR"},
     }};
 
-    for (int c = 0; c < 4; ++c) {
-        const auto& cd = corner_defs[static_cast<std::size_t>(c)];
-        const BodyIndex rack_body = vh.rack_body[c / 2];
-        const BodyIndex tierod_body = rack_body > 0 ? rack_body : vh.chassis_body;
+    const bool linkage = tmpl.front_axle.suspension_type != SuspensionType::Simple
+                      || tmpl.rear_axle.suspension_type != SuspensionType::Simple;
 
-        switch (cd.axle.suspension_type) {
-            case SuspensionType::Simple:
-                vh.corners[c] = detail::build_simple_corner(
-                    sys, vh.chassis_body, cd.mount_pos, cd.axle, cd.name);
-                break;
-            case SuspensionType::DoubleWishbone:
-                vh.corners[c] = detail::build_dwb_corner(
-                    sys, vh.chassis_body, cd.mount_pos, cd.axle, cd.is_right, tierod_body);
-                break;
-            case SuspensionType::McPherson:
-                vh.corners[c] = detail::build_mcpherson_corner(
-                    sys, vh.chassis_body, cd.mount_pos, cd.axle, cd.is_right, tierod_body);
-                break;
+    // --- A car of simple corners only: as before task 7.6, each corner
+    // whole (slider, wheel, spring, tyre), its mount at the chassis frame's
+    // Z = 0.
+    if (!linkage) {
+        for (int c = 0; c < 4; ++c) {
+            const auto& cd = corner_defs[static_cast<std::size_t>(c)];
+            vh.corners[c] = detail::build_simple_corner(sys, vh.chassis_body, cd.mount_pos, cd.axle, cd.name);
         }
-        vh.corners[c].tire->mount(cd.is_right);
+    }
+
+    // --- The linkage axles' mechanisms (task 7.6): a linkage corner's or a
+    // solid axle's bodies, joints and constraints, and an anti-roll bar's
+    // halves on drop links; their wheel centres at the chassis frame's Z = 0
+    // at the design position.
+    for (int a = 0; a < 2; ++a) {
+        const AxleConfig& ax = *axles[static_cast<std::size_t>(a)];
+        if (ax.suspension_type == SuspensionType::Simple) continue;
+        const BodyIndex rack_body = vh.rack_body[static_cast<std::size_t>(a)];
+        const BodyIndex tierod_body = rack_body > 0 ? rack_body : vh.chassis_body;
+        if (ax.suspension_type == SuspensionType::SolidAxle) {
+            const Real x = a == 0 ? tmpl.front_axle_x : -tmpl.rear_axle_x;
+            const auto both = detail::build_solid_axle_corners(sys, vh.chassis_body, x, ax,
+                                                               a == 0 ? "front_axle" : "rear_axle");
+            vh.corners[2 * a] = both[0];
+            vh.corners[2 * a + 1] = both[1];
+        } else {
+            for (int s = 0; s < 2; ++s) {
+                const auto& cd = corner_defs[static_cast<std::size_t>(2 * a + s)];
+                vh.corners[2 * a + s] = detail::build_linkage_corner(sys, vh.chassis_body, cd.mount_pos, ax,
+                                                                     cd.is_right, tierod_body, cd.name);
+            }
+        }
+        if (ax.arb_links.enabled) {
+            for (int s = 0; s < 2; ++s) {
+                detail::build_anti_roll_bar_half(sys, vh.chassis_body, corner_defs[static_cast<std::size_t>(2 * a)].mount_pos,
+                                                 ax, vh.corners[2 * a + s], s == 1);
+            }
+        }
+    }
+
+    // --- Each axle's tyre load at rest, from the masses made and where they
+    // lie (the reference configuration, the chassis at the origin): the
+    // moments of the weights about the rear contacts' line give the front's.
+    // In a mixed car the simple corners are not made yet: their wheels (all
+    // their mass, the slider having none) are at their axle's X.
+    {
+        kernel::Data data(sys.model);
+        kernel::forward_kinematics(sys.model, data, sys.model.neutral_configuration());
+        const Real x_f = tmpl.front_axle_x, x_r = -tmpl.rear_axle_x;
+        Real mass = 0.0, moment = 0.0;
+        for (int b = 1; b < sys.model.nbodies(); ++b) {
+            const RigidBodyInertia& I = sys.model.inertia[static_cast<std::size_t>(b)];
+            const RigidBodyState s = kernel::body_state(data, b);
+            mass += I.mass;
+            moment += I.mass * ((s.p_WB + s.q_WB * I.com_B).x() - x_r);
+        }
+        if (linkage) {
+            for (int a = 0; a < 2; ++a) {
+                const AxleConfig& ax = *axles[static_cast<std::size_t>(a)];
+                if (ax.suspension_type != SuspensionType::Simple) continue;
+                mass += 2.0 * ax.wheel_mass;
+                moment += 2.0 * ax.wheel_mass * ((a == 0 ? x_f : x_r) - x_r);
+            }
+        }
+        const Real front = 0.5 * g_accel * moment / (x_f - x_r);
+        vh.design_tyre_load = {{front, 0.5 * g_accel * mass - front}};
+    }
+
+    // --- A mixed car's simple corners: each mount raised by its spring's
+    // length under its load less its wheel's weight, so that at the design
+    // position its wheel centre too is at the chassis frame's Z = 0.
+    if (linkage) {
+        for (int c = 0; c < 4; ++c) {
+            const auto& cd = corner_defs[static_cast<std::size_t>(c)];
+            const AxleConfig& ax = cd.axle;
+            if (ax.suspension_type != SuspensionType::Simple) continue;
+            const Real force = vh.design_tyre_load[static_cast<std::size_t>(c / 2)] - ax.wheel_mass * g_accel;
+            const Real length = ax.spring_rest_length - force / ax.k_spring;
+            vh.corners[c] = detail::build_simple_corner(sys, vh.chassis_body, cd.mount_pos + Vec3(0.0, 0.0, length),
+                                                        ax, cd.name);
+            vh.corners[c].design_spring_force = force;
+            vh.corners[c].design_spring_length = length;
+        }
+    }
+
+    // --- The linkage corners' spring units, set by virtual work to hold the
+    // design position under those loads; an anti-roll bar's torsion on drop
+    // links, set to give k_arb and c_arb at the wheels.
+    for (int a = 0; a < 2; ++a) {
+        const AxleConfig& ax = *axles[static_cast<std::size_t>(a)];
+        if (ax.suspension_type == SuspensionType::Simple) continue;
+        const Real load = vh.design_tyre_load[static_cast<std::size_t>(a)];
+        const TyreBody tyre = ax.tyre_body();
+        const detail::CornerMotion m = detail::corner_motion(tmpl, a, tyre.free_radius - load / tyre.vertical_stiffness);
+        // The left tyre's overturning moment at rest, as the tyre on its
+        // wheel evaluates it there (no slip, no inclination, no speed),
+        // mirrored when its parameters describe a right tyre.
+        TyreInput at_rest;
+        at_rest.Fz = load;
+        at_rest.Vcx = 0.0;
+        const Real overturning = (tyre.side == TyreSide::Right ? -1.0 : 1.0) * ax.make_tyre()->evaluate(at_rest).Mx;
+        const Real force = detail::design_spring_force(m, load, overturning);
+        for (int s = 0; s < 2; ++s) {
+            const std::size_t k = static_cast<std::size_t>(std::min(s, m.sides - 1));
+            detail::add_spring_unit(sys, ax, vh.corners[2 * a + s], force, m.spring_length[k]);
+        }
+        if (ax.arb_links.enabled && (ax.k_arb > 0.0 || ax.c_arb > 0.0)) {
+            const Real r = m.bar_rate[0];
+            MBD_THROW_IF(!(std::abs(r) > 1e-9),
+                         "MBD-V003: build_vehicle: the anti-roll bar on drop links does not turn with the wheel");
+            RotationalSpringDamperParams tp;
+            tp.spring = Curve::linear(ax.k_arb / (r * r));
+            tp.damper = Curve::linear(ax.c_arb / (r * r));
+            const Transform3 along_y = Transform3::FromRotation(detail::rotation_align_z_to(Vec3::UnitY()));
+            auto torsion = std::make_shared<RotationalSpringDamper>(vh.corners[2 * a].arb_half_body, along_y,
+                                                                    vh.corners[2 * a + 1].arb_half_body, along_y, tp);
+            vh.arb_torsion[static_cast<std::size_t>(a)] = torsion.get();
+            sys.force_elements.push_back(std::move(torsion));
+        }
+    }
+
+    // --- Tyres of the linkage corners (a simple corner has its own) ---
+    for (int c = 0; c < 4; ++c) {
+        CornerHandle& corner = vh.corners[static_cast<std::size_t>(c)];
+        if (corner.type != SuspensionType::Simple) {
+            const AxleConfig& ax = *axles[static_cast<std::size_t>(c / 2)];
+            auto tire = std::make_shared<FullTireForce>(corner.wheel_body, ax.make_tyre());
+            corner.tire = tire.get();
+            sys.force_elements.push_back(std::move(tire));
+        }
+        corner.tire->mount(corner_defs[static_cast<std::size_t>(c)].is_right);
     }
 
     // --- Calibrate rack travel per radian of toe, corner by corner ---
@@ -505,7 +519,11 @@ void roll_wheels(kernel::Simulator& sim, const VehicleHandle& vh)
     }
 }
 
-void set_vehicle_equilibrium(kernel::Simulator& sim, const VehicleHandle& vh)
+namespace {
+
+/// The placement of a car of simple corners only, as it was before task 7.6
+/// (see set_vehicle_equilibrium).
+void legacy_vehicle_equilibrium(kernel::Simulator& sim, const VehicleHandle& vh)
 {
     const auto& t = vh.tmpl;
     const kernel::Model& model = sim.system.model;
@@ -546,6 +564,51 @@ void set_vehicle_equilibrium(kernel::Simulator& sim, const VehicleHandle& vh)
         sim.q(model.idx_q[vh.corners[c].upright_body]) = chassis_z - wheel_z;
     }
 
+    sim.refresh();
+}
+
+} // namespace
+
+void set_vehicle_equilibrium(kernel::Simulator& sim, const VehicleHandle& vh)
+{
+    const auto& t = vh.tmpl;
+    const bool linkage = t.front_axle.suspension_type != SuspensionType::Simple
+                      || t.rear_axle.suspension_type != SuspensionType::Simple;
+    if (!linkage) {
+        legacy_vehicle_equilibrium(sim, vh);
+        return;
+    }
+    const kernel::Model& model = sim.system.model;
+    sim.q = model.neutral_configuration();
+    sim.v.setZero();
+
+    // Each axle's loaded radius. At the design position every wheel centre
+    // is at the chassis frame's Z = 0 (build_vehicle raised a mixed car's
+    // simple corners' mounts to put them there).
+    std::array<Real, 2> radius{};
+    for (std::size_t a = 0; a < 2; ++a) {
+        const TyreBody tyre = (a == 0 ? t.front_axle : t.rear_axle).tyre_body();
+        radius[a] = tyre.free_radius - vh.design_tyre_load[a] / tyre.vertical_stiffness;
+    }
+    // The chassis's origin at height h, pitched by theta about Y: its point
+    // (x, y, 0) is at h - x sin(theta). Each axle's wheel centres must be at
+    // their loaded radius: h - x_a sin(theta) = radius_a.
+    const Real x_f = t.front_axle_x, x_r = -t.rear_axle_x;
+    const Real theta = std::asin((radius[1] - radius[0]) / (x_f - x_r));
+    const Real h = radius[0] + x_f * std::sin(theta);
+    const int cq = model.idx_q[static_cast<std::size_t>(vh.chassis_body)];
+    sim.q(cq + 2) = h;
+    // The free joint's quaternion (x, y, z, w): a turn by theta about Y.
+    sim.q(cq + 3) = 0.0;
+    sim.q(cq + 4) = std::sin(0.5 * theta);
+    sim.q(cq + 5) = 0.0;
+    sim.q(cq + 6) = std::cos(0.5 * theta);
+    // A simple corner's slider: the distance from its mount down to its
+    // wheel centre, its spring's length at the design position.
+    for (const CornerHandle& corner : vh.corners) {
+        if (corner.type != SuspensionType::Simple) continue;
+        sim.q(model.idx_q[static_cast<std::size_t>(corner.upright_body)]) = corner.design_spring_length;
+    }
     sim.refresh();
 }
 

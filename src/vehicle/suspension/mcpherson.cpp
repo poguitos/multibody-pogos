@@ -1,6 +1,22 @@
 #include "mbd/vehicle/suspension/mcpherson.hpp"
 
+#include "mbd/vehicle/suspension/mass.hpp"
+
 namespace mbd {
+
+namespace {
+
+// The upright's inertia (task 7.6, F9): its mass, the strut's tube with it,
+// among the lower ball joint, the strut's lower mount, the tie rod's end and
+// the wheel centre, in its frame (origin at the wheel centre). The lower arm
+// is a rod from its pivot to its ball joint.
+RigidBodyInertia mcpherson_upright_inertia(const McPhersonParams& p)
+{
+    return lumped_inertia(p.upright_mass, {p.lca_outer - p.wheel_center, p.strut_lower - p.wheel_center,
+                                           p.tierod_outer - p.wheel_center, Vec3::Zero()});
+}
+
+} // namespace
 
 McPhersonCorner build_mcpherson_corner(
     kernel::System& sys,
@@ -10,8 +26,8 @@ McPhersonCorner build_mcpherson_corner(
     McPhersonCorner mc;
     mc.params = p;
     const Mat3 R_arm = detail::rotation_align_z_to(p.arm_axis);
-    const auto I_arm = RigidBodyInertia::from_solid_box(p.arm_mass, Vec3(0.02, 0.2, 0.02));
-    const auto I_upright = RigidBodyInertia::from_solid_box(p.upright_mass, Vec3(0.05, 0.05, 0.1));
+    const auto I_arm = rod_inertia(p.arm_mass, Vec3::Zero(), p.lca_outer - p.lca_pivot);
+    const auto I_upright = mcpherson_upright_inertia(p);
 
     mc.lca_body = sys.model.add_body(0, std::make_shared<RevoluteJointModel>(),
                                      Transform3(R_arm, p.lca_pivot),
@@ -54,8 +70,8 @@ McPhersonCorner build_mcpherson_corner_dynamic(
     McPhersonCorner mc;
     mc.params = p;
     const Mat3 R_arm = detail::rotation_align_z_to(p.arm_axis);
-    const auto I_arm = RigidBodyInertia::from_solid_box(p.arm_mass, Vec3(0.02, 0.2, 0.02));
-    const auto I_upright = RigidBodyInertia::from_solid_box(p.upright_mass, Vec3(0.05, 0.05, 0.1));
+    const auto I_arm = rod_inertia(p.arm_mass, Vec3::Zero(), p.lca_outer - p.lca_pivot);
+    const auto I_upright = mcpherson_upright_inertia(p);
 
     mc.lca_body = sys.model.add_body(chassis_body, std::make_shared<RevoluteJointModel>(),
                                      Transform3(R_arm, p.lca_pivot),

@@ -333,7 +333,14 @@ Simple tyres beside it: the brush model of chapter 3 as running code, the
 theoretical slip that makes combined slip one-dimensional, a central
 difference that is not the slope; what "Fiala" means in the books and in
 the codes; and what a simple tyre saves in a vehicle's step (a tenth). *J:
-Phase 7, the simple tyres. D65.*
+Phase 7, the simple tyres. D65.* Suspensions: the motion ratio two ways,
+the mechanism's velocities and the constraint forces, one identity seen
+from both sides of the constraint equations; springs set by virtual work to
+hold the design the hardpoints describe; a mixed car whose geometry pitched
+it by 4.5 degrees. Hysteresis: a damper on its top mount as a complex
+stiffness, an integrator's error on it computed from its coefficients,
+Bouc-Wen's loop as exact branches. *J: Phase 7, the suspensions. D66,
+D67.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

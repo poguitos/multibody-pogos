@@ -13,7 +13,7 @@ agent (plan task H.7, decision D42). Read them before the first change.
 | Design decisions D1 onwards, with context and alternatives | `documentation/decisions.md` |
 | The journal: an entry per task, its index, the template | `documentation/journal/` (`README.md`, `TEMPLATE.md`), raw measurements in `journal/data/` |
 | The book's outline and bibliography | `documentation/book/` |
-| How the program works | `docs/conventions.md`, `docs/kernel.md`, `docs/integrators.md`, `docs/performance.md`, `docs/hmmwv.md`, `docs/python.md`, `docs/model-files.md`, `docs/tyres.md` |
+| How the program works | `docs/conventions.md`, `docs/kernel.md`, `docs/integrators.md`, `docs/performance.md`, `docs/hmmwv.md`, `docs/python.md`, `docs/model-files.md`, `docs/tyres.md`, `docs/suspensions.md` |
 | The Python interface: the package, its bindings, its tests, its packaging | `python/multibody/`, `python/src/`, `python/tests/` (D52), `pyproject.toml` (D53) |
 | What is validated, against what, and what is not | `docs/validation.md` |
 | Help: how-to guides, troubleshooting, the message catalogue | `docs/help/` |
@@ -61,7 +61,12 @@ simulator attaches by itself; every vehicle's tyre, the book's Appendix 3
 tyre by default), and 7.5 (D65: simple tyres behind one interface,
 `mbd/forces/tyre_model.hpp` and `mbd/forces/simple_tyres.hpp`: linear with
 saturation, Adams's Fiala, Pacejka's brush model; vehicles take any model
-through `tyre_model`); 7.6, suspensions, is next. Conda environments for the project pin
+through `tyre_model`), and 7.6 (D66: a damper on a top mount and a Bouc-Wen
+bushing as state elements, `mbd/forces/hysteresis.hpp`, a virtual damper
+dyno, bushing curves by their shape; D67: the five suspensions from the
+kernel's joints, `src/vehicle/corners.cpp` and `docs/suspensions.md`, their
+springs set by virtual work to hold the design position, the vehicle
+layer's messages in area V); 7.7, steering, is next. Conda environments for the project pin
 `"libblas=*=*openblas"` (MKL's NumPy crashes on this laptop). After a change to the bindings, reinstall `mbd-try`
 (an editable install whose module is older than its Python files stops with
 MBD-P011). The nightly workflow runs on schedule from `main`.

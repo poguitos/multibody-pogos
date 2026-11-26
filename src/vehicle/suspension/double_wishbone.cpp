@@ -1,6 +1,28 @@
 #include "mbd/vehicle/suspension/double_wishbone.hpp"
 
+#include "mbd/vehicle/suspension/mass.hpp"
+
 namespace mbd {
+
+namespace {
+
+// The parts' inertias (task 7.6, F9): each arm a rod from its pivot to its
+// ball joint, in its frame (origin at the pivot, the chassis's axes at the
+// reference); the upright's mass among its two ball joints, the tie rod's
+// end and the wheel centre, in its frame (origin at the wheel centre).
+struct DwbInertias {
+    RigidBodyInertia lca, uca, upright;
+};
+
+DwbInertias dwb_inertias(const DoubleWishboneParams& p)
+{
+    return {rod_inertia(p.arm_mass, Vec3::Zero(), p.lca_outer - p.lca_pivot),
+            rod_inertia(p.arm_mass, Vec3::Zero(), p.uca_outer - p.uca_pivot),
+            lumped_inertia(p.upright_mass, {p.lca_outer - p.wheel_center, p.uca_outer - p.wheel_center,
+                                            p.tierod_outer - p.wheel_center, Vec3::Zero()})};
+}
+
+} // namespace
 
 Mat3 detail::rotation_align_z_to(const Vec3& target)
 {
@@ -28,18 +50,17 @@ DoubleWishboneCorner build_double_wishbone_corner(
     DoubleWishboneCorner dwb;
     dwb.params = p;
     const Mat3 R_arm = detail::rotation_align_z_to(p.arm_axis);
-    const auto I_arm = RigidBodyInertia::from_solid_box(p.arm_mass, Vec3(0.02, 0.2, 0.02));
-    const auto I_upright = RigidBodyInertia::from_solid_box(p.upright_mass, Vec3(0.05, 0.05, 0.1));
+    const DwbInertias I = dwb_inertias(p);
     const auto revolute = std::make_shared<RevoluteJointModel>();
 
     dwb.lca_body = sys.model.add_body(0, revolute, Transform3(R_arm, p.lca_pivot),
-                                      Transform3::FromRotation(R_arm), I_arm, "LCA");
+                                      Transform3::FromRotation(R_arm), I.lca, "LCA");
     dwb.upright_body = sys.model.add_body(
         dwb.lca_body, std::make_shared<SphericalJointModel>(),
         Transform3::FromTranslation(p.lca_outer - p.lca_pivot),
-        Transform3::FromTranslation(p.lca_outer - p.wheel_center), I_upright, "upright");
+        Transform3::FromTranslation(p.lca_outer - p.wheel_center), I.upright, "upright");
     dwb.uca_body = sys.model.add_body(0, revolute, Transform3(R_arm, p.uca_pivot),
-                                      Transform3::FromRotation(R_arm), I_arm, "UCA");
+                                      Transform3::FromRotation(R_arm), I.uca, "UCA");
     dwb.lca_joint_idx = dwb.lca_body;
     dwb.spherical_joint_idx = dwb.upright_body;
     dwb.uca_joint_idx = dwb.uca_body;
@@ -74,19 +95,18 @@ DoubleWishboneCorner build_double_wishbone_corner_dynamic(
     DoubleWishboneCorner dwb;
     dwb.params = p;
     const Mat3 R_arm = detail::rotation_align_z_to(p.arm_axis);
-    const auto I_arm = RigidBodyInertia::from_solid_box(p.arm_mass, Vec3(0.02, 0.2, 0.02));
-    const auto I_upright = RigidBodyInertia::from_solid_box(p.upright_mass, Vec3(0.05, 0.05, 0.1));
+    const DwbInertias I = dwb_inertias(p);
     const auto revolute = std::make_shared<RevoluteJointModel>();
 
     // Arm frames: origin at the pivot, axes of the chassis at the reference.
     dwb.lca_body = sys.model.add_body(chassis_body, revolute, Transform3(R_arm, p.lca_pivot),
-                                      Transform3::FromRotation(R_arm), I_arm, "dyn_LCA");
+                                      Transform3::FromRotation(R_arm), I.lca, "dyn_LCA");
     dwb.upright_body = sys.model.add_body(
         dwb.lca_body, std::make_shared<SphericalJointModel>(),
         Transform3::FromTranslation(p.lca_outer - p.lca_pivot),
-        Transform3::FromTranslation(p.lca_outer - p.wheel_center), I_upright, "dyn_upright");
+        Transform3::FromTranslation(p.lca_outer - p.wheel_center), I.upright, "dyn_upright");
     dwb.uca_body = sys.model.add_body(chassis_body, revolute, Transform3(R_arm, p.uca_pivot),
-                                      Transform3::FromRotation(R_arm), I_arm, "dyn_UCA");
+                                      Transform3::FromRotation(R_arm), I.uca, "dyn_UCA");
     dwb.lca_joint_idx = dwb.lca_body;
     dwb.spherical_joint_idx = dwb.upright_body;
     dwb.uca_joint_idx = dwb.uca_body;

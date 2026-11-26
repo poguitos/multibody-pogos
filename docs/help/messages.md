@@ -9,6 +9,7 @@ letter for the area, and three digits. Search this page for the code.
 | M | `kernel::validate()`: findings in a model | Lines of the report: `errors`, `warnings` and `notes`, and `summary()` |
 | F | Force elements | Errors, when the element is constructed |
 | A | Analysis: tracks and lap simulation | Errors |
+| V | The vehicle layer: the template's builder and its suspensions | Errors, when a vehicle or a corner is built |
 | I | Model files: reading and writing them (`mbd/io/model_file.hpp`, `docs/model-files.md`) | Errors, when a file is written or read; in Python a `multibody.MbdError` |
 | P | The Python interface: values given from Python that the C++ engine would take without a check | Errors: the exception `multibody.MbdError`. In Python every error of the engine is a `multibody.MbdError` and every warning a `multibody.MbdWarning`, each with the code in `.code` |
 
@@ -990,6 +991,63 @@ no cycle <k> in the record`
   (a stroke, frequency or length out of range, a zero axis, fewer than one
   cycle or four steps a cycle) or nothing to test, or a record was asked for
   a cycle it does not hold (cycles count from 0).
+
+## V: the vehicle layer
+
+### MBD-V001
+
+`rod_inertia: the mass must be > 0` or `lumped_inertia: the mass must be >
+0, with points`
+
+- **Means:** a suspension part (an arm, an upright, a hub carrier, a rocker,
+  an axle, a bar's half: `mbd/vehicle/suspension/mass.hpp`, task 7.6) was
+  given a mass that is not positive. Its inertia comes from its mass and the
+  points it joins.
+- **What to do:** give the part's mass in the `AxleConfig` (`arm_mass`,
+  `upright_mass`, `axle_mass`, `rocker_mass`, `arb_links.arm_mass`).
+
+### MBD-V002
+
+`<builder>: a pushrod (SpringLayout::Pushrod) is for a double wishbone`, `a
+trailing arm cannot be steered`, `a solid axle cannot be steered`, `the
+rocker's axis is zero`, `the hinge axis must not be zero, nor the pivot on
+the wheel centre`, `the half track must be > 0`, `a link has zero length`,
+or `corner <c> is a simple corner: it has no linkage`
+
+- **Means:** the template asks for a suspension the builder cannot make
+  (task 7.6): a pushrod and rocker on anything but a double wishbone; a
+  steered trailing arm or solid axle (their wheels have no steering axis
+  here; steer the front axle, or use a double wishbone, McPherson or
+  five-link there); a geometry with a zero axis or link; or an analysis
+  (`build_corner_rig`) of a simple corner, which has no linkage.
+- **What to do:** correct the axle's `suspension_type`, `is_steered`,
+  `spring_layout` or hardpoints as the message says.
+
+### MBD-V003
+
+`corner_motion: the corner's mechanism does not close at its design
+position`, `the spring unit does not move with the wheel (motion ratio
+<x>)`, or `build_vehicle: the anti-roll bar on drop links does not turn with
+the wheel`
+
+- **Means:** the builder sets each linkage corner's spring by virtual work
+  along the corner's motion at its design position (task 7.6), and could not:
+  the hardpoints do not close the mechanism there, or the spring unit (or a
+  bar's drop link) is placed where the wheel's travel does not move it, so
+  no force in it can hold the wheel.
+- **Usual causes:** hardpoints that do not describe one mechanism (a link's
+  ends swapped, a point given for the wrong side); a spring unit's ends both
+  on the chassis, or on a point of the arm on its hinge's axis.
+- **What to do:** check the corner with `build_corner_rig` and `Kinematics`,
+  as `tests/vehicle/test_suspensions.cpp` does.
+
+### MBD-V004
+
+`add_spring_unit: a linkage corner's spring needs k_spring > 0`
+
+- **Means:** a linkage corner's spring is set to carry its load at the
+  design position, which a spring without stiffness cannot do.
+- **What to do:** give the axle's `k_spring`.
 
 ## I: model files
 

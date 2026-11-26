@@ -184,6 +184,29 @@ and (3.48) to (3.50), its torque's peak, isotropy, the locked wheel), and a
 car on each held on the slope; not against another code (Chrono's Fiala
 needs PyChrono's vehicle module).
 
+Hysteresis (task 7.6, D66; `tests/forces/test_hysteresis.cpp`), on the
+virtual damper dyno: a damper with a stiffness in series follows its
+closed-form response from rest within 7.8e-8 N of 2666 N, and its loop is
+the closed-form steady state within 4.6e-6 N (the transient's exp(-20)),
+its in-phase and quadrature parts and its energy a cycle to 1e-8; Radau IIA
+at steps of ten time constants is within 1.748e-7 N, the error its own
+coefficients give; with a tabulated damper, the rig's work equals the
+damper's loss and the mount's energy to 1.7e-4 J of 195 J. A Bouc-Wen
+bushing's force follows the exact branches of its equation (n = 1 and 2)
+within 2.4e-6 N of 250 N, the same at 0.1 and 10 Hz. A bushing's shaped
+curve against its closed forms and its derivatives to rounding.
+
+The suspensions (task 7.6, D67; [suspensions.md](suspensions.md),
+`tests/vehicle/test_suspensions.cpp`): for the double wishbone (coil-over and
+pushrod), McPherson, five-link, trailing arm and solid axle, the motion ratio
+from the geometry equals the one from virtual work (constraint multipliers
+against a known spring force) within 8.9e-16; a trailing arm's is its
+levers' ratio, a pushrod's its rocker's, and a solid axle rolls about a
+point on its Panhard rod's line, all to rounding; an anti-roll bar on drop
+links gives 4 k_arb in roll at the wheels; every linkage car is placed
+within 0.028 m/s^2 of rest by springs set from virtual work. Not compared
+with another code yet (task 9.1 plans suspension-explorer-core).
+
 ## 10. A vehicle-sized stiff model: the HMMWV
 
 Task 5.4 (D47, D48; [the HMMWV benchmark](hmmwv.md)). The fourteen-body HMMWV
@@ -214,8 +237,8 @@ every commit; a relative change of 1e-6 in one physical parameter fails each
 by 26 to 997 times that tolerance, one of 1e-12 moves none by more than 5e-3
 of it. (Since Phase 7 there are twelve fast scenarios and three long ones;
 after task 7.3, 30 to 996 times, and at most 1.4e-2; after task 7.4, 41
-to 992 times, and at most 1.0e-2: the table in
-`tests/regression/README.md`.) Nightly, nine one-line mutations of the physics must each make a test
+to 992 times, and at most 1.0e-2; after task 7.6, 41 to 10800 times, and
+at most 1.1e-2: the table in `tests/regression/README.md`.) Nightly, nine one-line mutations of the physics must each make a test
 fail; all nine do.
 
 ## 12. Platforms and memory safety

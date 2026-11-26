@@ -43,8 +43,12 @@ add_library(multibody_core
     vehicle/suspension/double_wishbone.cpp
     vehicle/suspension/mcpherson.cpp
     vehicle/suspension/multilink.cpp
+    vehicle/suspension/mass.cpp
+    vehicle/suspension/trailing_arm.cpp
+    vehicle/suspension/solid_axle.cpp
     vehicle/vehicle.cpp
     vehicle/vehicle_template.cpp
+    vehicle/corners.cpp
     vehicle/drivetrain.cpp
     vehicle/wheel.cpp
     analysis/position_kinematics.cpp

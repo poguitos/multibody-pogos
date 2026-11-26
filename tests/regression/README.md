@@ -30,7 +30,9 @@ author's laptop, MSVC; the sports car and the hatchback, added for task 7.1,
 on 14 November; the rough road, for task 7.2, and `sedan-modes` again, on 24
 November; the vehicle scenarios again on 25 November, after task 7.3 gave the
 wheels spin joints, and after task 7.4 gave them the Magic Formula tyre with
-its lag; in brackets, the values before 7.4):
+its lag; in brackets, the values before 7.4; the sports car and the
+hatchback again on 26 November, after task 7.6 set their springs to hold
+them at rest where they start, in brackets the values before):
 
 | Scenario | 1e-12 change, over the tolerance | 1e-6 change, over the tolerance |
 |---|---|---|
@@ -41,16 +43,17 @@ its lag; in brackets, the values before 7.4):
 | hmmwv-bushings | 2.4e-4 | 60 |
 | sedan-drive | 9.9e-4 (9.9e-4; 1.0e-3 before task 7.3) | 992 (996) |
 | sedan-modes | 1.0e-2 (1.4e-2; 1.0e-2 before task 7.3; 5.1e-3 before the mirror of task 7.1) | 67 (30) |
-| sports-car-turn | 4.6e-4 (4.7e-4) | 463 (471) |
-| hatchback-brake | 4.1e-4 (2.3e-4) | 407 (225) |
+| sports-car-turn | 1.1e-2 (4.6e-4) | 10800 (463) |
+| hatchback-brake | 3.1e-3 (4.1e-4) | 3110 (407) |
 | sedan-rough-road | 6.1e-4 (6.1e-4) | 610 (611) |
 | wishbone-sweep | 6.8e-4 | 682 |
 | lap-oval | 4.2e-5 | 41 |
 
 A relative change of 1e-12 in one physical parameter (gravity; for the
 analyses a hardpoint or the friction) stands for what rounding differences
-between compilers do: it moves no channel by more than 1.0 percent of the
-tolerance. A change of 1e-6 moves every scenario by 41 times the tolerance or
+between compilers do: it moves no channel by more than 1.1 percent of the
+tolerance (the sports car's vertical speed, since task 7.6 small because it
+starts at rest, so that its tolerance is small too). A change of 1e-6 moves every scenario by 41 times the tolerance or
 more. A channel that is zero but for rounding throughout a scenario (a
 symmetric car's roll going straight) would have a tolerance of rounding
 itself; scenarios avoid them (the rough road's car steers for that reason).

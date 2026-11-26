@@ -75,4 +75,18 @@ MultilinkCorner build_multilink_corner(
     kernel::System& sys,
     const MultilinkParams& p = MultilinkParams{});
 
+/// Five-link corner for dynamic simulation (task 7.6): the upright on a free
+/// joint on the chassis, its frame at the wheel centre with the chassis's axes
+/// at the reference, the links distances from the chassis to it, without a
+/// driver. The links are massless; the upright's mass is shared among its
+/// five joints and the wheel centre (mbd/vehicle/suspension/mass.hpp). The
+/// fifth link (the toe link) has its inner point on `toe_link_body`, the
+/// chassis by default or a steering rack whose frame coincides with the
+/// chassis frame at zero travel.
+MultilinkCorner build_multilink_corner_dynamic(
+    kernel::System& sys,
+    BodyIndex chassis_body,
+    const MultilinkParams& p,
+    BodyIndex toe_link_body = -1);
+
 } // namespace mbd
