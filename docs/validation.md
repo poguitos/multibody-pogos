@@ -228,6 +228,11 @@ wheels' inertia, to 8.4e-4; locked wheels sliding at mu g, to 3.3e-4. The
 anti-lock controller's effect (a shorter stop, no wheel locked) is checked
 only in direction.
 
+The aerodynamic element (task 7.10, D71; [aerodynamics.md](aerodynamics.md)):
+a synthetic map over the ride heights, pitch, roll and yaw, with wind,
+reproduced through the element to 4.6e-13 N on 946 N; the constant model
+equal to its map to 1e-12.
+
 ## 10. A vehicle-sized stiff model: the HMMWV
 
 Task 5.4 (D47, D48; [the HMMWV benchmark](hmmwv.md)). The fourteen-body HMMWV
@@ -284,7 +289,10 @@ build (-O3), which found D50.
   change). The HMMWV benchmark here compares methods, not vehicles.
 - **The comparisons' coverage.** Pinocchio covers trees; Chrono covers
   gravity and constraints, not force elements, drivers or contact.
-- **Aerodynamics, real time, flexible bodies**: later phases.
+- **Aerodynamics against a wind tunnel or CFD.** Task 7.10's map is checked
+  for its arithmetic (a synthetic map reproduced to rounding), not against
+  any measured map.
+- **Real time, flexible bodies**: later phases.
 - **Known limits, documented where they apply:**
   - SDIRK4 loses its order beside stiff bushings and does not converge
     across force jumps without events.

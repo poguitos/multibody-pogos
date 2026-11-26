@@ -789,11 +789,13 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
 
 ### MBD-F020
 
-`AerodynamicForce: CdA must be non-negative`, `ClA must be non-negative` or
-`air_density must be positive`
+`AerodynamicForce: CdA must be non-negative`, `ClA must be non-negative`,
+`dClA_dh must be non-negative` or `air_density must be positive`
 
-- **Means:** drag and downforce areas are zero or positive (downforce is
-  counted positive), and the air density positive.
+- **Means:** the constant model's drag and downforce areas are zero or
+  positive (downforce is counted positive), its downforce grows as the ride
+  height falls (since task 7.10, which made the model a map, D71), and the
+  air density is positive.
 
 ### MBD-F030
 
@@ -933,6 +935,20 @@ finite`
   Rodellar, 2007); n >= 1 keeps its rate defined where z is zero.
 - **What to do:** correct the axis the message names; a stiffness of zero
   leaves an axis without hysteresis, its other parameters unread.
+
+### MBD-F060
+
+`AeroMap: a variable has no nodes`, `a variable's nodes are not finite and
+strictly increasing`, `the number of coefficient sets is not the product of
+the variables' numbers of nodes` or `a coefficient is not finite`
+
+- **Means:** an aerodynamic map (`AeroMap`, `mbd/forces/aerodynamics.hpp`,
+  task 7.10) cannot be read as a grid: each of its five variables needs at
+  least one node, in increasing order, and the coefficients one set of six
+  per node of the grid.
+- **What to do:** give a variable the map does not depend on one node; order
+  the values with the first variable (front ride height) changing fastest,
+  as `AeroMap::values` says.
 
 ## A: analysis
 

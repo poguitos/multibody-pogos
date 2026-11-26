@@ -111,3 +111,4 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 27 Nov 2026 | [Phase 7: the steering](2026-11-27_phase-7-steering.md) | 7.7, F9, F10, D68 | `e84b194` | At the time |
 | 27 Nov 2026 | [Phase 7: the powertrain](2026-11-27_phase-7-powertrain.md) | 7.8, F6, D69 | see git log | At the time |
 | 27 Nov 2026 | [Phase 7: the brakes](2026-11-27_phase-7-brakes.md) | 7.9, F5, F6, D70 | see git log | At the time |
+| 27 Nov 2026 | [Phase 7: the aerodynamic element](2026-11-27_phase-7-aerodynamics.md) | 7.10, F12, D71 | see git log | At the time |

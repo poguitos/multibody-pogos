@@ -305,6 +305,12 @@ struct ChassisConfig {
     Vec3 aero_cop_offset{Vec3::Zero()};  ///< CoP offset from CG (chassis frame)
     Real aero_h_ref{0.10};
     Real aero_dClA_dh{0.0};
+    /// A map of the forces and moments (task 7.10, mbd/forces/aerodynamics.hpp);
+    /// when set it replaces the constant model above.
+    std::shared_ptr<const AeroMap> aero_map;
+    Vec3 aero_reference_point{Vec3::Zero()};   ///< The map's moments are about it (chassis frame)
+    Vec3 aero_front_point{Vec3::Zero()};       ///< The front ride height's point (chassis frame)
+    Vec3 aero_rear_point{Vec3::Zero()};        ///< The rear's
 };
 
 // ============================================================================

@@ -245,7 +245,7 @@ std::pair<AntiRollBar*, AntiRollBar*> VehicleHandle::install_anti_roll_bars(
 
 AerodynamicForce* VehicleHandle::install_aerodynamics(kernel::System& sys)
 {
-    if (tmpl.chassis.CdA <= 0.0 && tmpl.chassis.ClA <= 0.0) {
+    if (!tmpl.chassis.aero_map && tmpl.chassis.CdA <= 0.0 && tmpl.chassis.ClA <= 0.0) {
         return nullptr;
     }
 
@@ -255,6 +255,10 @@ AerodynamicForce* VehicleHandle::install_aerodynamics(kernel::System& sys)
     p.cop_offset_chassis = tmpl.chassis.aero_cop_offset;
     p.h_ref = tmpl.chassis.aero_h_ref;
     p.dClA_dh = tmpl.chassis.aero_dClA_dh;
+    p.map = tmpl.chassis.aero_map;
+    p.reference_point = tmpl.chassis.aero_reference_point;
+    p.front_point = tmpl.chassis.aero_front_point;
+    p.rear_point = tmpl.chassis.aero_rear_point;
     p.ground_normal_W = ground_up(sys.model.gravity);
 
     auto aero = std::make_shared<AerodynamicForce>(chassis_body, p);

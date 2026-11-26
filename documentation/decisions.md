@@ -81,6 +81,7 @@ and the journal entry of the work refers to them by number
 | D68 | Steering: a rack geared to a pinion by a joint coupler, a compliant column to a steering wheel, the input the rack's travel, the wheel's angle or a torque, as held values or functions of time | 27 Nov 2026 | In force, task 7.7 |
 | D69 | The powertrain as a state element: an engine with its own speed, a converter or clutch, a gearbox with shift time, differentials and compliant half-shafts, reacting on the housing and the chassis | 27 Nov 2026 | In force, task 7.8 |
 | D70 | The brakes as a state element: line pressures lagging the pedal, a proportioning valve, dry friction that locks a wheel, a slip-switched anti-lock controller | 27 Nov 2026 | In force, task 7.9 |
+| D71 | The aerodynamic element's forces and moments from a map over ride heights, pitch, roll and yaw, in the chassis's axes, with wind; the constant model a one-node map | 27 Nov 2026 | In force, task 7.10 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -3456,3 +3457,72 @@ and the journal entry of the work refers to them by number
     template's.
 - **Record.** Journal: Phase 7, the brakes; `docs/brakes.md`,
   `tests/vehicle/test_brakes.cpp`.
+
+## D71. The aerodynamic element's forces and moments from a map over ride heights, pitch, roll and yaw, in the chassis's axes, with wind; the constant model a one-node map
+
+- **Context.** Task 7.10: "Aerodynamic element (F12). Forces and moments
+  from a table over front and rear ride height, pitch, roll and yaw, applied
+  in the body frame, with wind. The present constant model becomes a special
+  case. Done when a synthetic map is reproduced exactly." Finding F12: "One
+  centre of pressure, constant drag and downforce areas, a linear ride-height
+  term. No lift, side force, yaw dependence, front and rear balance, or
+  wind." The element's drag acted against the chassis's velocity along the
+  ground and its downforce along the ground normal, at a centre of pressure.
+- **Decision.**
+  - **A map of six coefficients** (`AeroMap`, `mbd/forces/aerodynamics.hpp`)
+    over five variables: front and rear ride height, pitch, roll, yaw. The
+    coefficients are the force and the moment (about a reference point) over
+    the dynamic pressure, in the chassis's axes, signed by those axes (a drag
+    area is a negative A_x). Each variable has its own nodes; one node means
+    no dependence.
+  - **Multilinear interpolation, held at the edges.** Exact at the nodes and
+    for any function multilinear in the variables, which makes the plan's
+    test exact; no overshoot between nodes; beyond the table, the end values
+    (extrapolating an aerodynamic map is rarely meant).
+  - **The variables' definitions**: ride heights at two chassis points above
+    the road under them (or the ground plane); pitch and roll as ISO 8855's
+    angles to the ground plane; yaw as the angle of the velocity relative to
+    the air from the chassis's x axis. The velocity is the reference point's,
+    less the wind's (a function of world position), along the ground (as
+    the constant model's).
+  - **The constant model kept as settings**, computed in place
+    (`AeroParams::constant_coefficients`, which `AeroMap::from` samples), its
+    forces now in the chassis's axes like a map's. A negative ride-height
+    sensitivity, which the old code clamped at zero downforce, is refused.
+- **Alternatives.**
+  - Keeping the constant model's forces along the velocity and the normal
+    (wind axes): then a map with one node would not be the constant model,
+    and the plan asks for forces in the body frame. Cost: the constant
+    model's drag no longer turns with the velocity; a car at a large yaw
+    needs a map with a yaw axis.
+  - Cubic or spline interpolation: smooth derivatives for implicit
+    integrators, but overshoot between sparse CFD points and no exactness
+    for the test; multilinear is what CFD maps are usually read with.
+  - Linear extrapolation beyond the table: it reproduces the old unbounded
+    ride-height term, but it runs away outside the measured range. The old
+    term is reproduced instead by a node 10 m below h_ref.
+  - Pitch from the two ride heights only: a map may be given over a ride
+    height and pitch instead; keeping all five variables lets either form be
+    used (one node for the unused one).
+- **Consequences.**
+  - The synthetic map (288 nodes, a function multilinear in all five
+    variables) is reproduced through the element to 4.6e-13 N on a force of
+    946 N, with and without a road; at nodes, arbitrary values
+    bitwise; beyond the ends, the end values bitwise.
+  - The constant model and its map agree to 1e-12.
+  - The regression scenario `sports-car-turn`, the only one with
+    aerodynamics, written again: unchanged at rest (1.1e-15 relative, q
+    being zero), within 2.2e-5 of each channel's largest value while
+    accelerating straight, and up to 2.35e-4 in the turn (a front camber);
+    its speed 7.6e-5 m/s higher at 2 s, the difference growing with q. The
+    sign fits the downforce tilted back by the squat; that is an estimate,
+    the record holding no attitude. Its sensitivity is unchanged (0.0108 and
+    1.08e4 of the tolerance).
+  - The test "drag opposes lateral velocity too" became "the constant
+    model's drag acts along the chassis's x axis".
+  - MBD-F060 for maps that are not grids; MBD-F020 also refuses a negative
+    dClA_dh.
+  - The lap model reads CdA and ClA, not a map. Not in model files or
+    Python.
+- **Record.** Journal: Phase 7, the aerodynamic element;
+  `docs/aerodynamics.md`, `tests/forces/test_aerodynamics.cpp`.
