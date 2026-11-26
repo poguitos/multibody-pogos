@@ -263,6 +263,39 @@ private:
     TimeFunction s_;
 };
 
+/// q_a - ratio q_b = 0 for the coordinates of the joints above bodies a and
+/// b, each revolute or prismatic: a gear between two joints, such as a rack
+/// and its pinion (task 7.7, D68), q_rack = r q_pinion. Each coordinate is
+/// read from its joint transform; an angle on the branch nearest the value
+/// the other side gives it (q_a near ratio q_b, or q_b near q_a / ratio when
+/// only b is revolute), so a pinion may turn many times while its rack, a
+/// prismatic joint, is read as it is. With two revolute joints, b is read in
+/// (-pi, pi] and a near ratio times that. The multiplier is the force (or
+/// torque) on joint a; joint b receives -ratio times it. Like a driver, it
+/// acts on joint coordinates, not on bodies, and adds no wrenches.
+class JointCoupler final : public ConstraintModel {
+public:
+    /// Throws MBD-K023 for a body that is not there or whose joint is not
+    /// revolute or prismatic, for b equal to a, or a ratio that is zero or
+    /// not finite.
+    JointCoupler(const Model& model, int body_a, int body_b, Real ratio);
+    const char* name() const override { return "joint coupler"; }
+    std::vector<int> bodies() const override { return {body_a_, body_b_}; }
+    int size() const override { return 1; }
+    void calc(const Model& model, const Data& data, Real t,
+              VecRef phi, MatRef J, VecRef nu, VecRef gamma) const override;
+
+    int body_a() const { return body_a_; }
+    int body_b() const { return body_b_; }
+    Real ratio() const { return ratio_; }
+
+private:
+    int body_a_, body_b_;
+    int iv_a_, iv_b_;
+    bool revolute_a_, revolute_b_;
+    Real ratio_;
+};
+
 // ============================================================================
 // Composites
 // ============================================================================

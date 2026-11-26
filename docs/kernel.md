@@ -180,6 +180,7 @@ axes, in world axes, and `d = p_j - p_i`:
 | `Distance` | `(d . d - L(t)^2) / (2 L0)` | 1 |
 | `NoTwist` | `x_i . y_j - y_i . x_j` | 1 |
 | `JointDriver` | `q - s(t)` for a revolute or prismatic joint | 1 |
+| `JointCoupler` | `q_a - r q_b` for two revolute or prismatic joints (a gear; task 7.7) | 1 |
 
 `Distance` divides by the nominal length L0 so that phi is a length, equal to
 `|d| - L` to first order, without the singularity of `|d|` at zero.
@@ -617,11 +618,20 @@ second derivatives of the motion with respect to t, from which a
 suspension's motion ratios follow. A point is driven along a path by one
 `Dot2` per coordinate, each with its own target function.
 
-**Steering.** A steered axle with linkage suspension has a steering rack: a
-light body sliding along the chassis's lateral axis, carrying the tie rods'
-inner points and driven to `SteeringRack::travel` by a `JointDriver`.
-`VehicleHandle::set_steering` sets that travel; the projection after the
-next step moves the linkage, and each wheel's toe follows from the geometry.
+`JointCoupler` gears two joints, `q_a = r q_b` (a rack and its pinion): a
+joint's angle is read on the branch nearest the value the other gives it,
+so a pinion may turn many times; its multiplier is the force on joint a.
+
+**Steering** (tasks 2.7 and 7.7, D68; [suspensions.md](suspensions.md)). A
+steered axle with linkage suspension has a steering rack: a light body
+sliding along the chassis's lateral axis, carrying the tie rods' inner
+points. By default a `JointDriver` drives it to its command
+(`SteeringCommand`): `VehicleHandle::set_steering` holds a travel, which the
+projection after the next step reaches; `steer` gives a function of time,
+whose rate and acceleration enter the equations. With a steering column
+(`SteeringConfig::input`), the rack is geared to a pinion by a
+`JointCoupler`, and the pinion joined to the steering wheel by the column's
+torsion spring; the wheel's angle is driven, or a torque acts on it.
 
 ## Initial conditions
 

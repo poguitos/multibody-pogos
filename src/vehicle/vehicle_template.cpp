@@ -1,12 +1,61 @@
 #include "mbd/vehicle/vehicle_template.hpp"
 
 #include <algorithm>
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "mbd/kernel/algorithms.hpp"
 #include "mbd/kernel/forces.hpp"
+#include "mbd/kernel/joint_forces.hpp"
+#include "mbd/kernel/state_element.hpp"
 #include "mbd/vehicle/axes.hpp"
 
 namespace mbd {
+
+namespace {
+
+/// A driver's time function that follows a steering command: its held
+/// value, or its path with the path's rate and acceleration (task 7.7).
+kernel::TimeFunction follow(std::shared_ptr<const SteeringCommand> c)
+{
+    return kernel::TimeFunction([c](Real t) { return c->value(t); }, [c](Real t) { return c->rate(t); },
+                                [c](Real t) { return c->acceleration(t); });
+}
+
+/// The torque on a steering wheel (task 7.7): the command's value about the
+/// column's axis (fixed in the chassis) on the wheel, and its reaction on the
+/// chassis. A state element without states, for the time of each evaluation.
+class SteeringWheelTorque final : public ForceElement, public kernel::StateElement {
+public:
+    SteeringWheelTorque(BodyIndex chassis, BodyIndex wheel, const Vec3& axis_chassis,
+                        std::shared_ptr<const SteeringCommand> command)
+        : chassis_(chassis), wheel_(wheel), axis_(axis_chassis), command_(std::move(command))
+    {}
+
+    const char* name() const override { return "steering wheel torque"; }
+    std::vector<BodyIndex> bodies() const override { return {chassis_, wheel_}; }
+
+    void apply(const std::vector<RigidBodyState>& states, std::vector<RigidBodyForces>& forces) const override
+    {
+        const Vec3 T = command_->value(t_) * (states[static_cast<std::size_t>(chassis_)].q_WB * axis_);
+        forces[static_cast<std::size_t>(wheel_)].tau_W += T;
+        forces[static_cast<std::size_t>(chassis_)].tau_W -= T;
+    }
+
+    int size() const override { return 0; }
+    void initial_states(kernel::VecRef) const override {}
+    void begin_evaluation(const kernel::Simulator&, Real t, kernel::ConstVecRef) override { t_ = t; }
+    void rates(const kernel::Simulator&, Real, kernel::ConstVecRef, kernel::VecRef) override {}
+
+private:
+    BodyIndex chassis_, wheel_;
+    Vec3 axis_;
+    std::shared_ptr<const SteeringCommand> command_;
+    Real t_{0.0};
+};
+
+} // namespace
 
 VehicleTemplate VehicleTemplate::DefaultSedan()
 {
@@ -122,11 +171,34 @@ void VehicleHandle::set_steering(Real delta)
             }
         }
         if (rack[axle]) {
-            rack[axle]->travel = (!straight && ax.is_steered && n_on_rack > 0)
-                               ? delta * ratio_sum / n_on_rack
-                               : Real(0.0);
+            rack[axle]->hold((!straight && ax.is_steered && n_on_rack > 0) ? delta * ratio_sum / n_on_rack
+                                                                           : Real(0.0));
         }
     }
+    if (column.command) {
+        MBD_THROW_IF(tmpl.steering.input == SteeringInput::WheelTorque,
+                     "MBD-V005: VehicleHandle::set_steering: this car is steered by a torque on its steering wheel; "
+                     "use set_steering_torque or steer");
+        column.command->hold(straight ? Real(0.0) : tmpl.steering.steering_ratio * delta);
+    }
+}
+
+void VehicleHandle::steer(const kernel::TimeFunction& f)
+{
+    if (column.command) {
+        column.command->follow(f);
+        return;
+    }
+    MBD_THROW_IF(!rack[0], "MBD-V005: VehicleHandle::steer: the front axle is not steered by a rack");
+    rack[0]->follow(f);
+}
+
+void VehicleHandle::set_steering_torque(Real torque)
+{
+    MBD_THROW_IF(!column.command || tmpl.steering.input != SteeringInput::WheelTorque,
+                 "MBD-V005: VehicleHandle::set_steering_torque: this car is not steered by a torque on its "
+                 "steering wheel (SteeringConfig::input)");
+    column.command->hold(torque);
 }
 
 void VehicleHandle::set_road(const std::shared_ptr<const Road>& road)
@@ -289,12 +361,72 @@ BodyIndex detail::add_steering_rack(kernel::System& sys, BodyIndex chassis_body,
         chassis_body, std::make_shared<kernel::PrismaticJointModel>(),
         Transform3::FromRotation(R_rack), Transform3::FromRotation(R_rack),
         RigidBodyInertia::from_solid_box(steering_rack_mass, Vec3(0.02, 0.4, 0.02)), name);
-    sys.constraints.push_back(std::make_shared<kernel::JointDriver>(
-        sys.model, body,
-        kernel::TimeFunction([rack](Real) { return rack->travel; },
-                             [](Real) { return 0.0; },
-                             [](Real) { return 0.0; })));
+    if (rack) {
+        sys.constraints.push_back(std::make_shared<kernel::JointDriver>(sys.model, body, follow(rack)));
+    }
     return body;
+}
+
+SteeringColumn detail::add_steering_column(kernel::System& sys, BodyIndex chassis_body, BodyIndex rack_body,
+                                           const SteeringConfig& config, Real pinion_ratio, Real rack_limit)
+{
+    using namespace kernel;
+    MBD_THROW_IF(config.input == SteeringInput::RackTravel,
+                 "MBD-V005: add_steering_column: a rack driven by its travel has no column");
+    const Vec3 axis = config.column_axis;
+    MBD_THROW_IF(!(axis.norm() > 0.0) || std::abs(axis.normalized().y()) > 1.0 - 1e-9,
+                 "MBD-V005: add_steering_column: the column's axis must not be zero or along the rack (Y)");
+    MBD_THROW_IF(!std::isfinite(pinion_ratio) || pinion_ratio == 0.0,
+                 "MBD-V005: add_steering_column: the pinion's ratio must be finite and not zero (is the linkage "
+                 "calibrated?)");
+    SteeringColumn c;
+    c.pinion_ratio = pinion_ratio;
+    c.rack_limit = rack_limit;
+    c.command = std::make_shared<SteeringCommand>();
+
+    // Both on hinges about the column's axis through the chassis frame's
+    // origin, their frames the chassis's at a joint angle of zero; each its
+    // inertia about that axis and 0.6 of it across (a thin disc's would be
+    // half: a real body's moments obey the triangle inequality), its mass
+    // left out.
+    const Mat3 R = rotation_align_z_to(axis);
+    const Vec3 u = axis.normalized();
+    auto about_axis = [&u](Real I) {
+        const Mat3 along = u * u.transpose();
+        return RigidBodyInertia(0.0, Vec3::Zero(), I * along + 0.6 * I * (Mat3::Identity() - along));
+    };
+    const auto hinge = std::make_shared<RevoluteJointModel>();
+    c.pinion_body = sys.model.add_body(chassis_body, hinge, Transform3::FromRotation(R), Transform3::FromRotation(R),
+                                       about_axis(config.pinion_inertia), "steering_pinion");
+    c.wheel_body = sys.model.add_body(chassis_body, hinge, Transform3::FromRotation(R), Transform3::FromRotation(R),
+                                      about_axis(config.wheel_inertia), "steering_wheel");
+
+    // The pinion geared to the rack; the column's torsion between the wheel
+    // and the pinion (its twist the pinion's angle less the wheel's).
+    sys.constraints.push_back(std::make_shared<JointCoupler>(sys.model, rack_body, c.pinion_body, pinion_ratio));
+    RotationalSpringDamperParams torsion;
+    torsion.spring = Curve::linear(config.column_stiffness);
+    torsion.damper = Curve::linear(config.column_damping);
+    auto column = std::make_shared<RotationalSpringDamper>(c.wheel_body, Transform3::FromRotation(R), c.pinion_body,
+                                                           Transform3::FromRotation(R), torsion);
+    c.column = column.get();
+    sys.force_elements.push_back(std::move(column));
+
+    // The rack's stops.
+    JointCoordinateForceParams stops;
+    stops.lower_limit = -rack_limit;
+    stops.upper_limit = rack_limit;
+    stops.limit_stiffness = config.stop_stiffness;
+    sys.joint_forces.push_back(std::make_shared<JointCoordinateForce>(sys.model, rack_body, stops));
+
+    // The input.
+    if (config.input == SteeringInput::WheelAngle) {
+        sys.constraints.push_back(std::make_shared<JointDriver>(sys.model, c.wheel_body, follow(c.command)));
+    } else {
+        sys.force_elements.push_back(
+            std::make_shared<SteeringWheelTorque>(chassis_body, c.wheel_body, u, c.command));
+    }
+    return c;
 }
 
 Real detail::calibrate_rack(const VehicleTemplate& tmpl, const AxleConfig& ax,
@@ -319,7 +451,7 @@ Real detail::calibrate_rack(const VehicleTemplate& tmpl, const AxleConfig& ax,
     const Real toe_ref = extract_toe(k.state(upright));
 
     const Real rack_step = 0.005;   // +5 mm toward +Y (left)
-    rack->travel = rack_step;
+    rack->hold(rack_step);
     if (!k.solve(50, 1e-10)) return 0.0;
     const Real dtoe = extract_toe(k.state(upright)) - toe_ref;
     return std::abs(dtoe) > 1e-6 ? rack_step / dtoe : Real(0.0);
@@ -339,12 +471,16 @@ VehicleHandle build_vehicle(kernel::System& sys,
         RigidBodyInertia::from_solid_box(tmpl.chassis.mass, tmpl.chassis.half_extents),
         tmpl.name + "_chassis");
 
-    // --- Steering racks ---
+    // --- Steering racks: driven by their travel, but the front one's when a
+    // steering wheel steers it (its column is added once the linkage's
+    // ratio is known, below) ---
     const std::array<const AxleConfig*, 2> axles{{&tmpl.front_axle, &tmpl.rear_axle}};
+    const bool column = tmpl.steering.input != SteeringInput::RackTravel && tmpl.front_axle.is_steered
+                     && tmpl.front_axle.suspension_type != SuspensionType::Simple;
     for (int a = 0; a < 2; ++a) {
         const AxleConfig& ax = *axles[static_cast<std::size_t>(a)];
         if (ax.is_steered && ax.suspension_type != SuspensionType::Simple) {
-            vh.rack[a] = std::make_shared<SteeringRack>();
+            if (!(a == 0 && column)) vh.rack[a] = std::make_shared<SteeringRack>();
             vh.rack_body[a] = detail::add_steering_rack(sys, vh.chassis_body, vh.rack[a],
                                                         a == 0 ? "rack_front" : "rack_rear");
         }
@@ -507,6 +643,17 @@ VehicleHandle build_vehicle(kernel::System& sys,
         if (!corner.on_rack) continue;
         const auto& cd = corner_defs[static_cast<std::size_t>(c)];
         corner.rack_per_rad = detail::calibrate_rack(tmpl, cd.axle, cd.mount_pos, cd.is_right);
+    }
+
+    // --- The front axle's steering column (task 7.7): the pinion's ratio from
+    // the linkage's mean rack travel per radian at the centre and the
+    // steering ratio, so that the steering wheel turns steering_ratio times
+    // the road wheels there; the rack's stops at max_steer_angle ---
+    if (column) {
+        const Real per_rad = 0.5 * (vh.corners[0].rack_per_rad + vh.corners[1].rack_per_rad);
+        vh.column = detail::add_steering_column(sys, vh.chassis_body, vh.rack_body[0], tmpl.steering,
+                                                per_rad / tmpl.steering.steering_ratio,
+                                                tmpl.steering.max_steer_angle * std::abs(per_rad));
     }
 
     return vh;

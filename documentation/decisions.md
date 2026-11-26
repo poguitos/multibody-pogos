@@ -78,6 +78,7 @@ and the journal entry of the work refers to them by number
 | D65 | Simple tyres behind one interface: linear with saturation, Adams's Fiala, Pacejka's brush model | 26 Nov 2026 | In force, task 7.5 |
 | D66 | Hysteresis as state elements: a damper with a series stiffness and a Bouc-Wen bushing, checked on a virtual dyno; bushing curves by their shape | 26 Nov 2026 | In force, task 7.6 |
 | D67 | Suspensions from the kernel's joints, their parts' masses from their joints, springs set by virtual work to hold the design position | 26 Nov 2026 | In force, task 7.6 |
+| D68 | Steering: a rack geared to a pinion by a joint coupler, a compliant column to a steering wheel, the input the rack's travel, the wheel's angle or a torque, as held values or functions of time | 27 Nov 2026 | In force, task 7.7 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -3264,3 +3265,70 @@ and the journal entry of the work refers to them by number
 - **Record.** Journal: Phase 7, suspensions; `docs/suspensions.md`,
   `src/vehicle/corners.cpp`, `include/mbd/vehicle/suspension/`,
   `tests/vehicle/test_suspensions.cpp`.
+
+## D68. Steering: a rack geared to a pinion by a joint coupler, a compliant column to a steering wheel, the input the rack's travel, the wheel's angle or a torque, as held values or functions of time
+
+- **Context.** Task 7.7: "A rack body with tie rods as links, pinion ratio,
+  and column compliance. Input as angle or as torque. Done when Ackermann
+  behaviour emerges from geometry and the rack moves as one piece." Finding
+  F10 had measured the legacy steering: the two tie rods' inner points moved
+  by different amounts, set by editing constraints between steps, so the
+  steering's rate never entered the equations of motion. Task 2.7 had
+  already made the rack one body on a prismatic joint, driven by a
+  `JointDriver` to a travel set between steps (its rate zero), with the tie
+  rods as distances; F9 had found `steering_ratio` and `max_steer_angle`
+  declared and never read. The kernel had no constraint between two joints'
+  coordinates.
+- **Decision.**
+  - **A joint coupler in the kernel** (`kernel::JointCoupler`): q_a - r q_b =
+    0 for two revolute or prismatic joints, each read from its joint
+    transform, an angle on the branch nearest what the other side gives it
+    (a pinion may turn many times); its multiplier the force on joint a;
+    MBD-K023 for what it cannot couple.
+  - **A steering command** (`SteeringCommand`): a value held, or a function
+    of time followed, whose rate and acceleration then enter the equations
+    (F10). The rack's driver and the steering wheel's follow one.
+  - **Three inputs** (`SteeringConfig::input`): `RackTravel`, the default,
+    the rack driven as before (set_steering unchanged, and `steer` for a
+    function of time); `WheelAngle` and `WheelTorque`, a steering column on
+    the front rack: the pinion and the wheel on hinges about the column's
+    axis, the pinion geared to the rack, the column's torsion spring
+    between them, the wheel's angle driven or a torque on it
+    (`set_steering_torque`, `steer`); MBD-V005 for a command that does not fit.
+  - **The ratios from the linkage**: the pinion's ratio is the linkage's
+    mean rack travel per radian of toe, as calibrated, over `steering_ratio`;
+    the rack's stops at the travel for `max_steer_angle` (F9's two fields
+    now read).
+  - **Ackermann from the geometry**: nothing in the code computes Ackermann
+    angles for a linkage axle; the test compares the mechanism with the
+    planar linkage's closed form and reads the behaviour from it.
+- **Alternatives.**
+  - A column in every car by default: it adds the column's twist, a stiff
+    mode (by estimate some 470 rad/s: the column's stiffness over the rack's
+    and the uprights' inertia brought to the pinion), to every vehicle, and
+    moves every steered scenario; the rack driven by its travel is what the
+    existing users steer with.
+  - A stiff spring between rack and pinion instead of a constraint: a mode
+    far above the others for a gear that does not slip.
+  - The coupler's angles from the state vector: constraints see only the
+    joints' transforms, and reading them as the driver does keeps one way.
+  - A set_steering that ramps by itself: a held value is what it was; a
+    ramp is a function of time, which `steer` takes.
+  - A default geometry changed to give Ackermann: the presets' tie rods stay
+    as they are (their scenarios unchanged); the test builds its own.
+- **Consequences.**
+  - The rack moves as one piece: its tie rods' inner points within 3e-17 m
+    of its travel; geared to the pinion within 4e-18 m and 9e-19 m/s; its
+    rate its travel's rate of change within 1.3e-8 m/s (estimate 8e-9).
+  - Ackermann emerges: for three arm geometries the mechanism's toes are
+    the closed form's within 9e-12 rad; arms turned outward along the line
+    from the rear axle's centre give 56 % of the ideal difference at 0.5 rad
+    with the rack ahead of the axle (Ackermann's rule is for a track rod
+    behind it), parallel arms -7 %, arms turned inward -127 %.
+  - The column's statics and its two modes match their closed forms; a car
+    with a column has a freedom more (the twist), two with a torque.
+  - No regression scenario moved: the default input builds what it built.
+  - The coupler is not in model files (refused by name) or in Python.
+- **Record.** Journal: Phase 7, steering; `docs/suspensions.md` (Steering),
+  `docs/kernel.md`, `tests/vehicle/test_steering_system.cpp`,
+  `tests/kernel/test_kernel_constraints.cpp`.

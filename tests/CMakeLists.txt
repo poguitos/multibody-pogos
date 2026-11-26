@@ -116,6 +116,7 @@ mbd_add_test_exe(test_vehicle
     vehicle/test_vehicle_road.cpp
     vehicle/test_wheel.cpp
     vehicle/test_suspensions.cpp
+    vehicle/test_steering_system.cpp
     test_vehicle.cpp
     test_vehicle_template.cpp
     test_steering.cpp

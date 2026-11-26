@@ -133,13 +133,13 @@ TEST_CASE("DWB steering: clear_steering restores tie rod position",
     // The rack, which carries the tie rods' inner points, has moved left:
     // its travel is the command times the mean calibrated ratio.
     const Real ratio = 0.5 * (std::abs(vh.corners[0].rack_per_rad) + std::abs(vh.corners[1].rack_per_rad));
-    REQUIRE_THAT(vh.rack[0]->travel, WithinAbs(0.05 * ratio, 1e-15));
-    REQUIRE(vh.rack[0]->travel > 0.0);
+    REQUIRE_THAT(vh.rack[0]->held, WithinAbs(0.05 * ratio, 1e-15));
+    REQUIRE(vh.rack[0]->held > 0.0);
 
     vh.clear_steering();
 
     // After clearing, the rack is back at the reference
-    REQUIRE(vh.rack[0]->travel == 0.0);
+    REQUIRE(vh.rack[0]->held == 0.0);
 }
 
 // ============================================================================
@@ -166,7 +166,7 @@ TEST_CASE("DWB steering: mixed suspension steering works correctly",
     vh.set_steering(0.05);
 
     // Front corners: the rack moved
-    REQUIRE(vh.rack[0]->travel > 0.0);
+    REQUIRE(vh.rack[0]->held > 0.0);
 
     // Rear corners (Simple + not steered): tire steer_angle stays zero
     REQUIRE_THAT(vh.corners[2].tire->steer_angle, WithinAbs(0.0, 1e-12));
@@ -205,7 +205,7 @@ TEST_CASE("DWB steering: the rack's toe matches its calibration on a pinned chas
     Kinematics k(pinned);
     REQUIRE(k.solve());
     const Real toe0 = extract_toe(k.state(dwb.upright_body));
-    rack->travel = 0.02 * vh.corners[0].rack_per_rad;
+    rack->held = 0.02 * vh.corners[0].rack_per_rad;
     REQUIRE(k.solve());
     const Real dtoe = extract_toe(k.state(dwb.upright_body)) - toe0;
     REQUIRE_THAT(dtoe, WithinAbs(0.02, 0.002));

@@ -207,6 +207,15 @@ links gives 4 k_arb in roll at the wheels; every linkage car is placed
 within 0.028 m/s^2 of rest by springs set from virtual work. Not compared
 with another code yet (task 9.1 plans suspension-explorer-core).
 
+The steering (task 7.7, D68; `tests/vehicle/test_steering_system.cpp`):
+the linkage's toes are the planar closed form's within 9e-12 rad for three
+steering-arm geometries, from which its Ackermann behaviour follows; the
+rack moves as one piece, geared to its pinion to rounding, its rate its
+travel's rate of change; the column's statics and its two modes against
+their closed forms. The gear (`JointCoupler`) passes the constraints'
+derivative checks and turns a rack and pinion through 15.6 turns as one
+inertia, to rounding.
+
 ## 10. A vehicle-sized stiff model: the HMMWV
 
 Task 5.4 (D47, D48; [the HMMWV benchmark](hmmwv.md)). The fourteen-body HMMWV

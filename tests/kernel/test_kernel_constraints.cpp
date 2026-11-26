@@ -11,6 +11,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -18,6 +19,9 @@
 
 #include "mbd/kernel/algorithms.hpp"
 #include "mbd/kernel/constraints.hpp"
+#include "mbd/kernel/joint_forces.hpp"
+#include "mbd/kernel/outputs.hpp"
+#include "mbd/kernel/simulator.hpp"
 
 #include "kernel/kernel_helpers.hpp"
 
@@ -199,4 +203,103 @@ TEST_CASE("Kernel constraints: closures allow exactly the motions of their joint
             CHECK(k.allowed(w / N.col(n).norm(), vp / N.col(n).norm()));
         }
     }
+}
+
+// ============================================================================
+// The joint coupler (task 7.7, D68)
+// ============================================================================
+
+TEST_CASE("Kernel constraints: a joint coupler's J, nu and gamma are derivatives of its phi",
+          "[kernel][constraints][coupler]")
+{
+    // A rack (prismatic), a pinion (revolute) on the ground, a second hinge
+    // on the pinion, and a second slider: every pairing of the two kinds,
+    // either way round, with generic joint frames and coordinates. As for
+    // the primitives: d(phi)/dt = J v - nu and d2(phi)/dt2 = J a - gamma by
+    // central differences along a trajectory (h = 1e-6: the second-order
+    // error and rounding are both below 1e-7 of the values).
+    Rng rng(43);
+    Model model;
+    const int rack = mbd_test::add_random_body(model, rng, KJoint::Prismatic, 0);
+    const int pinion = mbd_test::add_random_body(model, rng, KJoint::Revolute, 0);
+    const int hinge = mbd_test::add_random_body(model, rng, KJoint::Revolute, pinion);
+    const int slider = mbd_test::add_random_body(model, rng, KJoint::Prismatic, 0);
+    const std::vector<std::tuple<int, int, Real>> couplings{
+        {rack, pinion, 0.008}, {pinion, rack, 125.0}, {hinge, pinion, -2.5}, {rack, slider, 0.5}};
+    for (const auto& [a, b, ratio] : couplings) {
+        const JointCoupler c(model, a, b, ratio);
+        INFO("bodies " << a << " and " << b << ", ratio " << ratio);
+        for (int trial = 0; trial < 5; ++trial) {
+            const VecX q = mbd_test::random_configuration(model, rng);
+            const VecX v = mbd_test::random_vector(model.nv, rng, 1.5);
+            const VecX acc = mbd_test::random_vector(model.nv, rng, 1.5);
+            const Real t = rng.range(0.0, 2.0);
+            const Evaluation e = evaluate(model, c, q, v, t);
+            const Real h = 1e-6;
+            VecX qd;
+            q_dot(model, q, v, qd);
+            const VecX v_plus = v + h * acc, v_minus = v - h * acc;
+            const Evaluation ep = evaluate(model, c, VecX(q + h * qd), v_plus, t + h);
+            const Evaluation em = evaluate(model, c, VecX(q - h * qd), v_minus, t - h);
+            const VecX phi_dot = (ep.phi - em.phi) / (2.0 * h);
+            CHECK((phi_dot - (e.J * v - e.nu)).norm() < 1e-7 * (1.0 + phi_dot.norm()));
+            const VecX phi_ddot = ((ep.J * v_plus - ep.nu) - (em.J * v_minus - em.nu)) / (2.0 * h);
+            CHECK((phi_ddot - (e.J * acc - e.gamma)).norm() < 1e-6 * (1.0 + phi_ddot.norm()));
+        }
+    }
+    // What it cannot couple.
+    auto error_of = [&model](int a, int b, Real ratio) {
+        try {
+            JointCoupler c(model, a, b, ratio);
+        } catch (const MbdError& e) {
+            return std::string(e.what());
+        }
+        return std::string("no error");
+    };
+    CHECK(error_of(rack, rack, 1.0).find("MBD-K023") != std::string::npos);
+    CHECK(error_of(rack, pinion, 0.0).find("MBD-K023") != std::string::npos);
+    CHECK(error_of(rack, 9, 1.0).find("MBD-K023") != std::string::npos);
+}
+
+TEST_CASE("Kernel constraints: a rack and pinion turn as one inertia, through many turns",
+          "[kernel][constraints][coupler]")
+{
+    // A pinion of inertia I = 0.01 kg m^2 about its axis, a rack of 2 kg
+    // sliding along X, coupled by q_rack = r q_pinion with r = 0.01 m, a
+    // torque T = 0.5 N m on the pinion, no gravity. As one inertia I + m r^2
+    // = 0.0102 kg m^2, the pinion accelerates at T / (I + m r^2) = 49.0196
+    // rad/s^2: in 2 s it turns through 98.04 rad (15.6 turns) and the rack
+    // moves r times that, 0.9804 m. The motion is quadratic in time, which
+    // RK4 integrates exactly: to rounding (allow 1e-9 relative), the rack on
+    // the coupler to its projection's 1e-10 m. The coupler's multiplier is
+    // the force on the rack's joint, m r theta'' = 0.980392 N.
+    System sys;
+    Model& model = sys.model;
+    const Mat3 R_x = Eigen::AngleAxis<Real>(0.5 * pi, Vec3::UnitY()).toRotationMatrix();   // joint Z onto X
+    const int rack = model.add_body(0, std::make_shared<PrismaticJointModel>(), Transform3::FromRotation(R_x),
+                                    Transform3::FromRotation(R_x),
+                                    RigidBodyInertia::from_solid_box(2.0, Vec3(0.3, 0.02, 0.02)), "rack");
+    Mat3 I_p = Mat3::Zero();
+    I_p(0, 0) = I_p(1, 1) = 0.005;
+    I_p(2, 2) = 0.01;
+    const int pinion = model.add_body(0, std::make_shared<RevoluteJointModel>(),
+                                      Transform3::FromTranslation(Vec3(0.0, 0.0, 0.05)), Transform3::Identity(),
+                                      RigidBodyInertia(0.0, Vec3::Zero(), I_p), "pinion");
+    model.gravity = Vec3::Zero();
+    sys.constraints.push_back(std::make_shared<JointCoupler>(sys.model, rack, pinion, 0.01));
+    JointCoordinateForceParams torque;
+    torque.preload = 0.5;
+    sys.joint_forces.push_back(std::make_shared<JointCoordinateForce>(sys.model, pinion, torque));
+    Simulator sim(sys);
+    sim.initialize();
+    sim.run(2.0, 1e-3);
+    const Real accel = 0.5 / (0.01 + 2.0 * 0.01 * 0.01);
+    const Real theta = sim.q(sys.model.idx_q[static_cast<std::size_t>(pinion)]);
+    const Real travel = sim.q(sys.model.idx_q[static_cast<std::size_t>(rack)]);
+    INFO("pinion " << theta << " rad (" << 0.5 * accel * 4.0 << " closed form), rack " << travel << " m");
+    CHECK(std::abs(theta / (0.5 * accel * 4.0) - 1.0) < 1e-9);
+    CHECK(std::abs(travel - 0.01 * theta) < 1e-10);
+    CHECK(std::abs(sim.v(sys.model.idx_v[static_cast<std::size_t>(pinion)]) / (accel * 2.0) - 1.0) < 1e-9);
+    const Loads loads = compute_loads(sim);
+    CHECK(std::abs(loads.lambda(0) / (2.0 * 0.01 * accel) - 1.0) < 1e-9);
 }

@@ -255,9 +255,39 @@ struct AxleConfig {
 // Steering configuration
 // ============================================================================
 
+/// What steers a steered linkage axle at the front (task 7.7, D68).
+enum class SteeringInput {
+    /// The rack's travel is prescribed, as an actuator or a robot would: no
+    /// column. As before task 7.7.
+    RackTravel,
+    /// The steering wheel's angle is prescribed; the column, compliant,
+    /// turns the pinion, which moves the rack.
+    WheelAngle,
+    /// A torque on the steering wheel: wheel, column, pinion and rack move as
+    /// the forces on them decide.
+    WheelTorque
+};
+
 struct SteeringConfig {
-    Real max_steer_angle{0.6};  ///< Maximum driver input [rad] (~34 deg)
-    Real steering_ratio{15.0};  ///< Steering wheel turns to road wheel angle
+    /// The rack's stops, with a steering wheel: at the travel that turns a
+    /// road wheel at the axle's centre by this angle [rad] (task 7.7).
+    Real max_steer_angle{0.6};
+    /// Steering wheel angle per road wheel angle at the centre: sets the
+    /// pinion's radius from the linkage's rack travel per radian (task 7.7).
+    Real steering_ratio{15.0};
+    SteeringInput input{SteeringInput::RackTravel};
+    Real column_stiffness{2000.0};   ///< Torsional, between the steering wheel and the pinion [N m/rad]
+    Real column_damping{2.0};        ///< [N m s/rad]
+    /// The steering wheel with the column above its compliance, and the
+    /// pinion with the column below it, about the column's axis [kg m^2];
+    /// across it 0.6 of that. Their masses are left out (their centres of
+    /// mass on the axis).
+    Real wheel_inertia{0.04};
+    Real pinion_inertia{2e-4};
+    /// The column's direction in the chassis frame, across the rack (Y):
+    /// from the pinion up and back to the steering wheel.
+    Vec3 column_axis{-0.906, 0.0, 0.423};
+    Real stop_stiffness{1e6};        ///< The rack's stops [N/m]
 };
 
 // ============================================================================
@@ -314,11 +344,50 @@ struct VehicleTemplate {
 // Steering rack
 // ============================================================================
 
-/// Commanded travel of a steering rack [m], read by the rack's driver. Set it
-/// through VehicleHandle::set_steering between steps: the driver's target
-/// changes, and the projection after the next step moves the mechanism there.
-struct SteeringRack {
-    Real travel{0.0};
+/// A steering command (task 7.7): a value held, or a function of time
+/// followed. A held value changes in a step when it is set between steps (the
+/// next projection moves the mechanism there); a function's rate and
+/// acceleration enter the equations of motion (F10). It is a rack's travel
+/// [m], a steering wheel's angle [rad] or the torque on it [N m].
+struct SteeringCommand {
+    Real held{0.0};
+    kernel::TimeFunction path;
+    bool follow_path{false};
+
+    Real value(Real t) const { return follow_path ? path.value(t) : held; }
+    Real rate(Real t) const { return follow_path ? path.rate(t) : Real(0.0); }
+    Real acceleration(Real t) const { return follow_path ? path.acceleration(t) : Real(0.0); }
+    /// Hold `x` from now on.
+    void hold(Real x)
+    {
+        held = x;
+        follow_path = false;
+    }
+    /// Follow `f` from now on.
+    void follow(kernel::TimeFunction f)
+    {
+        path = std::move(f);
+        follow_path = true;
+    }
+};
+
+/// A steering rack's command: its travel [m], positive to the left.
+using SteeringRack = SteeringCommand;
+
+/// A steering column (task 7.7): the steering wheel and the pinion, each on
+/// a hinge about the column's axis on the chassis, a torsion spring between
+/// them, the pinion geared to the rack.
+struct SteeringColumn {
+    BodyIndex wheel_body{0};
+    BodyIndex pinion_body{0};
+    /// The rack's travel per radian of the pinion [m/rad], signed so that a
+    /// positive steering wheel angle turns the car left.
+    Real pinion_ratio{0.0};
+    Real rack_limit{0.0};                     ///< The rack's stops [m]
+    RotationalSpringDamper* column{nullptr};  ///< The compliance
+    /// The steering wheel's angle [rad] (WheelAngle) or the torque on it [N m]
+    /// (WheelTorque).
+    std::shared_ptr<SteeringCommand> command;
 };
 
 // ============================================================================
@@ -389,6 +458,11 @@ struct VehicleHandle {
     /// axle's k_arb and c_arb at the wheels.
     std::array<RotationalSpringDamper*, 2> arb_torsion{{nullptr, nullptr}};
 
+    /// The front axle's steering column, when the template's steering input
+    /// is the steering wheel's angle or a torque on it (task 7.7); empty
+    /// (bodies 0) otherwise.
+    SteeringColumn column;
+
     // Convenience accessors
     FullTireForce* tire(int c) { return corners[c].tire; }
     const FullTireForce* tire(int c) const { return corners[c].tire; }
@@ -400,7 +474,24 @@ struct VehicleHandle {
     /// tyre steer angle. Linkage axles move their rack by delta times the
     /// axle's mean calibrated ratio; the toe of each wheel then follows from
     /// the linkage geometry. Takes effect at the next step's projection.
+    ///
+    /// With a steering wheel (task 7.7): its angle is held at steering_ratio
+    /// delta (WheelAngle), a step that the column passes on to the pinion and
+    /// the rack dynamically; a steered rear axle's rack as before. A car
+    /// steered by a torque (WheelTorque) throws MBD-V005: use
+    /// set_steering_torque or steer.
     void set_steering(Real delta);
+
+    /// Steer the front axle by a function of time (task 7.7): its rack's
+    /// travel [m] (RackTravel), its steering wheel's angle [rad] (WheelAngle)
+    /// or the torque on it [N m] (WheelTorque). Its rate and acceleration
+    /// enter the equations of motion. Throws MBD-V005 for a car whose front
+    /// axle is not steered by a rack.
+    void steer(const kernel::TimeFunction& f);
+
+    /// Hold a torque on the steering wheel [N m], positive turning it left
+    /// (WheelTorque; MBD-V005 otherwise).
+    void set_steering_torque(Real torque);
 
     void clear_steering()
     {
@@ -548,10 +639,21 @@ void add_spring_unit(kernel::System& sys, const AxleConfig& ax, CornerHandle& co
 
 /// A steering rack: a light bar sliding along the chassis Y (lateral) axis,
 /// positive travel to the left, its frame the chassis frame at zero travel,
-/// driven to rack->travel.
+/// driven by its command when `rack` is not null.
 BodyIndex add_steering_rack(kernel::System& sys, BodyIndex chassis_body,
                                    const std::shared_ptr<SteeringRack>& rack,
                                    const std::string& name);
+
+/// A steering column on `chassis_body` for the rack `rack_body` (task 7.7):
+/// the pinion and the steering wheel, each on a hinge about the column's
+/// axis through the chassis frame's origin; the pinion geared to the rack by
+/// a JointCoupler, rack travel = pinion_ratio times the pinion's angle; the
+/// column's torsion spring between them; the rack's stops at +-rack_limit; and
+/// the input: a driver on the steering wheel's hinge (WheelAngle) or a torque
+/// on it (WheelTorque), each following the column's command. Throws MBD-V005
+/// for RackTravel, a column axis along the rack, or a ratio of zero.
+SteeringColumn add_steering_column(kernel::System& sys, BodyIndex chassis_body, BodyIndex rack_body,
+                                   const SteeringConfig& config, Real pinion_ratio, Real rack_limit);
 
 /// Rack travel per radian of toe for one corner: the corner alone on a fixed
 /// chassis, its rack moved by 5 mm, the toe measured before and after.

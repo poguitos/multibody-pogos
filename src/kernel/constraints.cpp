@@ -334,6 +334,14 @@ void ConstraintModel::add_wrenches(const Model& /*model*/, const Data& /*data*/,
                                    ConstVecRef /*lambda*/, std::vector<Vec6>& /*wrenches*/) const
 {}
 
+namespace {
+
+/// A revolute joint's angle about Z, in (-pi, pi], from its transform: the
+/// quaternion of a rotation by q about Z is (cos(q/2), 0, 0, sin(q/2)).
+Real revolute_angle(const Transform3& X_J) { return 2.0 * std::atan2(X_J.q.z(), X_J.q.w()); }
+
+} // namespace
+
 JointDriver::JointDriver(const Model& model, int body, TimeFunction s)
     : body_(body), iv_(0), revolute_(false), s_(std::move(s))
 {
@@ -352,9 +360,7 @@ void JointDriver::calc(const Model& /*model*/, const Data& data, Real t,
     const Transform3& X_J = data.joint[body_].X_J;
     Real q;
     if (revolute_) {
-        // Rotation about Z by q: the quaternion is (cos(q/2), 0, 0, sin(q/2)).
-        const Real angle = 2.0 * std::atan2(X_J.q.z(), X_J.q.w());
-        q = s + std::remainder(angle - s, 2.0 * pi);
+        q = s + std::remainder(revolute_angle(X_J) - s, 2.0 * pi);
     } else {
         q = X_J.p.z();
     }
@@ -363,6 +369,46 @@ void JointDriver::calc(const Model& /*model*/, const Data& data, Real t,
     phi(0)   = q - s;
     nu(0)    = s_.rate(t);
     gamma(0) = s_.acceleration(t);
+}
+
+JointCoupler::JointCoupler(const Model& model, int body_a, int body_b, Real ratio)
+    : body_a_(body_a), body_b_(body_b), iv_a_(0), iv_b_(0), revolute_a_(false), revolute_b_(false), ratio_(ratio)
+{
+    for (int body : {body_a, body_b}) {
+        MBD_THROW_IF(body < 1 || body >= model.nbodies(), "MBD-K023: kernel::JointCoupler: no such body");
+        const std::string kind = model.joint[body]->name();
+        MBD_THROW_IF(kind != "revolute" && kind != "prismatic",
+                     "MBD-K023: kernel::JointCoupler: the joints must be revolute or prismatic");
+    }
+    MBD_THROW_IF(body_a == body_b, "MBD-K023: kernel::JointCoupler: a joint cannot be coupled to itself");
+    MBD_THROW_IF(!std::isfinite(ratio) || ratio == 0.0,
+                 "MBD-K023: kernel::JointCoupler: the ratio must be finite and not zero");
+    revolute_a_ = model.joint[body_a]->name() == std::string("revolute");
+    revolute_b_ = model.joint[body_b]->name() == std::string("revolute");
+    iv_a_ = model.idx_v[body_a];
+    iv_b_ = model.idx_v[body_b];
+}
+
+void JointCoupler::calc(const Model& /*model*/, const Data& data, Real /*t*/,
+                        VecRef phi, MatRef J, VecRef nu, VecRef gamma) const
+{
+    const Transform3& X_a = data.joint[body_a_].X_J;
+    const Transform3& X_b = data.joint[body_b_].X_J;
+    Real q_a = revolute_a_ ? revolute_angle(X_a) : X_a.p.z();
+    Real q_b = revolute_b_ ? revolute_angle(X_b) : X_b.p.z();
+    if (revolute_a_) {
+        const Real expected = ratio_ * q_b;
+        q_a = expected + std::remainder(q_a - expected, 2.0 * pi);
+    } else if (revolute_b_) {
+        const Real expected = q_a / ratio_;
+        q_b = expected + std::remainder(q_b - expected, 2.0 * pi);
+    }
+    J.topRows(1).setZero();
+    J(0, iv_a_) = 1.0;
+    J(0, iv_b_) = -ratio_;
+    phi(0) = q_a - ratio_ * q_b;
+    nu(0) = 0.0;
+    gamma(0) = 0.0;
 }
 
 // --- Composites ------------------------------------------------------------------

@@ -1,12 +1,13 @@
 # Suspensions
 
-Plan task 7.6 (decisions D66 and D67): the vehicle template's suspensions,
+Plan tasks 7.6 and 7.7 (decisions D66, D67 and D68): the vehicle template's suspensions,
 each built from the kernel's joints and constraints with its parts' masses
 where their joints put them; their spring units (spring, damper curve,
 stops, a damper on a top mount); an anti-roll bar through drop links; the
 car placed at rest by springs set to hold it there; and the elements with
-hysteresis, checked on a virtual damper dyno. This page says what is built,
-how it was checked, and what it leaves out.
+hysteresis, checked on a virtual damper dyno; and the steering, a rack geared to a pinion and a compliant column to
+a steering wheel (see Steering, below). This page says what is built, how it
+was checked, and what it leaves out.
 
 | What | Where |
 |---|---|
@@ -16,7 +17,8 @@ how it was checked, and what it leaves out.
 | Parts' masses from their joints | `mbd/vehicle/suspension/mass.hpp` |
 | A damper on a top mount, a Bouc-Wen bushing; a bushing's curve by its shape | `mbd/forces/hysteresis.hpp`, `mbd/forces/curve.hpp` (`Curve::bushing`) |
 | The virtual damper dyno | `mbd/analysis/damper_dyno.hpp` |
-| Tests | `tests/vehicle/test_suspensions.cpp`, `tests/forces/test_hysteresis.cpp` |
+| The steering: the rack, its column, the commands | `mbd/vehicle/vehicle_template.hpp` (`SteeringConfig`, `SteeringCommand`, `SteeringColumn`); the gear, `JointCoupler` in `mbd/kernel/constraints.hpp` |
+| Tests | `tests/vehicle/test_suspensions.cpp`, `tests/forces/test_hysteresis.cpp`, `tests/vehicle/test_steering_system.cpp` |
 
 ## The architectures
 
@@ -99,6 +101,41 @@ their travels): k_t = k_arb / r^2, r the half's turn per unit of its wheel's
 travel at the design position. Without it, `install_anti_roll_bars` adds
 the bar as a force element, as before.
 
+## Steering
+
+A steered linkage axle (double wishbone, McPherson, five-link) has a rack: a
+body sliding across the car, carrying each tie rod's (or toe link's) inner
+point; the tie rods are links, distances from the rack to the uprights. A
+steered axle of simple corners turns its tyres by Ackermann's angles
+instead; a trailing arm or solid axle is not steered.
+
+`SteeringConfig::input` says what steers the front axle:
+
+| Input | What is modelled | Command |
+|---|---|---|
+| `RackTravel` (default) | The rack, driven to its travel (an actuator, a robot); as before task 7.7 | `set_steering(delta)`: the travel delta times the linkage's calibrated rack travel per radian; `steer(f)`: a travel as a function of time |
+| `WheelAngle` | The rack geared to a pinion (a `JointCoupler`), the pinion joined to the steering wheel by the column's torsion spring, the wheel's angle driven | `set_steering(delta)`: the wheel held at `steering_ratio` delta; `steer(f)`: its angle as a function of time |
+| `WheelTorque` | As above, a torque on the wheel instead of its angle | `set_steering_torque(T)`, or `steer(f)`: the torque as a function of time |
+
+A function of time's rate and acceleration enter the equations of motion
+(finding F10: a value set between steps moved the rack with a rate of
+zero). The pinion's ratio is the linkage's mean rack travel per radian of
+toe (calibrated over the first 5 mm of travel) over `steering_ratio`, so
+that the steering wheel turns `steering_ratio` times the road wheels there;
+the rack's stops are at the travel that turns them by `max_steer_angle`.
+The column's stiffness and damping, the wheel's and pinion's inertias and
+the column's direction are in `SteeringConfig`. With a column the car has
+one more freedom, the column's twist (and with a torque, the steering
+itself). A steered rear linkage axle keeps a rack driven by its travel.
+
+Ackermann behaviour is the linkage's own: the code has no Ackermann
+formula for a linkage axle, and the wheels' angles follow from the steering
+arms, the tie rods and the rack. With the rack ahead of the axle, arms
+turned outward along the line from the rear axle's centre give the inner
+wheel more lock (56 % of the ideal difference at 0.5 rad for the test's
+geometry), parallel arms none to first order, arms turned inward the outer
+wheel more.
+
 ## How it was checked
 
 All in `tests/vehicle/test_suspensions.cpp`, against values derived in the
@@ -127,6 +164,19 @@ tests:
 - Cars on every architecture have fourteen freedoms (validate()) and stay at
   rest (under 1.6e-12 m in a second).
 
+The steering, in `tests/vehicle/test_steering_system.cpp`: with vertical
+kingpins and level tie rods each side is a planar linkage, and the
+mechanism's toes are its closed form's within 9e-12 rad for three arm
+geometries, from which the Ackermann behaviour above follows; the rack moves
+as one piece (its tie rods' inner points within 3e-17 m of its travel),
+geared to the pinion to rounding at position and velocity, its rate its
+travel's rate of change (within 1.3e-8 m/s); held angles and torques give the
+column's and the rack's statics, and the column's two modes their closed
+form; cars steered each way have fourteen, fifteen and sixteen freedoms and
+turn left. The gear itself (`JointCoupler`) passes the kernel's
+constraint checks and turns a rack and pinion through 15.6 turns as one
+inertia, to rounding (`tests/kernel/test_kernel_constraints.cpp`).
+
 The hysteresis elements and the dyno: `docs/kernel.md` (hysteresis) and D66.
 
 ## What it leaves out
@@ -140,5 +190,8 @@ The hysteresis elements and the dyno: `docs/kernel.md` (hysteresis) and D66.
   no Watt's linkage, no four-link).
 - The tyre at rest is taken as it is evaluated there: its overturning moment
   is in the spring's setting; nothing else of it acts at rest.
+- The steering column is straight, from the pinion to the wheel, without
+  universal joints; the pinion's ratio is constant (no variable-ratio rack);
+  no power assistance (task 7.x or later).
 - The new elements and builders are not in the Python interface or in model
-  files.
+  files (a model file refuses the coupler by name).

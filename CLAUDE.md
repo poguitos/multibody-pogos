@@ -66,7 +66,10 @@ bushing as state elements, `mbd/forces/hysteresis.hpp`, a virtual damper
 dyno, bushing curves by their shape; D67: the five suspensions from the
 kernel's joints, `src/vehicle/corners.cpp` and `docs/suspensions.md`, their
 springs set by virtual work to hold the design position, the vehicle
-layer's messages in area V); 7.7, steering, is next. Conda environments for the project pin
+layer's messages in area V), and 7.7 (D68: steering by the rack's travel,
+the steering wheel's angle or a torque, through a column whose pinion is
+geared to the rack by `kernel::JointCoupler`; commands held or as functions
+of time); 7.8, the powertrain, is next. Conda environments for the project pin
 `"libblas=*=*openblas"` (MKL's NumPy crashes on this laptop). After a change to the bindings, reinstall `mbd-try`
 (an editable install whose module is older than its Python files stops with
 MBD-P011). The nightly workflow runs on schedule from `main`.

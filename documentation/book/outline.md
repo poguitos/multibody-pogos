@@ -340,7 +340,12 @@ hold the design the hardpoints describe; a mixed car whose geometry pitched
 it by 4.5 degrees. Hysteresis: a damper on its top mount as a complex
 stiffness, an integrator's error on it computed from its coefficients,
 Bouc-Wen's loop as exact branches. *J: Phase 7, the suspensions. D66,
-D67.*
+D67.* Steering: a gear as one equation between two joints, read on the
+branch nearest the other side; why a steering input must carry its rate
+into the equations (F10); Ackermann behaviour as a property of a planar
+linkage, not a formula (the textbook's rule for a track rod behind the axle
+gives half of it with a rack ahead); a column's compliance as a freedom of
+its own. *J: Phase 7, the steering. D68.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

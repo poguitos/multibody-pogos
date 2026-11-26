@@ -133,10 +133,15 @@ and warning in the sources carries a code.
 
 ### MBD-K023
 
-`kernel::JointDriver: no such body` or `the joint must be revolute or prismatic`
+`kernel::JointDriver: no such body` or `the joint must be revolute or
+prismatic`; `kernel::JointCoupler: no such body`, `the joints must be
+revolute or prismatic`, `a joint cannot be coupled to itself` or `the ratio
+must be finite and not zero`
 
 - **Means:** a joint driver prescribes one coordinate of a revolute or
-  prismatic joint, given by the joint's child body.
+  prismatic joint, given by the joint's child body; a joint coupler (task
+  7.7) gears two such joints, q_a = ratio q_b, and needs two different ones
+  and a ratio it can divide by.
 - **What to do:** to prescribe the motion of another joint or of a point, use
   the primitives with a time-dependent target (`Dot1`, `Dot2`, `Distance`).
 
@@ -1048,6 +1053,26 @@ the wheel`
 - **Means:** a linkage corner's spring is set to carry its load at the
   design position, which a spring without stiffness cannot do.
 - **What to do:** give the axle's `k_spring`.
+
+### MBD-V005
+
+`VehicleHandle::set_steering: this car is steered by a torque on its steering
+wheel; use set_steering_torque or steer`, `VehicleHandle::steer: the front
+axle is not steered by a rack`, `VehicleHandle::set_steering_torque: this car
+is not steered by a torque on its steering wheel`, or `add_steering_column:
+...`
+
+- **Means:** a steering command that does not fit the car's steering (task
+  7.7, `SteeringConfig::input`): an angle for a car steered by a torque, a
+  torque for one steered by its rack's travel or its wheel's angle, a
+  function of time for a car whose front axle has no rack (simple corners,
+  or an axle not steered); or a column that cannot be built (for a rack
+  driven by its travel, a column axis along the rack, a pinion ratio of
+  zero, which a linkage whose calibration failed gives).
+- **What to do:** choose the input when building the car
+  (`VehicleTemplate::steering.input`) and command it with its own call:
+  `set_steering` (an angle) or `steer` (a function of time) for the rack's
+  travel or the wheel's angle, `set_steering_torque` or `steer` for a torque.
 
 ## I: model files
 
