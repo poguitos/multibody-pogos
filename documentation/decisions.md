@@ -74,6 +74,7 @@ and the journal entry of the work refers to them by number
 | D61 | The road: one interface for height, normal and friction; the tyres take the ground only from it | 24 Nov 2026 | In force, task 7.2 |
 | D62 | The wheel as a body on a spin joint; the contact from the wheel plane and the road; the drivetrain without states, the engine's inertia left out until 7.8 | 25 Nov 2026 | In force, task 7.3 |
 | D63 | The Magic Formula tyre: TNO's MF-Tyre 6.1 as published, where the book differs; MF 5.2 as 6.1 with 5.2's forms; checked against MFeval | 25 Nov 2026 | In force, task 7.4 |
+| D64 | The tyre on a wheel: the Magic Formula of a parameter set, its slips lagging by the semi-non-linear model, mirrored by side, faded at rest; every vehicle's tyre | 25 Nov 2026 | In force, task 7.4 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -2871,3 +2872,137 @@ and the journal entry of the work refers to them by number
     sgn(Vcx)) and the rolling resistance opposes the motion; the second part
     settles reverse running with the vehicle.
   - The vehicles keep the simpler tyre until the second part.
+
+## D64. The tyre on a wheel: the Magic Formula of a parameter set, its slips lagging by the semi-non-linear model, mirrored by side, faded at rest; every vehicle's tyre
+
+- **Context.** Task 7.4's second part: "Lag through relaxation length,
+  valid to standstill. *Done when ... a car held on its brakes on a slope
+  stays put.*" Finding F7 (October 2026): the default tyre had no load
+  sensitivity, no aligning moment, camber thrust, rolling resistance or lag,
+  "and below 1 m/s the slip calculation is clamped, so a car held on its
+  brakes on a slope will creep instead of standing still". The tyre on a
+  wheel (`FullTireForce`, task 7.3's contact) took the simple formula of
+  `mbd/forces/pacejka.hpp`, its slips -Vsx and Vsy over max(|Vx|, 1 m/s): at
+  rest a damper, not a spring. D63 gave the Magic Formula; the kernel has had
+  state elements since task 4.1 (D30), designed with a tyre's lag in mind.
+  Pacejka's chapter 8.6 compares four transient models starting from rest on
+  a slope; the paper of D63 gives TNO's linear transients, (21) and (22).
+- **Decision.**
+  - **The slips lag** by Pacejka's semi-non-linear model (8.110 to 8.114):
+    two states per tyre, the tread's deflections, du/dt = -Vsx - |Vx| u /
+    sigma_kappa and dv/dt = Vsy - |Vx| v / sigma_alpha, the Magic Formula
+    taking kappa' = u / sigma_kappa and alpha' = atan(v / sigma_alpha), so
+    that a steady state gives the steady-state tyre at the true slip angle.
+    The relaxation lengths are the Magic Formula's at the present load (MF
+    6.1: the slip stiffnesses over the carcass's, the paper's (19), (20); MF
+    5.2: pTx, pTy), at least 0.02 m (Table 8.4's sigma_min). At rest the
+    deflections follow the contact's motion: the tyre is a spring of the
+    carcass's stiffness.
+  - **Below VXLOW** (the file's, 1 m/s for the Appendix 3 tyre): the
+    low-speed damping of (8.127, 8.128), k_V_low0 = 770 N s/m at rest
+    (Table 8.4), fading to 0 at VXLOW, added to the slips as -k Vs / K; and
+    the deflection limit of (8.112): past the slip of full sliding, 3 D / K,
+    a deflection is not let grow. Off the road the deflections relax over
+    the nominal lengths at |Vx| + VXLOW.
+  - **TNO's low-speed model** in the Magic Formula, as MFeval has it: below
+    VXLOW the shifts (SHx, SVx, SHy, SVy, SVyk), the trail and the residual
+    torque fade out by (1 - cos(pi |Vcx| / VXLOW)) / 2, so that a tyre at rest
+    and undeflected pushes nothing. The rolling resistance moment acts in
+    full once the wheel rolls at V_roll = 0.01 m/s (Omega R_eff), in
+    proportion below it: dry friction, smoothed; it opposes the spin and
+    vanishes at rest.
+  - **Mirroring by side.** A parameter set describes a tyre of one side
+    (TYRESIDE, left by default). A tyre mounted on the other side is
+    evaluated mirrored, as TNO's MF-Tyre does: the slip angle and the
+    inclination negated going in, the side force, the overturning and the
+    aligning moments negated coming out. The builders mount every corner
+    (`FullTireForce::mount`).
+  - **The parameter set is the tyre's one source:** the free radius
+    (UNLOADED_RADIUS), the vertical stiffness and damping
+    (VERTICAL_STIFFNESS, VERTICAL_DAMPING) of task 7.3's contact, VXLOW, and
+    the forces and moments. `VehicleParams` and `AxleConfig` hold a `tyre`,
+    Pacejka's Appendix 3 tyre by default (`pacejka_appendix3_tyre()`), in
+    place of `tire_free_radius`, `tire_k_z`, `tire_c_z` and `tire_params`.
+  - **The inclination** is asin(a . n), a the spin axis and n the road's
+    normal.
+  - **The simulator attaches** a force element that is also a state element
+    when it is made: every simulator of a vehicle integrates its tyres'
+    deflections without being asked.
+  - Without lag (`lag = false`) the tyre keeps the old slips over max(|Vx|,
+    VXLOW), for comparison and for tests of the slips.
+  - The bicycle model reduces a vehicle's tyre to the simple formula about
+    its nominal load (`PacejkaTireParams::FromMagicFormula`): slip
+    stiffnesses and their load slope, friction and its load sensitivity,
+    shape and curvature factors.
+- **Alternatives.**
+  - The restricted fully non-linear model (8.119 to 8.121), the slip itself
+    the state: no division by the relaxation length, but it does not answer
+    load changes; the deflection is the physical state, and the book takes
+    the semi-non-linear model under "less demanding conditions", which a
+    car's handling and parking are.
+  - The enhanced model with a contact-patch mass (8.122 to 8.126): a mass of
+    a kilogram on the carcass's spring, stiff; it belongs with a rigid-ring
+    model, later.
+  - TNO's linear transients with the slip angle as the state (the paper's
+    (22)): the same equation, but its steady state feeds tan(alpha) where the
+    steady-state formula takes alpha; the arctangent keeps the two models
+    one.
+  - The vehicle's radius and stiffnesses kept beside the parameter set: two
+    sources for one tyre, and the rolling resistance's and moments' radius
+    would differ from the wheel's (the Appendix 3 tyre's 0.3135 m against the
+    vehicles' 0.35 m).
+  - Attaching the tyres by hand (`sim.attach` in every caller): a simulator
+    made without it would integrate nothing, and the tyre would sit at zero
+    deflection with no error.
+  - No mirroring: every tyre of a car would push the same way at zero slip
+    (the Appendix 3 tyre's ply steer and conicity, 73 N a tyre), the car
+    drifting sideways and turning; the symmetric bounce test showed it.
+  - No fade at rest: the shifts push at zero slip and zero deflection (19 N
+    forwards a tyre), so a car at rest has no static equilibrium, and a free
+    wheel on its edge tips over.
+  - A damping in proportion to critical: the book's value is light (3 % of
+    critical on a quarter of the car), and a car rings on its tyres after a
+    stop. Kept, as the book's; a parameter of the tyre (k_V_low0).
+  - The rolling resistance ramped in over VXLOW, as first written: at
+    walking pace a tyre then had almost none, and the double-wishbone sedan,
+    left with a side force of about 300 N on each tyre by its settling (the
+    treads deflected as the contacts moved across) on wheels toed out by
+    0.8 to 0.95 degrees, rolled away backwards at 4 cm/s within 5 s. Over
+    0.01 m/s it creeps at under 2 mm/s; a real tyre's rolling resistance
+    acts from the first centimetre, and TNO applies it in full with the
+    sign of the speed.
+- **Consequences.**
+  - The vehicles are the Appendix 3 tyre's: 3.65 cm lower (radius 0.3135
+    against 0.35 m), their tyres stiffer vertically (209651 against 200000
+    N/m) and damped less (50 against 500 N s/m), their wheels' spin inertia
+    lower (1.97 against 2.45 kg m^2), with load sensitivity, aligning and
+    overturning moments, camber thrust and rolling resistance. Every vehicle
+    scenario of the regression harness was written again (the journal entry
+    says by how much and why).
+  - A vehicle has fast states again (the deflections): multirate RK4 has
+    work on a vehicle. Linearisation holds them at the operating point: at
+    rest the sedan's wheels' spins decay at about 170 per second (the
+    low-speed damping and the rolling resistance's ramp; about 2800 before,
+    the old tyre a stiff damper), and its motions along the road appear as
+    real modes of 1.6, 2.0 and 4.1 per second.
+  - The stiff spin mode at walking pace is gone: RK4 steps a car at 0.5
+    m/s in 5 ms (every wheel within 1.3e-3 of free rolling). The tests of
+    the implicit methods on that stiffness run on the tyre without lag.
+  - After a stop, sliding tyres give back their treads' deflection, up to
+    the limit of (8.112), three times the sliding slip over the relaxation
+    length (about 3.5 cm): the car rocks back, a rear wheel can slip back
+    against its brake for a few milliseconds (11.7 rad/s measured), and the
+    car rings to rest on its tyres (2.4 mm/s a second after the
+    double-wishbone sedan's stop).
+  - A free car on level ground can creep at millimetres per second when
+    its settling leaves it a push (above): the ramp of the rolling
+    resistance is not a static friction.
+  - The tyre evaluates the Magic Formula twice per evaluation (the slips need
+    the relaxation lengths and stiffnesses at the load first).
+  - Tests that compare with hand calculations at rest or rolling set aside
+    what they do not test, and say so (rolling resistance in the forward
+    force test; the shifts and the overturning couple for a wheel balanced
+    on its edge).
+  - Rolling backwards: the deflections' equations use |Vx| and give slips
+    that oppose the sliding; the trail and residual torque change sign with
+    Vcx. Not compared with any reference.

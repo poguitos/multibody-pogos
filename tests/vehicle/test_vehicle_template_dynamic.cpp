@@ -201,7 +201,14 @@ TEST_CASE("Dynamic template: all-DWB vehicle settles under gravity",
     set_vehicle_equilibrium(sim, vh);   // rough initial condition
     sim.initialize();
 
-    // Let it settle for 3 seconds
+    // Let it settle for 3 seconds. Since task 7.4 the tyres hold a side
+    // force at rest: settling moves the double wishbones' contacts across, and
+    // the treads' lateral deflections keep about 300 N on each tyre, left and
+    // right opposed. With the wheels' toe-out at this height (0.8 and 0.95
+    // degrees) those forces push the free car backwards by a few newtons
+    // (17 N measured at 1 s), against the rolling resistance, which acts in
+    // full from 0.01 m/s of rolling: it creeps at under 2 mm/s (measured),
+    // its wheels rolling with it at under 0.01 rad/s.
     sim.run(3.0, 0.001);
 
     // Chassis should be at roughly the expected height
@@ -211,6 +218,7 @@ TEST_CASE("Dynamic template: all-DWB vehicle settles under gravity",
 
     // Velocities should be small (settled)
     for (int i = 0; i < sys.model.nv; ++i) {
+        INFO("velocity coordinate " << i << ": " << sim.v(i));
         REQUIRE(std::abs(sim.v(i)) < 0.1);
     }
 

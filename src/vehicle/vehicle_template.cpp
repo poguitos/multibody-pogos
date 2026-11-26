@@ -206,7 +206,7 @@ CornerHandle detail::build_simple_corner(
         Transform3(R_susp, mount_pos_chassis), Transform3::FromRotation(R_susp),
         RigidBodyInertia{}, name + "_carrier");
     ch.wheel_body = add_wheel(sys.model, ch.upright_body, Vec3::Zero(), axle.wheel_mass,
-                              axle.tire_free_radius, name);
+                              axle.tyre.UNLOADED_RADIUS, name);
 
     // Spring-damper
     sys.force_elements.push_back(std::make_shared<LinearSpringDamper>(
@@ -214,10 +214,8 @@ CornerHandle detail::build_simple_corner(
         mount_pos_chassis, Vec3::Zero(),
         axle.k_spring, axle.c_damper, axle.spring_rest_length));
 
-    // Tire
-    auto tire = std::make_shared<FullTireForce>(
-        ch.wheel_body, axle.tire_free_radius,
-        axle.tire_k_z, axle.tire_c_z, axle.tire_params);
+    // Tyre
+    auto tire = std::make_shared<FullTireForce>(ch.wheel_body, axle.tyre);
     ch.tire = tire.get();
     sys.force_elements.push_back(std::move(tire));
 
@@ -276,7 +274,7 @@ CornerHandle detail::build_dwb_corner(
     ch.uca_body     = dwb.uca_body;
     ch.upright_body = dwb.upright_body;
     ch.wheel_body   = add_wheel(sys.model, dwb.upright_body, Vec3::Zero(), axle.wheel_mass,
-                                axle.tire_free_radius, is_right_side ? "dwb_wheel_R" : "dwb_wheel_L");
+                                axle.tyre.UNLOADED_RADIUS, is_right_side ? "dwb_wheel_R" : "dwb_wheel_L");
     ch.on_rack      = tierod_body != chassis_body;
     ch.tierod_constraint_idx = dwb.tierod_constraint_idx;
 
@@ -294,14 +292,9 @@ CornerHandle detail::build_dwb_corner(
         axle.k_spring, axle.c_damper,
         precompressed_rest_length(ref_distance, axle.k_spring)));
 
-    // Tire: on the wheel, which turns on the upright (the wheel centre is the
+    // Tyre: on the wheel, which turns on the upright (the wheel centre is the
     // upright's origin)
-    auto tire = std::make_shared<FullTireForce>(
-        ch.wheel_body,
-        axle.tire_free_radius,
-        axle.tire_k_z,
-        axle.tire_c_z,
-        axle.tire_params);
+    auto tire = std::make_shared<FullTireForce>(ch.wheel_body, axle.tyre);
     ch.tire = tire.get();
     sys.force_elements.push_back(std::move(tire));
 
@@ -354,7 +347,7 @@ CornerHandle detail::build_mcpherson_corner(
     ch.uca_body     = 0; // no UCA in McPherson
     ch.upright_body = mc.upright_body;
     ch.wheel_body   = add_wheel(sys.model, mc.upright_body, Vec3::Zero(), axle.wheel_mass,
-                                axle.tire_free_radius, is_right_side ? "mcpherson_wheel_R" : "mcpherson_wheel_L");
+                                axle.tyre.UNLOADED_RADIUS, is_right_side ? "mcpherson_wheel_R" : "mcpherson_wheel_L");
     ch.on_rack    = tierod_body != chassis_body;
     ch.tierod_constraint_idx = mc.tierod_constraint_idx;
 
@@ -370,13 +363,8 @@ CornerHandle detail::build_mcpherson_corner(
         axle.k_spring, axle.c_damper,
         precompressed_rest_length(ref_distance, axle.k_spring)));
 
-    // Tire: on the wheel, which turns on the upright
-    auto tire = std::make_shared<FullTireForce>(
-        ch.wheel_body,
-        axle.tire_free_radius,
-        axle.tire_k_z,
-        axle.tire_c_z,
-        axle.tire_params);
+    // Tyre: on the wheel, which turns on the upright
+    auto tire = std::make_shared<FullTireForce>(ch.wheel_body, axle.tyre);
     ch.tire = tire.get();
     sys.force_elements.push_back(std::move(tire));
 
@@ -496,6 +484,7 @@ VehicleHandle build_vehicle(kernel::System& sys,
                     sys, vh.chassis_body, cd.mount_pos, cd.axle, cd.is_right, tierod_body);
                 break;
         }
+        vh.corners[c].tire->mount(cd.is_right);
     }
 
     // --- Calibrate rack travel per radian of toe, corner by corner ---
@@ -532,9 +521,9 @@ void set_vehicle_equilibrium(kernel::Simulator& sim, const VehicleHandle& vh)
 
     // Per-corner world-frame wheel center height (contact at z=0)
     const Real wheel_z_front_world =
-        t.front_axle.tire_free_radius - W_front_per / t.front_axle.tire_k_z;
+        t.front_axle.tyre.UNLOADED_RADIUS - W_front_per / t.front_axle.tyre.VERTICAL_STIFFNESS;
     const Real wheel_z_rear_world =
-        t.rear_axle.tire_free_radius - W_rear_per / t.rear_axle.tire_k_z;
+        t.rear_axle.tyre.UNLOADED_RADIUS - W_rear_per / t.rear_axle.tyre.VERTICAL_STIFFNESS;
 
     auto chassis_height = [](const CornerHandle& corner, const AxleConfig& ax, Real wheel_z, Real W_per) {
         if (corner.type == SuspensionType::Simple) {

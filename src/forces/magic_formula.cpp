@@ -90,14 +90,20 @@ MagicFormulaOutput MagicFormulaTyre::evaluate(const MagicFormulaInput& in) const
     const Real gx = v61 ? gamma : gamma * p.LGAX;
     const Real gy = v61 ? gamma : gamma * p.LGAY;
     const Real gz = v61 ? gamma : gamma * p.LGAZ;
-    // Friction falling with slip speed (4.E7). Its degressive form (4.E8) is
-    // taken with A_mu = 1, lambda' = lambda*, as TNO does (D63).
+    // Friction falling with slip speed (4.E7), and the road's friction on
+    // both. The degressive form (4.E8) is taken with A_mu = 1, lambda' =
+    // lambda*, as TNO does (D63).
     const Real Vs = std::hypot(kappa * Vcx, std::tan(alpha) * Vcx);
-    const Real LMUX_s = p.LMUX / (1.0 + p.LMUV * Vs / p.LONGVL);
-    const Real LMUY_s = p.LMUY / (1.0 + p.LMUV * Vs / p.LONGVL);
+    const Real LMUX_s = in.friction * p.LMUX / (1.0 + p.LMUV * Vs / p.LONGVL);
+    const Real LMUY_s = in.friction * p.LMUY / (1.0 + p.LMUV * Vs / p.LONGVL);
+    // TNO's low-speed model, as MFeval has it: below VXLOW the shifts (SHx,
+    // SVx, SHy, SVy, SVyk), the trail and the residual torque fade out, to
+    // none at rest, by (1 - cos(pi |Vcx| / VXLOW)) / 2 (D64).
+    const Real speed = std::abs(Vcx);
+    const Real fade = p.VXLOW > 0.0 && speed < p.VXLOW ? 0.5 * (1.0 - std::cos(pi * speed / p.VXLOW)) : 1.0;
 
     // --- Longitudinal force, pure longitudinal slip ---
-    const Real SHx = (p.PHX1 + p.PHX2 * dfz) * p.LHX;                         // (4.E17), (41)
+    const Real SHx = (p.PHX1 + p.PHX2 * dfz) * p.LHX * fade;                  // (4.E17), (41)
     const Real kx = kappa + SHx;                                              // (4.E10), (34)
     const Real Cx = p.PCX1 * p.LCX;                                           // (4.E11), (35)
     const Real mux = (p.PDX1 + p.PDX2 * dfz) * (1.0 + p.PPX3 * dpi + p.PPX4 * dpi * dpi)
@@ -108,7 +114,7 @@ MagicFormulaOutput MagicFormulaTyre::evaluate(const MagicFormulaInput& in) const
     const Real Kxk = Fz * (p.PKX1 + p.PKX2 * dfz) * std::exp(p.PKX3 * dfz)
                    * (1.0 + p.PPX1 * dpi + p.PPX2 * dpi * dpi) * p.LKX;       // (4.E15), (39)
     const Real Bx = Kxk / guard(Cx * Dx);                                     // (4.E16), (40)
-    const Real SVx = Fz * (p.PVX1 + p.PVX2 * dfz) * p.LVX * LMUX_s;           // (4.E18), (42)
+    const Real SVx = Fz * (p.PVX1 + p.PVX2 * dfz) * p.LVX * LMUX_s * fade;    // (4.E18), (42)
     const Real Fx0 = sine_form(Bx, Cx, Dx, Ex, kx) + SVx;                     // (4.E9), (33)
 
     // --- Side force, pure side slip, at an inclination g ---
@@ -126,6 +132,8 @@ MagicFormulaOutput MagicFormulaTyre::evaluate(const MagicFormulaInput& in) const
             l.SHy = SHy0 + p.PHY3 * g;                                        // MF 5.2: a shift in proportion
         }
         l.SVy = Fz * (p.PVY1 + p.PVY2 * dfz) * p.LVY * LMUY_s + SVyg;         // (4.E29), (64), (65)
+        l.SHy *= fade;
+        l.SVy *= fade;
         l.muy = (p.PDY1 + p.PDY2 * dfz) * (1.0 + p.PPY3 * dpi + p.PPY4 * dpi * dpi)
               * (1.0 - p.PDY3 * g * g) * LMUY_s;                              // (4.E23), (56)
         const Real ay = alpha + l.SHy;                                        // (4.E20), (53)
@@ -166,8 +174,8 @@ MagicFormulaOutput MagicFormulaTyre::evaluate(const MagicFormulaInput& in) const
                            * p.LKZC)
                   * LMUY_s * sVcx;                                            // (90)
     // Pure side slip ((79): the equivalent slips are the slips).
-    const Real t0 = Dt * cosine_form(Bt, Ct, Et, at) * cos_alpha;             // (83)
-    const Real Mzr0 = Dr * std::cos(std::atan(Br * ar)) * cos_alpha;          // (88)
+    const Real t0 = Dt * cosine_form(Bt, Ct, Et, at) * cos_alpha * fade;      // (83)
+    const Real Mzr0 = Dr * std::cos(std::atan(Br * ar)) * cos_alpha * fade;   // (88)
     const Real Mz0 = -t0 * Fy0_upright + Mzr0;                                // (4.E31), (75)
 
     // --- Longitudinal force, combined slip ---
@@ -187,7 +195,7 @@ MagicFormulaOutput MagicFormulaTyre::evaluate(const MagicFormulaInput& in) const
     const Real ks = kappa + SHyk;                                             // (4.E61), (70)
     const Real Gyk = cosine_form(Byk, Cyk, Eyk, ks) / cosine_form(Byk, Cyk, Eyk, SHyk);   // (4.E59), (4.E60), (69)
     const Real DVyk = lat.muy * Fz * (p.RVY1 + p.RVY2 * dfz + p.RVY3 * gy) * std::cos(std::atan(p.RVY4 * alpha));   // (4.E67), (68)
-    const Real SVyk = DVyk * std::sin(p.RVY5 * std::atan(p.RVY6 * kappa)) * p.LVYKA;   // (4.E66), (67)
+    const Real SVyk = DVyk * std::sin(p.RVY5 * std::atan(p.RVY6 * kappa)) * p.LVYKA * fade;   // (4.E66), (67)
     const Real Fy = Gyk * Fy0 + SVyk;                                         // (4.E58), (51)
 
     // --- Aligning torque, combined slip ---
@@ -195,8 +203,8 @@ MagicFormulaOutput MagicFormulaTyre::evaluate(const MagicFormulaInput& in) const
     const Real at_eq = std::atan(std::sqrt(std::tan(at) * std::tan(at) + k_eq * k_eq)) * sgn(at);   // (80)
     const Real ar_eq = std::atan(std::sqrt(std::tan(ar) * std::tan(ar) + k_eq * k_eq)) * sgn(ar);   // (81)
     const Real s = R0 * (p.SSZ1 + p.SSZ2 * (Fy / Fz0) + (p.SSZ3 + p.SSZ4 * dfz) * gz) * p.LS;   // (82)
-    const Real t = Dt * cosine_form(Bt, Ct, Et, at_eq) * cos_alpha;          // (83)
-    const Real Mzr = Dr * std::cos(std::atan(Br * ar_eq)) * cos_alpha;        // (88)
+    const Real t = Dt * cosine_form(Bt, Ct, Et, at_eq) * cos_alpha * fade;   // (83)
+    const Real Mzr = Dr * std::cos(std::atan(Br * ar_eq)) * cos_alpha * fade; // (88)
     // MF 6.1: the combined side force at zero inclination, Gyk (at the
     // inclination, as TNO's solver has it, D63) times Fy0 at zero inclination
     // (75); MF 5.2: the side force less its slip-induced part.
@@ -251,6 +259,56 @@ MagicFormulaOutput MagicFormulaTyre::evaluate(const MagicFormulaInput& in) const
     out.Mzr = Mzr;
     out.s = s;
     return out;
+}
+
+MagicFormulaOutput MagicFormulaTyre::characteristics(Real Fz, Real gamma, Real pressure, Real friction) const
+{
+    MagicFormulaInput in;
+    in.Fz = Fz;
+    in.gamma = gamma;
+    in.pressure = pressure;
+    in.friction = friction;
+    in.kappa = 0.0;
+    in.alpha = 0.0;
+    in.Vcx = 0.0;
+    return evaluate(in);
+}
+
+MagicFormulaParameters pacejka_appendix3_tyre()
+{
+    // Every value of Table A3.1 that is not 0, as the file has them; the
+    // others (Q_FCX, Q_FCY, PCFX2, PCFX3, PCFY2, PDX3, PEX3, RBX3, QSX12 to
+    // QSX14, PPMX1, PDY3, PEY5, PKY5, PPY5, RBY4, RVY3, QSY2, QSY5, QSY6,
+    // QBZ3, QBZ10, QDZ4, QDZ10, QDZ11, QEZ3, PPZ2, SSZ3, SSZ4) are 0, as their
+    // defaults. Every scaling factor is 1.
+    MagicFormulaParameters p;
+    p.version = MagicFormulaVersion::MF61;
+    p.FITTYP = 61;
+    p.LONGVL = 16.7; p.VXLOW = 1; p.UNLOADED_RADIUS = 0.3135; p.WIDTH = 0.205; p.RIM_RADIUS = 0.1905;
+    p.INFLPRES = 220000; p.NOMPRES = 220000; p.FNOMIN = 4000; p.VERTICAL_STIFFNESS = 209651;
+    p.VERTICAL_DAMPING = 50; p.Q_V2 = 0.04667; p.Q_FZ2 = 15.4; p.PFZ1 = 0.7098; p.BREFF = 8.386;
+    p.DREFF = 0.25826; p.FREFF = 0.07394; p.Q_RE0 = 0.9974; p.Q_V1 = 7.742e-4;
+    p.LONGITUDINAL_STIFFNESS = 358066; p.LATERAL_STIFFNESS = 102673; p.PCFX1 = 0.17504; p.PCFY1 = 0.16365;
+    p.PCFY3 = 0.24993; p.PCX1 = 1.579; p.PDX1 = 1.0422; p.PDX2 = -0.08285; p.PEX1 = 0.11113; p.PEX2 = 0.3143;
+    p.PEX4 = 0.001719; p.PKX1 = 21.687; p.PKX2 = 13.728; p.PKX3 = -0.4098; p.PHX1 = 2.1615e-4;
+    p.PHX2 = 0.0011598; p.PVX1 = 2.0283e-5; p.PVX2 = 1.0568e-4; p.PPX1 = -0.3485; p.PPX2 = 0.37824;
+    p.PPX3 = -0.09603; p.PPX4 = 0.06518; p.RBX1 = 13.046; p.RBX2 = 9.718; p.RCX1 = 0.9995; p.REX1 = -0.4403;
+    p.REX2 = -0.4663; p.RHX1 = -9.968e-5; p.QSX1 = -0.007764; p.QSX2 = 1.1915; p.QSX3 = 0.013948;
+    p.QSX4 = 4.912; p.QSX5 = 1.02; p.QSX6 = 22.83; p.QSX7 = 0.7104; p.QSX8 = -0.023393; p.QSX9 = 0.6581;
+    p.QSX10 = 0.2824; p.QSX11 = 5.349; p.PCY1 = 1.338; p.PDY1 = 0.8785; p.PDY2 = -0.06452; p.PEY1 = -0.8057;
+    p.PEY2 = -0.6046; p.PEY3 = 0.09854; p.PEY4 = -6.697; p.PKY1 = -15.324; p.PKY2 = 1.715; p.PKY3 = 0.3695;
+    p.PKY4 = 2.0005; p.PKY6 = -0.8987; p.PKY7 = -0.23303; p.PHY1 = -0.001806; p.PHY2 = 0.00352;
+    p.PVY1 = -0.00661; p.PVY2 = 0.03592; p.PVY3 = -0.162; p.PVY4 = -0.4864; p.PPY1 = -0.6255;
+    p.PPY2 = -0.06523; p.PPY3 = -0.16666; p.PPY4 = 0.2811; p.RBY1 = 10.622; p.RBY2 = 7.82; p.RBY3 = 0.002037;
+    p.RCY1 = 1.0587; p.REY1 = 0.3148; p.REY2 = 0.004867; p.RHY1 = 0.009472; p.RHY2 = 0.009754;
+    p.RVY1 = 0.05187; p.RVY2 = 4.853e-4; p.RVY4 = 94.63; p.RVY5 = 1.8914; p.RVY6 = 23.8; p.QSY1 = 0.00702;
+    p.QSY3 = 0.001515; p.QSY4 = 8.514e-5; p.QSY7 = 0.9008; p.QSY8 = -0.4089; p.QBZ1 = 12.035; p.QBZ2 = -1.33;
+    p.QBZ4 = 0.176; p.QBZ5 = -0.14853; p.QBZ9 = 34.5; p.QCZ1 = 1.2923; p.QDZ1 = 0.09068; p.QDZ2 = -0.00565;
+    p.QDZ3 = 0.3778; p.QDZ6 = 0.0017015; p.QDZ7 = -0.002091; p.QDZ8 = -0.1428; p.QDZ9 = 0.00915;
+    p.QEZ1 = -1.7924; p.QEZ2 = 0.8975; p.QEZ4 = 0.2895; p.QEZ5 = -0.6786; p.QHZ1 = 0.0014333;
+    p.QHZ2 = 0.0024087; p.QHZ3 = 0.24973; p.QHZ4 = -0.21205; p.PPZ1 = -0.4408; p.SSZ1 = 0.00918;
+    p.SSZ2 = 0.03869;
+    return p;
 }
 
 } // namespace mbd

@@ -34,6 +34,22 @@ namespace
         for (std::size_t c = 0; c < 4; ++c) sim.v(vm.spin_v[c]) *= 1.03;
         sim.refresh();
     }
+
+    /// The simple car with its tyres as they were before task 7.4 in the two
+    /// respects the implicit methods' tests below are about: without lag
+    /// (the slips over max(|Vx|, V_low): at walking pace a stiff damper on
+    /// each wheel's spin, the stiffness those methods are for) and without
+    /// rolling resistance (nothing slows the coasting car). With the lag the
+    /// spins couple to the tread's spring instead, and RK4 steps the car at
+    /// 0.5 m/s in 5 ms (measured: every wheel within 1.3e-3 of free rolling).
+    mbd::VehicleModel build_stiff_car(mbd::kernel::System& sys)
+    {
+        mbd::VehicleParams vp;
+        vp.tyre.QSY1 = vp.tyre.QSY3 = vp.tyre.QSY4 = 0.0;
+        mbd::VehicleModel vm = mbd::build_simple_vehicle(sys, vp);
+        for (mbd::FullTireForce* t : vm.tires) t->lag = false;
+        return vm;
+    }
 }
 
 // ============================================================================
@@ -256,6 +272,10 @@ TEST_CASE("Drivetrain: braking deceleration matches the hand calculation",
 
     kernel::System sys;
     VehicleParams vp;
+    // The tyres' rolling resistance set aside (task 7.4; the coasting test
+    // below has it): this is the brakes' torque against the car's and the
+    // wheels' inertia.
+    vp.tyre.QSY1 = vp.tyre.QSY3 = vp.tyre.QSY4 = 0.0;
     auto vm = build_simple_vehicle(sys, vp);
 
     kernel::Simulator sim(sys);
@@ -275,9 +295,10 @@ TEST_CASE("Drivetrain: braking deceleration matches the hand calculation",
     sim.run(0.3, 0.001);
 
     // Half pedal: 3000 Nm over the four wheels, 65 % of it at the front.
-    // That asks each front tyre for about 2.9 kN on 4.6 kN of load and each
-    // rear tyre for 1.5 kN on 3.0 kN (friction used: 0.62 and 0.51), well
-    // inside the tyre's peak friction of 1.1. No wheel is near its limit.
+    // That asks each front tyre for about 3.3 kN on 4.6 kN of load and each
+    // rear tyre for 1.8 kN on 3.0 kN (friction used: 0.72 and 0.59), inside
+    // the Appendix 3 tyre's peak friction of about 1.05. No wheel is near its
+    // limit.
     dt.brake = 0.5;
     sim.run(0.5, 0.001);               // pitch and tyre deflection settle
     const Real V1 = vx(sim);
@@ -292,7 +313,7 @@ TEST_CASE("Drivetrain: braking deceleration matches the hand calculation",
     // with T_c the brake torque, F_c the braking force of the tyre, R_c the
     // rolling radius (spin to speed), r_c the arm of F_c about the axle (task
     // 7.3: the force acts on the road, R_free - deflection below the axle),
-    // and I the spin inertia of one wheel, m R^2 / 2 = 2.45 kg m^2. The slip
+    // and I the spin inertia of one wheel, m R^2 / 2 = 1.97 kg m^2. The slip
     // that the braking force needs (about -4 %) makes the wheels turn, and
     // slow, that much slower than rolling, so their inertia takes that much
     // less of the brakes' torque: of the wheels' 5 % share of the inertia,
@@ -353,21 +374,35 @@ TEST_CASE("Drivetrain: full braking decelerates at the grip limit",
     sim.run(0.3, 0.001);
     const Real V_before = vx(sim);
 
-    // Full pedal asks for 6000 Nm, about 17.6 kN at the contact patches. The
-    // tyres can transmit at most 1.1 * m * g = 16.8 kN, so the brakes are no
-    // longer the limit: the deceleration is set by the tyres. It cannot
-    // exceed peak friction, and it cannot fall below the friction of a locked,
-    // sliding tyre (slip ratio -1).
+    // Full pedal asks for 6000 Nm, about 19 kN at the contact patches (the
+    // Appendix 3 tyre's radius, 0.31 m, task 7.4). The tyres can transmit
+    // about 1.05 m g = 16 kN, so the brakes are no longer the limit: the
+    // deceleration is set by the tyres. It cannot exceed the peak of the
+    // braking curve at the static load, and it cannot fall below the friction
+    // of a locked, sliding tyre (slip ratio -1). The peak bound holds with
+    // the load transferred forward too: the peak friction falls with load
+    // (pDx2 < 0, linearly), so the four tyres' peaks add up to most at equal
+    // loads.
     dt.brake = 1.0;
     const Real t_brake = 1.0;
     sim.run(t_brake, 0.001);
     const Real V_after = vx(sim);
     const Real decel = (V_before - V_after) / t_brake;
 
-    const PacejkaTire tyre(vp.tire_params);
+    // The braking curve at the static load, swept every 1e-4 in slip.
+    const MagicFormulaTyre tyre(vp.tyre);
     const Real Fz_static = vp.weight_per_wheel();
-    const Real mu_peak   = tyre.peak_mu_longitudinal(Fz_static);
-    const Real mu_slide  = -tyre.compute(-1.0, 0.0, Fz_static).Fx / Fz_static;
+    MagicFormulaInput in;
+    in.Fz = Fz_static;
+    in.Vcx = 20.0;
+    Real peak = 0.0;
+    for (int i = 0; i <= 10000; ++i) {
+        in.kappa = -1e-4 * i;
+        peak = std::max(peak, -tyre.evaluate(in).Fx);
+    }
+    in.kappa = -1.0;
+    const Real mu_peak  = peak / Fz_static;
+    const Real mu_slide = -tyre.evaluate(in).Fx / Fz_static;
 
     INFO("decel " << decel << " m/s^2, sliding mu " << mu_slide << ", peak mu " << mu_peak);
     // 10 % margin below sliding friction: it falls slightly on the unloaded
@@ -395,6 +430,17 @@ TEST_CASE("Drivetrain: braking to a stop locks the wheels, and the car stays sto
     // suspension, which decays at the suspension's damping rate, so the
     // residual speed must at least halve from one half second to the next and
     // end below 0.1 mm/s, stopped by any practical measure.
+    //
+    // Since task 7.4 the tyres lag: the sliding front tyres stop with their
+    // tread's deflection at the limit of (8.112), three times the slip of
+    // full sliding over the relaxation length, about 3.5 cm, and give it
+    // back as the car stops. The car rocks back past the rear tyres' balance,
+    // and the reversed force on a rear tyre briefly exceeds its brake's 1050 N
+    // m: the wheel slips back, up to 11.7 rad/s for a few milliseconds
+    // (measured, every method), and is locked again. The car comes to rest
+    // as before: at 3 s within 4.1e-5 m/s by every method (measured). So the
+    // guard against wheels turning backwards (the brake's direction, task
+    // 4.2) holds while the car still moves forwards.
     //
     // The same with Dormand-Prince (task 4.2), whose error control would
     // shrink its steps without end if the brake's sign flipped within a step
@@ -430,26 +476,141 @@ TEST_CASE("Drivetrain: braking to a stop locks the wheels, and the car stays sto
         sim.run(0.3, 0.001);
 
         dt.brake = 1.0;
-        Real slowest_spin = 0.0;
+        Real slowest_spin = 0.0;   // while the car still moves forwards
+        Real slowest_any = 0.0;    // at any time
+        int slowest_step = 0, slowest_corner = -1;
         Real fastest_late = 0.0, fastest_last = 0.0;   // |vx| over 2.0-2.5 s and 2.5-3.0 s
         for (int i = 1; i <= 3000; ++i) {
             sim.step(0.001);
-            for (int c = 0; c < 4; ++c) slowest_spin = std::min(slowest_spin, dt.wheel_omega[c]);
+            for (int c = 0; c < 4; ++c) slowest_any = std::min(slowest_any, dt.wheel_omega[c]);
+            for (int c = 0; c < 4 && vx(sim) > 0.5; ++c) {
+                if (dt.wheel_omega[c] < slowest_spin) {
+                    slowest_spin = dt.wheel_omega[c];
+                    slowest_step = i;
+                    slowest_corner = c;
+                }
+            }
             if (i > 2000 && i <= 2500) fastest_late = std::max(fastest_late, std::abs(vx(sim)));
             if (i > 2500) fastest_last = std::max(fastest_last, std::abs(vx(sim)));
         }
         INFO("largest speed over 2.0-2.5 s " << fastest_late << " m/s, over 2.5-3.0 s " << fastest_last
              << " m/s, at the end " << vx(sim) << " m/s; " << sim.integrator_stats().steps << " steps, "
-             << sim.integrator_stats().rejected << " rejected");
+             << sim.integrator_stats().rejected << " rejected; slowest spin " << slowest_spin << " rad/s, corner "
+             << slowest_corner << ", " << slowest_step << " ms into the braking; at any time " << slowest_any
+             << " rad/s");
         CHECK(fastest_last < 0.5 * fastest_late);
         CHECK(std::abs(vx(sim)) < 1e-4);
-        CHECK(slowest_spin >= 0.0);   // no wheel turned backwards
+        CHECK(slowest_spin >= 0.0);   // no wheel turned backwards while the car moved forwards
         for (int c = 0; c < 4; ++c) {
             INFO("corner " << c);
             CHECK(dt.wheel_locked[c]);
             CHECK(dt.wheel_omega[c] == 0.0);
         }
     }
+}
+
+TEST_CASE("Drivetrain: a car held on its brakes on a slope stays put",
+          "[drivetrain][braking][slope]")
+{
+    // The plan's "done when" for task 7.4, its last part. The simple car on a
+    // 10 % slope, facing up it, its brakes full on from rest: a level road
+    // under gravity turned by beta = atan(0.1), the same problem turned.
+    // Locked, each tyre holds by its tread's deflection (task 7.4, D64): at
+    // rest a spring of the carcass's stiffness cx = Kxk / sigma_kappa (the
+    // Magic Formula's shifts are faded out at rest). The car rolls back until
+    // the four carry the weight's component, F = m g sin(beta) = 1523 N, and
+    // pitches nose up on its springs under the moment of F about the centre
+    // of gravity, at the height h = 0.508 m above the road, less that of the
+    // wheels' own weight along the slope at their centres' height z_w:
+    //     M = F h - 4 m_w g sin(beta) (h - z_w),   theta = M / k_pitch,
+    // k_pitch = 2 k (a^2 + b^2), k the spring and the tyre in series. A
+    // locked car pitches as a body about its tyres' contacts: the tread
+    // moves by the centre's displacement less theta h. So the centre moves
+    // back by
+    //     x_static = F / (4 cx) + h M / k_pitch,
+    // 1.07 + 2.31 = 3.38 mm, cx at the static load (the axles' loads differ
+    // on the slope by 4 %, and cx follows them by pcfx1 dfz: 0.7 %, which
+    // cancels across the axles). While the car rings down the deflections
+    // also relax over the distance travelled to and fro (-|Vx| u / sigma),
+    // which can only let it further back, by u / sigma (0.4 %) of that
+    // distance: allowed from 2 % short (the loads' cos(beta), R_eff against
+    // the loaded radius) to 10 % beyond. The low-speed damping, k_V_low0 =
+    // 770 N s/m a tyre, is 3 % of critical against the car's mass on the four
+    // springs, but the suspension's damping takes the pitch: the means over
+    // 5-6 s and 9-10 s differ by less than 1e-5 m, and the speed at 10 s is
+    // under 1e-5 m/s.
+    //
+    // Without the lag (the slips over max(|Vx|, V_low), as the tyre was
+    // before), a locked tyre's force is Kxk (-Vx) / V_low: a damper. The car
+    // creeps down at the speed where the four carry the same load,
+    //     v_creep = m g sin(beta) V_low / (4 Kxk),
+    // about 4.6 mm/s (F7's finding, with the tyre of then). Measured over
+    // 5-10 s; allowed 10 % (the axles' loads, and the shifts, which fade
+    // in with the speed's square: 5e-5 of them at this speed).
+    using namespace mbd;
+    const Real beta = std::atan(0.1);
+    struct Run {
+        Real mean_early, mean_late, speed_end, moved_back;
+        bool locked;
+    };
+    auto run = [&](bool lag) {
+        kernel::System sys;
+        VehicleParams vp;
+        auto vm = build_simple_vehicle(sys, vp);
+        sys.model.gravity = g_accel * Vec3(-std::sin(beta), 0.0, -std::cos(beta));   // after: the builder sets it
+        for (FullTireForce* t : vm.tires) t->lag = lag;
+        kernel::Simulator sim(sys);
+        sim.method = kernel::Integrator::RK4;
+        set_vehicle_equilibrium(sim, vm);
+        sim.initialize();
+        const Real x0 = sim.states()[static_cast<std::size_t>(vm.chassis_body)].p_WB.x();
+
+        Drivetrain dt;
+        dt.initialize(sim, vm);
+        dt.throttle = 0.0;
+        dt.brake = 1.0;
+        dt.connect(sim, vm);
+
+        Run r{0.0, 0.0, 0.0, 0.0, true};
+        for (int i = 1; i <= 10000; ++i) {
+            sim.step(0.001);
+            const Real x = sim.states()[static_cast<std::size_t>(vm.chassis_body)].p_WB.x();
+            if (i > 5000 && i <= 6000) r.mean_early += x / 1000.0;
+            if (i > 9000) r.mean_late += x / 1000.0;
+        }
+        r.speed_end = vx(sim);
+        r.moved_back = x0 - r.mean_late;
+        for (int c = 0; c < 4; ++c) r.locked = r.locked && dt.wheel_locked[c];
+        return r;
+    };
+
+    VehicleParams vp;
+    const MagicFormulaTyre tyre(vp.tyre);
+    const MagicFormulaOutput at_rest = tyre.characteristics(vp.weight_per_wheel(), 0.0);
+    REQUIRE(at_rest.Fx == 0.0);   // faded out at rest
+    const Real load = vp.total_mass() * g_accel * std::sin(beta);
+    const Real cx = at_rest.Kxk / at_rest.sigma_kappa;
+    const Real h = vp.chassis_height_eq(), z_w = vp.wheel_center_height_eq();
+    const Real k = vp.k_susp * vp.tyre.VERTICAL_STIFFNESS / (vp.k_susp + vp.tyre.VERTICAL_STIFFNESS);
+    const Real k_pitch = 2.0 * k * (vp.front_axle_x * vp.front_axle_x + vp.rear_axle_x * vp.rear_axle_x);
+    const Real M = load * h - 4.0 * vp.wheel_mass * g_accel * std::sin(beta) * (h - z_w);
+    const Real x_static = load / (4.0 * cx) + h * M / k_pitch;
+    const Real v_creep = load * vp.tyre.VXLOW / (4.0 * at_rest.Kxk);
+
+    const Run held = run(true);
+    INFO("with the lag: rolled back " << held.moved_back << " m (by hand " << x_static << "), means "
+         << held.mean_early << " and " << held.mean_late << " m, speed at 10 s " << held.speed_end << " m/s");
+    CHECK(held.locked);
+    CHECK(std::abs(held.mean_late - held.mean_early) < 1e-5);
+    CHECK(std::abs(held.speed_end) < 1e-5);
+    CHECK(held.moved_back > 0.98 * x_static);
+    CHECK(held.moved_back < 1.10 * x_static);
+
+    const Run crept = run(false);
+    const Real creep = (crept.mean_early - crept.mean_late) / 4.0;
+    INFO("without the lag: crept " << creep << " m/s (by hand " << v_creep << ")");
+    CHECK(crept.locked);
+    CHECK_THAT(creep, WithinRel(v_creep, 0.1));
 }
 
 TEST_CASE("Drivetrain: Dormand-Prince reproduces RK4's braking deceleration",
@@ -525,11 +686,27 @@ TEST_CASE("Drivetrain: coasting approximately maintains speed", "[drivetrain][co
     sim.run(2.0, 0.001);
     const Real V_end = vx(sim);
 
-    // Nothing in this model takes energy out of a coasting car: there is no
-    // aerodynamic drag, no rolling resistance and no engine braking. The
-    // speed must stay where it is.
+    // Only the tyres' rolling resistance takes energy out of this coasting
+    // car (no drag, no engine braking; task 7.4). Each tyre's moment is the
+    // Magic Formula's (50), R0 Fz0 (qsy1 + qsy3 V / V0 + qsy4 (V / V0)^4)
+    // (Fz / Fz0)^qsy7, against the spin; on the wheel it is a force at the
+    // arm r = R - d, which the car and the wheels' inertia share: a = 4 My /
+    // r / (m + 4 I / (R_eff r)). With the Appendix 3 tyre at 15 m/s and Fz =
+    // m g / 4 = 3825.9 N: My = 0.3135 x 4000 x 0.0084362 x 0.96073 = 10.16 N
+    // m, r = 0.29525 m, so a = 137.7 / 1647.5 = 0.0836 m/s^2: 1.11 % of the
+    // speed in 2 s. The speed falls by 1.1 % in that time, and the speed
+    // term with it (0.16 % of the moment); allowed 2 %.
+    const Real R = vp.tyre.UNLOADED_RADIUS, d = vp.tire_deflection_eq();
+    const Real r = R - d, R_eff = R - 0.5 * d;
+    const Real V = 0.5 * (V_start + V_end), V0 = vp.tyre.LONGVL;
+    const Real My = R * vp.tyre.FNOMIN
+                  * (vp.tyre.QSY1 + vp.tyre.QSY3 * V / V0 + vp.tyre.QSY4 * std::pow(V / V0, 4.0))
+                  * std::pow(vp.weight_per_wheel() / vp.tyre.FNOMIN, vp.tyre.QSY7);
+    const Real I = 0.5 * vp.wheel_mass * R * R;
+    const Real a = 4.0 * My / r / (vp.total_mass() + 4.0 * I / (R_eff * r));
     const Real speed_loss_fraction = (V_start - V_end) / V_start;
-    REQUIRE(std::abs(speed_loss_fraction) < 1e-3);
+    INFO("speed lost " << speed_loss_fraction << ", by hand " << a * 2.0 / V_start);
+    REQUIRE_THAT(speed_loss_fraction, WithinRel(a * 2.0 / V_start, 0.02));
 }
 
 TEST_CASE("Drivetrain: generalised-alpha rolls the car at low speed in steps of 5 ms, where RK4 cannot",
@@ -549,7 +726,9 @@ TEST_CASE("Drivetrain: generalised-alpha rolls the car at low speed in steps of 
     // damping acts on the motions too fast for the step, not on the speed,
     // which holds to 1e-3. Since task 7.3 the spins are the wheels' joints;
     // they start 3 % fast, as they did before, to give them something to
-    // settle from (measured values in this comment from before 7.3).
+    // settle from (measured values in this comment from before 7.3). Since
+    // task 7.4 the car's tyres lag, and this stiffness is gone: the test runs
+    // on the tyres without lag (build_stiff_car above).
     using namespace mbd;
     struct Run {
         Real V_start, V_end, worst;   // worst: largest |spin x rolling radius - speed| / speed
@@ -557,8 +736,7 @@ TEST_CASE("Drivetrain: generalised-alpha rolls the car at low speed in steps of 
     };
     auto coast = [](kernel::Integrator method, Real h) {
         kernel::System sys;
-        VehicleParams vp;
-        auto vm = build_simple_vehicle(sys, vp);
+        auto vm = build_stiff_car(sys);
         kernel::Simulator sim(sys);
         sim.method = method;
         set_vehicle_equilibrium(sim, vm);
@@ -792,7 +970,7 @@ TEST_CASE("Drivetrain: initialize matches wheel omega to vehicle speed",
     // the car's weight, deflecting by W / k_z, and rolls at R_eff = R_free -
     // deflection / 2; 20 m/s over it. The spins are the wheels' joints' (the
     // chassis does not turn), to rounding.
-    const Real R_eff = vp.tire_free_radius - 0.5 * vp.tire_deflection_eq();
+    const Real R_eff = vp.tyre.UNLOADED_RADIUS - 0.5 * vp.tire_deflection_eq();
     const Real expected_omega = 20.0 / R_eff;
 
     for (int c = 0; c < 4; ++c) {
@@ -818,11 +996,11 @@ TEST_CASE("Drivetrain: linearly implicit Euler rolls the car at low speed in ste
     // costs one evaluation and one set of derivatives. Since task 7.3 the
     // spins are the wheels' joints; they start 3 % fast, as they did before,
     // to give them something to settle from (measured values in this comment
-    // from before 7.3).
+    // from before 7.3). Since task 7.4 it runs on the tyres without lag, as
+    // the generalised-alpha test above (build_stiff_car).
     using namespace mbd;
     kernel::System sys;
-    VehicleParams vp;
-    auto vm = build_simple_vehicle(sys, vp);
+    auto vm = build_stiff_car(sys);
     kernel::Simulator sim(sys);
     sim.method = kernel::Integrator::LinearlyImplicitEuler;
     set_vehicle_equilibrium(sim, vm);
@@ -846,7 +1024,7 @@ TEST_CASE("Drivetrain: linearly implicit Euler rolls the car at low speed in ste
     const Real V_end = vx(sim);
 
     kernel::System ref_sys;
-    auto ref_vm = build_simple_vehicle(ref_sys, vp);
+    auto ref_vm = build_stiff_car(ref_sys);
     kernel::Simulator ref(ref_sys);
     set_vehicle_equilibrium(ref, ref_vm);
     ref.v(3) = 0.5;
@@ -882,8 +1060,12 @@ TEST_CASE("Drivetrain: on the sedan every linearly implicit step does the same w
     // four evaluations, generalised-alpha from two to dozens (a new
     // iteration matrix costs 2 nv + nx evaluations). The drive must match
     // RK4's at the same step: the top speed within 1 % (a first-order method
-    // at 1 ms on motions of a tenth of a second), and the car at rest at the
-    // end. Time per step is measured by the benchmark (data file), not here.
+    // at 1 ms on motions of a tenth of a second), and the car stopped at the
+    // end: since task 7.4 it rocks on its tyres' treads after the stop (the
+    // braking test above), lightly damped at rest, so after a second of
+    // standing it still moves at 2.4 mm/s by both methods (measured): below
+    // 5 mm/s, against the 1.7 m/s of the drive.
+    // Time per step is measured by the benchmark (data file), not here.
     using namespace mbd;
     auto drive = [](kernel::Integrator method, long long& fewest, long long& most) {
         auto tmpl = VehicleTemplate::DefaultSedan();
@@ -923,5 +1105,6 @@ TEST_CASE("Drivetrain: on the sedan every linearly implicit step does the same w
     CHECK(lin_fewest == 1001);
     CHECK(lin_most == 1001);
     CHECK(std::abs(lin_top - rk4_top) < 0.01 * rk4_top);
-    CHECK(std::abs(lin_end) < 1e-3);
+    CHECK(std::abs(lin_end) < 5e-3);
+    CHECK(std::abs(rk4_end) < 5e-3);
 }

@@ -60,8 +60,8 @@ TEST_CASE("Lap validation: bicycle model max a_y is in physical range",
     bp.mass = tmpl.total_mass();
     bp.front_axle_x = tmpl.front_axle_x;
     bp.rear_axle_x  = tmpl.rear_axle_x;
-    bp.tire_front = tmpl.front_axle.tire_params;
-    bp.tire_rear  = tmpl.rear_axle.tire_params;
+    bp.tire_front = PacejkaTireParams::FromMagicFormula(tmpl.front_axle.tyre);
+    bp.tire_rear  = PacejkaTireParams::FromMagicFormula(tmpl.rear_axle.tyre);
     BicycleModel bm(bp);
 
     const Real a_y_max = bm.max_lateral_acceleration();

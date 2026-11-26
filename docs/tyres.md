@@ -1,21 +1,25 @@
 # Tyres
 
-Plan task 7.4 (decision D63): the Magic Formula tyre, from a tyre property
-file (.tir), in its two versions MF 6.1 and MF 5.2. This page says what it
-computes, from which equations, how it was checked, and what it leaves out.
+Plan task 7.4 (decisions D63, D64): the Magic Formula tyre, from a tyre
+property file (.tir), in its two versions MF 6.1 and MF 5.2, and the tyre on
+a wheel, its slips lagging behind the motion over its relaxation lengths,
+valid down to rest. This page says what it computes, from which equations,
+how it was checked, and what it leaves out.
 
 | What | Where |
 |---|---|
 | The tyre: steady-state forces and moments | `mbd/forces/magic_formula.hpp` |
 | The .tir reader | `mbd/io/tir_file.hpp` |
+| The tyre on a wheel: contact, lag, mirroring | `mbd/forces/tire.hpp` (`FullTireForce`) |
 | Tests: identities at the nominal state | `tests/forces/test_magic_formula.cpp` |
+| Tests: the tyre on a wheel | `tests/forces/test_full_tire.cpp`; the car on a slope, `tests/test_drivetrain.cpp` |
 | Tests: against MFeval, an independent implementation | `tests/forces/test_magic_formula_mfeval.cpp` |
 | Test tyres and MFeval's curves | `tests/forces/data/*.tir`, `tests/forces/data/mfeval/*.csv` |
 
-The vehicles of Phase 7 still use the simpler Magic Formula the library
-had before the plan (`mbd/forces/pacejka.hpp`, `FullTireForce`) until the second part of
-task 7.4 adds the tyre's lag (relaxation lengths) and makes this one their
-tyre.
+Every vehicle's tyre is this one, Pacejka's Appendix 3 tyre (a 205/60R15)
+unless another is given (`VehicleParams::tyre`, `AxleConfig::tyre`). The
+simpler formula the library had before the plan (`mbd/forces/pacejka.hpp`)
+is left to the bicycle model, which reduces a vehicle's tyre to it.
 
 ## Using it
 
@@ -130,6 +134,73 @@ manual's: for them MFeval is the source as well as the check. The camber
 scaling factors LGAX, LGAY and LGAZ come from older descriptions of MF 5.2
 (PAC2002); MFeval does not take them, so they are not compared.
 
+## On a wheel: FullTireForce
+
+`FullTireForce` (`mbd/forces/tire.hpp`, D64) is the tyre on a wheel body of
+task 7.3: the contact from the wheel plane and the road, and the Magic
+Formula at the contact point, in its W axes. A parameter set gives it
+everything: the free radius (UNLOADED_RADIUS), the vertical stiffness and
+damping of the contact (VERTICAL_STIFFNESS, VERTICAL_DAMPING), VXLOW, and the
+forces and moments.
+
+```cpp
+const mbd::io::TirFile file = mbd::io::read_tir("my_tyre.tir");
+mbd::VehicleParams vp;                // the simple car
+vp.tyre = file.parameters;            // its four tyres
+// or, on a template: tmpl.front_axle.tyre = file.parameters;
+```
+
+**The slips lag** behind the motion (Pacejka, 3rd ed., section 8.6, the
+semi-non-linear model). Each tyre has two states, its tread's deflections
+u and v:
+
+    du/dt = -Vsx - |Vx| u / sigma_kappa,    kappa' = u / sigma_kappa
+    dv/dt =  Vsy - |Vx| v / sigma_alpha,    alpha' = atan(v / sigma_alpha)
+
+with Vsx = Vx - Omega R_eff and Vsy = Vy the contact's slip speeds and sigma
+the Magic Formula's relaxation lengths at the present load (at least 0.02 m).
+The Magic Formula takes kappa' and alpha'. In a steady state they are the
+steady-state slips, -Vsx / |Vx| and atan(Vsy / |Vx|), so the forces are those
+of the steady-state tyre; after a step in slip, the deflection reaches 1 - 1/e
+of its new value in one relaxation length of travel; at rest the deflections
+follow the contact's motion and the tyre holds like a spring of its
+carcass's stiffness (MF 6.1: LONGITUDINAL_STIFFNESS and LATERAL_STIFFNESS of
+[STRUCTURAL]). A simulator made from a system holding the tyre integrates
+its two states (the tyre is a state element; it is attached when the
+simulator is made).
+
+Below VXLOW three things keep the tyre sane at rest:
+
+- a damping k_V_low = k_V_low0 (1 + cos(pi |Vx| / VXLOW)) / 2, k_V_low0 = 770
+  N s/m (the book's Table 8.4), added to the slips as -k_V_low Vs / K (8.127,
+  8.128): it damps the tyre's spring at rest, lightly (3 % of critical on a
+  quarter of a car);
+- the deflection limit of (8.112): past the slip of full sliding, 3 D / K, a
+  deflection is not let grow;
+- TNO's low-speed model, as MFeval has it: the Magic Formula's shifts (SHx,
+  SVx, SHy, SVy, SVyk), its trail and its residual torque fade out by (1 -
+  cos(pi |Vcx| / VXLOW)) / 2, so that a tyre at rest, undeflected, pushes
+  nothing. The rolling resistance moment acts in full once the wheel rolls
+  at `V_roll` = 0.01 m/s, in proportion below it (dry friction, smoothed):
+  it opposes the spin, and a wheel at rest has none.
+
+Off the road the deflections relax over the nominal relaxation lengths, at
+|Vx| + VXLOW. With `lag = false` (set before the simulator is made) the
+tyre has no states and takes the steady-state slips over max(|Vx|, VXLOW),
+as the tyre before task 7.4 did: at rest a damper, not a spring. A car held
+on its brakes on a 10 % slope then creeps down at about 4 mm/s; with the
+lag it rolls back about a millimetre onto its tyres' springs and stays
+(`tests/test_drivetrain.cpp`).
+
+**Mirroring.** A parameter set describes a tyre of one side of a car (the
+file's TYRESIDE, left by default). A tyre mounted on the other side is
+evaluated mirrored, as TNO's MF-Tyre does: the slip angle and the
+inclination negated going in, the side force, the overturning and the
+aligning moments negated coming out. The vehicle builders mount every
+corner (`FullTireForce::mount(right_side)`), so a car's left and right tyres
+from one file push against each other at zero slip (their ply steer and
+conicity) instead of steering the car.
+
 ## Reading .tir files
 
 A .tir file is text in sections, `[SECTION]`, of `KEY = value` lines. `$`
@@ -202,16 +273,17 @@ identities and the comparison with MFeval use (D63).
 ## What is not modelled
 
 - Turn slip and the zeta factors (every one 1).
-- The tyre's vertical behaviour from the file: loaded radius, vertical
-  stiffness, effective rolling radius, contact patch. The wheels' contact is
-  task 7.3's (`mbd/forces/tire.hpp`).
+- The tyre's vertical behaviour from the file beyond its free radius,
+  stiffness and damping: the loaded radius's speed and force terms, the
+  effective rolling radius (BREFF, DREFF, FREFF), the contact patch. The
+  wheels' contact is task 7.3's (`mbd/forces/tire.hpp`), linear in the
+  depth, its rolling radius R - depth / 2.
 - Limit checks: the file's ranges are not applied, and loads, slips and
   inclinations outside them are evaluated as they are.
-- Low speed and standstill: the steady-state formulas divide by the speed
-  through the slips. The second part of task 7.4 adds the relaxation
-  behaviour that keeps them valid down to rest.
-- Rolling backwards was not compared: MFeval's conventions for it differ
-  (its slip is -Vsx / Vx, signed, and it reverses the longitudinal force).
-  Here the trail and the residual torque change sign with Vcx and the
-  rolling resistance opposes the motion; the second part settles reverse
-  running with the vehicle.
+- The transient models beyond the semi-non-linear one: the carcass's own
+  compliance and the contact patch's mass, rigid-ring dynamics (SWIFT).
+- Rolling backwards was not compared with any reference: MFeval's
+  conventions for it differ (its slip is -Vsx / Vx, signed, and it reverses
+  the longitudinal force). Here the deflections' equations use |Vx| and give
+  slips that oppose the sliding, the trail and the residual torque change
+  sign with Vcx, and the rolling resistance opposes the spin.

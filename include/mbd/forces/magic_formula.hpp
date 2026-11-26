@@ -13,8 +13,10 @@
 // once in the residual torque (88), (90); the equivalent slips (80), (81);
 // the rolling resistance (50); the overturning couple with qsx12 to qsx14
 // (49); no degressive friction factor (the book's A_mu taken as 1). Turn slip
-// is not modelled (every zeta factor 1). docs/tyres.md lists every choice
-// with its source.
+// is not modelled (every zeta factor 1). Below VXLOW the shifts, the trail
+// and the residual torque fade out to none at rest, TNO's low-speed model
+// as MFeval has it (D64): a tyre at rest pushes nothing at zero slip.
+// docs/tyres.md lists every choice with its source.
 //
 // Two versions, chosen by a parameter set's FITTYP as a .tir file gives it
 // (mbd/io/tir_file.hpp):
@@ -44,6 +46,10 @@
 #include <string>
 
 namespace mbd {
+
+/// The side of a vehicle a tyre's parameters describe (a .tir file's
+/// TYRESIDE): a tyre mounted on the other side is evaluated mirrored.
+enum class TyreSide { Left, Right };
 
 /// Which Magic Formula a parameter set is evaluated with.
 enum class MagicFormulaVersion {
@@ -137,6 +143,7 @@ enum class MagicFormulaVersion {
 struct MagicFormulaParameters {
     MagicFormulaVersion version{MagicFormulaVersion::MF61};
     int FITTYP{61};   ///< As the file gives it: 6 or 21 for MF 5.2, 61 or 62 for MF 6.1
+    TyreSide side{TyreSide::Left};   ///< TYRESIDE: the side the parameters describe
 #define MBD_MF_MEMBER(section, name, value) Real name{value};
     MBD_MAGIC_FORMULA_PARAMETERS(MBD_MF_MEMBER)
 #undef MBD_MF_MEMBER
@@ -153,6 +160,10 @@ struct MagicFormulaInput {
     /// and the rolling resistance.
     Real Vcx{10.0};
     Real pressure{-1.0};  ///< Inflation pressure [Pa]; below 0, the file's INFLPRES
+    /// The road's friction, a scale on the tyre's own (1: the surface its
+    /// parameters were measured on): it multiplies LMUX and LMUY, as TNO
+    /// scales a road's friction.
+    Real friction{1.0};
 };
 
 /// The forces and moments, and the quantities behind them (W axes, at the
@@ -182,11 +193,24 @@ public:
     /// The steady-state forces and moments (combined slip).
     MagicFormulaOutput evaluate(const MagicFormulaInput& in) const;
 
+    /// The quantities that do not depend on the slips, at a load, an
+    /// inclination, a pressure (below 0, INFLPRES) and a road's friction:
+    /// the outputs Kxk, Kya, mux, muy, sigma_kappa and sigma_alpha of
+    /// evaluate() at zero slip (the friction falling with slip speed, LMUV,
+    /// taken at zero slip speed). The tyre's lag needs them before its slips.
+    MagicFormulaOutput characteristics(Real Fz, Real gamma, Real pressure = -1.0, Real friction = 1.0) const;
+
 private:
     MagicFormulaParameters p_;
 };
 
 /// The .tir name of a version, for messages: "MF 5.2" or "MF 6.1".
 std::string to_string(MagicFormulaVersion version);
+
+/// The 205/60R15 91 V passenger car tyre of Pacejka, Tire and Vehicle
+/// Dynamics, 3rd ed. (2012), Appendix 3, Table A3.1 (MF 6.1, ISO): the
+/// vehicles' default tyre. tests/forces/data/pacejka_a3_205_60R15.tir is the
+/// same tyre as a file.
+MagicFormulaParameters pacejka_appendix3_tyre();
 
 } // namespace mbd

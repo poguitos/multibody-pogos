@@ -101,6 +101,9 @@ TEST_CASE("Steering: steered tire develops lateral force from pure forward veloc
 
     kernel::System sys;
     auto vm = build_simple_vehicle(sys);
+    // The steer's geometry, without the tyres' lag (task 7.4): with it a
+    // steer gives its force over the relaxation length, not at once.
+    for (FullTireForce* t : vm.tires) t->lag = false;
 
     kernel::Simulator sim(sys);
     sim.method = kernel::Integrator::RK4;
@@ -111,10 +114,15 @@ TEST_CASE("Steering: steered tire develops lateral force from pure forward veloc
     sim.initialize();
     roll_wheels(sim, vm);   // the wheels rolling at the car's speed (task 7.3)
 
-    // No steering: FL tire should have near-zero Fy
+    // No steering: FL tire has the Magic Formula's side force at zero slip
+    // (the Appendix 3 tyre's ply steer and conicity, about 70 N), to rounding.
     sim.acceleration(sim.q, sim.v, sim.time);   // applies the force elements
     const Real Fy_no_steer = vm.tires[0]->get_Fy();
-    REQUIRE_THAT(Fy_no_steer, WithinAbs(0.0, 10.0));
+    MagicFormulaInput in;
+    in.Fz = vm.tires[0]->get_vertical_force();
+    in.Vcx = vm.tires[0]->last_Vx;
+    REQUIRE_THAT(vm.tires[0]->get_slip_angle(), WithinAbs(0.0, 1e-12));
+    REQUIRE_THAT(Fy_no_steer, WithinAbs(vm.tires[0]->tyre.evaluate(in).Fy, 1e-6));
 
     // Apply 0.05 rad left steering to FL tire only
     vm.tires[0]->steer_angle = 0.05;

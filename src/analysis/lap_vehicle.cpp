@@ -18,8 +18,8 @@ LapVehicle make_lap_vehicle(const VehicleTemplate& tmpl)
     lv.mass = tmpl.total_mass();
 
     // --- CG height: chassis ride height ---
-    // Approximate: tire_free_radius (front) + chassis half-height - cg_offset.z
-    lv.cg_height = tmpl.front_axle.tire_free_radius
+    // Approximate: the front tyre's free radius + chassis half-height - cg_offset.z
+    lv.cg_height = tmpl.front_axle.tyre.UNLOADED_RADIUS
                  + tmpl.chassis.half_extents.z()
                  - tmpl.chassis.cg_offset.z();
 
@@ -52,7 +52,7 @@ LapVehicle make_lap_vehicle(const VehicleTemplate& tmpl)
     // --- Max brake force: total brake torque / tire radius ---
     // BrakeParams::max_torque is the sum over the four wheels at full pedal.
     lv.max_brake_force = tmpl.drivetrain.brakes.max_torque
-                       / tmpl.front_axle.tire_free_radius;
+                       / tmpl.front_axle.tyre.UNLOADED_RADIUS;
 
     // --- Traction-limited speed threshold ---
     if (lv.mu > 0.0 && lv.mass > 0.0) {

@@ -8,8 +8,9 @@ BicycleModelParams BicycleModelParams::FromVehicle(const VehicleParams& vp)
     bp.mass = vp.total_mass();
     bp.front_axle_x = vp.front_axle_x;
     bp.rear_axle_x  = vp.rear_axle_x;
-    bp.tire_front = vp.tire_params;
-    bp.tire_rear  = vp.tire_params;
+    // The vehicle's tyre, reduced to the simple formula (task 7.4).
+    bp.tire_front = PacejkaTireParams::FromMagicFormula(vp.tyre);
+    bp.tire_rear  = bp.tire_front;
     return bp;
 }
 

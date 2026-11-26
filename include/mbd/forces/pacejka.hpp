@@ -9,6 +9,7 @@
 
 #include "mbd/core/core.hpp"
 #include "mbd/core/math.hpp"
+#include "mbd/forces/magic_formula.hpp"
 
 #include <cmath>
 #include <algorithm>
@@ -65,6 +66,17 @@ struct PacejkaTireParams {
 
     /// Create a reasonable default passenger car tire.
     static PacejkaTireParams DefaultPassengerCar();
+
+    /// A Magic Formula tyre (mbd/forces/magic_formula.hpp) reduced to this
+    /// formula about its nominal load Fz0' = LFZO FNOMIN (task 7.4), for the
+    /// bicycle model of a vehicle: per axis the peak friction and its load
+    /// sensitivity (pDx1, pDx2; pDy1, pDy2, times LMUX, LMUY), the shape factor
+    /// (pCx1, pCy1), the slip stiffness at Fz0' and its slope in the load
+    /// increment there, the curvature (pEx1, pEx2; pEy1, pEy2); the combined
+    /// weights' B and C (rBx1, rCx1; rBy1, rCy1). The shifts, camber, pressure
+    /// and the curvature's sign terms are left out, and the cornering
+    /// stiffness is taken positive, this formula's convention.
+    static PacejkaTireParams FromMagicFormula(const MagicFormulaParameters& mf);
 };
 
 // ============================================================================

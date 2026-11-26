@@ -25,6 +25,7 @@ journal entries (`documentation/`) say how each was obtained.
 | Integrators | Exact solutions of each method's recurrence; measured orders | Mathematics | Every method at its order; energies equal to their recurrences' to 3e-11 | [integrators.md](integrators.md) |
 | Statics, assembly, linearisation, kinematics | Closed forms; eig(K, M) in closed form | Mathematics | 1e-11 to 1e-16 | `test_kernel_statics.cpp`, `test_kernel_assembly.cpp`, `test_kernel_linearization.cpp` |
 | Force elements, contact, events | Finite differences of each law; closed-form motions | Mathematics | Derivatives 1e-6; motions 1e-5 to 1e-15 | `tests/forces/`, `test_kernel_events.cpp` |
+| The Magic Formula tyre | MFeval 4.3.1: three tyres (MF 6.1, with and without scaling factors; MF 5.2), 1812 points, 13 channels | Another code, another author, compared by him with TNO's solver | 3.5e-12 of each channel's largest magnitude; the trail and Mz 2.1e-7 and 1.1e-7 (a form of cos alpha) | `test_magic_formula_mfeval.cpp`, [tyres.md](tyres.md) |
 | A vehicle-sized stiff model | The HMMWV of Haug et al. (1999): explicit against implicit methods | Two families of method, one model | With joints 2.2e-7 m; with bushings 2e-6 to 4e-6 m (explicit) and 2.4e-7 m (implicit) | `test_kernel_hmmwv.cpp`, [hmmwv.md](hmmwv.md) |
 | Change detection | Stored references; deliberate mutations of the physics | The code's own past | A change of 1e-6 fails by 30 to 996 times the tolerance; 9 of 9 mutations caught | `tests/regression/`, nightly |
 
@@ -161,6 +162,23 @@ symmetric top at that angle, to 9e-15 rad after 3 s; a wheel turned about
 its axle keeps its contact point, depth, forces and slips to 1e-12; leaning
 and on an inclined plane, its contact point is the closed form's to 1e-12.
 
+The tyre (task 7.4, D63, D64; [tyres.md](tyres.md)): the Magic Formula
+against MFeval 4.3.1, an independent implementation whose author compared
+it with TNO's solver, on three tyres (the book's Appendix 3 tyre, the same
+with every scaling factor other than 1, a synthetic MF 5.2 tyre): 1812
+points over load, both slips, combined slip, inclination, speed and
+pressure, thirteen channels, every one within 3.5e-12 of its largest
+magnitude but the trail and Mz (2.1e-7 and 1.1e-7, MFeval's cos(alpha') =
+Vcx / (Vc + 1e-6)); each of the book's printed forms put back fails it. On
+a wheel: the lag's steady state is the steady-state tyre to 1e-13, a step's
+deflection reaches 1 - 1/e in one relaxation length to 1e-9, and at rest the
+tyre is the carcass's spring; a car held on its brakes on a 10 % slope
+stays put (no drift over 5 s to 1e-5 m), rolled back by a hand calculation's
+3.38 mm (3.50 measured), where without the lag it creeps at the hand
+calculation's 4.64 mm/s (4.68). MF 5.2's rolling resistance and relaxation
+lengths have MFeval as their only source; rolling backwards is not
+compared.
+
 ## 10. A vehicle-sized stiff model: the HMMWV
 
 Task 5.4 (D47, D48; [the HMMWV benchmark](hmmwv.md)). The fourteen-body HMMWV
@@ -190,7 +208,8 @@ stored references, each channel within 1e-8 of its largest magnitude, on
 every commit; a relative change of 1e-6 in one physical parameter fails each
 by 26 to 997 times that tolerance, one of 1e-12 moves none by more than 5e-3
 of it. (Since Phase 7 there are twelve fast scenarios and three long ones;
-after task 7.3, 30 to 996 times, and at most 1.4e-2: the table in
+after task 7.3, 30 to 996 times, and at most 1.4e-2; after task 7.4, 41
+to 992 times, and at most 1.0e-2: the table in
 `tests/regression/README.md`.) Nightly, nine one-line mutations of the physics must each make a test
 fail; all nine do.
 
@@ -207,9 +226,10 @@ build (-O3), which found D50.
 
 ## What is not validated yet
 
-- **Tyres.** The Magic Formula's curves against Pacejka's reference curves
-  and an independent implementation are task 7.4; the tyre model in use has
-  only its derivatives and closed-form contact cases checked.
+- **Tyres beyond MFeval.** Against measured tyres, TNO's own solver, or
+  Pacejka's chapter 4 figures (fits of tyres whose parameters the book does
+  not give); the transient model against measured relaxation; rolling
+  backwards.
 - **The vehicle against measurements or another vehicle code.** Task 9.6
   (the bicycle model, the quarter car, Chrono's HMMWV in step steer and lane
   change). The HMMWV benchmark here compares methods, not vehicles.

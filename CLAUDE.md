@@ -13,7 +13,7 @@ agent (plan task H.7, decision D42). Read them before the first change.
 | Design decisions D1 onwards, with context and alternatives | `documentation/decisions.md` |
 | The journal: an entry per task, its index, the template | `documentation/journal/` (`README.md`, `TEMPLATE.md`), raw measurements in `journal/data/` |
 | The book's outline and bibliography | `documentation/book/` |
-| How the program works | `docs/conventions.md`, `docs/kernel.md`, `docs/integrators.md`, `docs/performance.md`, `docs/hmmwv.md`, `docs/python.md`, `docs/model-files.md` |
+| How the program works | `docs/conventions.md`, `docs/kernel.md`, `docs/integrators.md`, `docs/performance.md`, `docs/hmmwv.md`, `docs/python.md`, `docs/model-files.md`, `docs/tyres.md` |
 | The Python interface: the package, its bindings, its tests, its packaging | `python/multibody/`, `python/src/`, `python/tests/` (D52), `pyproject.toml` (D53) |
 | What is validated, against what, and what is not | `docs/validation.md` |
 | Help: how-to guides, troubleshooting, the message catalogue | `docs/help/` |
@@ -53,7 +53,12 @@ Z up, decided in `mbd/vehicle/axes.hpp`), and 7.2 (D61: the road,
 roads; the track surface in `mbd/analysis/track_surface.hpp`), and 7.3 (D62:
 the wheels bodies on spin joints, `mbd/vehicle/wheel.hpp`; the contact from
 the wheel plane and the road; the drivetrain without states, the engine's
-inertia left out until 7.8); 7.4, the tyre, is next. Conda environments for the project pin
+inertia left out until 7.8), and 7.4 (D63, D64: the Magic Formula tyre, MF 6.1
+and 5.2 from .tir files, `mbd/forces/magic_formula.hpp`, `docs/tyres.md`,
+checked against MFeval, whose curves are in `tests/forces/data/mfeval/`; on a
+wheel its slips lag by the tread's deflections, two states per tyre that the
+simulator attaches by itself; every vehicle's tyre, the book's Appendix 3
+tyre by default); 7.5, simple tyres, is next. Conda environments for the project pin
 `"libblas=*=*openblas"` (MKL's NumPy crashes on this laptop). After a change to the bindings, reinstall `mbd-try`
 (an editable install whose module is older than its Python files stops with
 MBD-P011). The nightly workflow runs on schedule from `main`.
@@ -61,7 +66,10 @@ MBD-P011). The nightly workflow runs on schedule from `main`.
 **Not in the repository:** the textbooks and papers in `documentation/` (git
 ignores PDFs), and local copies of the reviewed sources (on the author's
 laptop, `C:\dev\references\`). The plan's appendix says which reference serves
-which phase; if a task needs one, ask the author.
+which phase; if a task needs one, ask the author. MFeval (BSD-3) and the
+MATLAB script that writes its curves for the tyre tests are kept there too,
+in `C:\dev\references\mfeval\` (D63; the journal's data of 25 November 2026
+quotes the script).
 
 ## Building and testing
 

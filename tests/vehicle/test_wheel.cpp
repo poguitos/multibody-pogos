@@ -135,9 +135,12 @@ TEST_CASE("Wheel: roll_wheels starts every tyre without longitudinal slip", "[ve
     // make the spin joints' rates differ from the wheels' spins, a pitch rate
     // of 0.3 rad/s: each wheel's spin about its axle is its joint's rate plus
     // the carrier's (the chassis's) 0.3. roll_wheels sets each joint so that
-    // the spin is the tyre's free rolling: the slip ratio, (Omega R_eff - Vx)
-    // / Vx, is then zero but for rounding (1e-12). Forward rolling is a
-    // positive spin: the joint's rate is near (10 / 0.343) - 0.3 = 28.9 rad/s.
+    // the spin is the tyre's free rolling: the longitudinal slip speed Vx -
+    // Omega R_eff (task 7.4: the tyre's slip ratio is its deflection's, zero
+    // at the start whatever the spin) is then zero but for rounding, 1e-12 of
+    // 10 m/s. Forward rolling is a positive spin: the joint's rate is near (10
+    // / 0.304) - 0.3 = 32.6 rad/s (the Appendix 3 tyre's R_eff, 0.3135 m less
+    // half its static deflection).
     kernel::System sys;
     VehicleParams vp;
     VehicleModel vm = build_simple_vehicle(sys, vp);
@@ -150,11 +153,11 @@ TEST_CASE("Wheel: roll_wheels starts every tyre without longitudinal slip", "[ve
     roll_wheels(sim, vm);
     sim.acceleration(sim.q, sim.v, sim.time);   // the tyres' forces at this state
     for (std::size_t c = 0; c < 4; ++c) {
-        INFO("corner " << c << ": slip ratio " << vm.tires[c]->get_slip_ratio() << ", joint rate "
+        INFO("corner " << c << ": slip speed " << vm.tires[c]->last_Vsx << " m/s, joint rate "
                        << sim.v(vm.spin_v[c]));
-        CHECK_THAT(vm.tires[c]->get_slip_ratio(), WithinAbs(0.0, 1e-12));
-        CHECK(sim.v(vm.spin_v[c]) > 25.0);
-        CHECK(sim.v(vm.spin_v[c]) < 32.0);
+        CHECK_THAT(vm.tires[c]->last_Vsx, WithinAbs(0.0, 1e-11));
+        CHECK(sim.v(vm.spin_v[c]) > 30.0);
+        CHECK(sim.v(vm.spin_v[c]) < 35.0);
     }
 }
 

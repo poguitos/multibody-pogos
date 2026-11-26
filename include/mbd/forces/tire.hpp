@@ -18,12 +18,13 @@
 // tangent plane there, (h - z) n_z.
 //
 // TireContactForce is the vertical part alone (quarter cars, ride);
-// FullTireForce adds the Pacejka slip forces.
+// FullTireForce adds the Magic Formula's forces and moments, lagged (task 7.4).
 
 #include "mbd/core/core.hpp"
 #include "mbd/forces/force_element.hpp"
-#include "mbd/forces/pacejka.hpp"
+#include "mbd/forces/magic_formula.hpp"
 #include "mbd/forces/road.hpp"
+#include "mbd/kernel/state_element.hpp"
 
 #include <memory>
 
@@ -85,45 +86,57 @@ public:
 };
 
 // ============================================================================
-// Full tire force element: vertical contact + Pacejka slip forces
+// Full tyre force element: the vertical contact and the Magic Formula, lagged
 // ============================================================================
 //
-// Combines vertical spring-damper contact with Pacejka Magic Formula
-// lateral and longitudinal forces computed from slip kinematics.
+// The tyre of task 7.4 (D63, D64). A Magic Formula parameter set
+// (mbd/forces/magic_formula.hpp, read from a .tir file by
+// mbd/io/tir_file.hpp) gives everything: the free radius (UNLOADED_RADIUS),
+// the vertical stiffness and damping (VERTICAL_STIFFNESS, VERTICAL_DAMPING)
+// of the contact above, and the forces in the road plane and the moments.
+// They act at the contact point, in the tyre's W axes there: x the heading,
+// y to its left, z the road's normal (ISO).
 //
-// The wheel body (ISO 8855, docs/conventions.md): its origin at the axle
-// centre, its Y the spin axis (to the left on a car), a forward roll a
-// positive rotation about it. The tyre's heading is the wheel plane's line in
-// the road plane, its lateral direction to the left; a positive slip angle
-// gives a positive lateral force, to the left.
+// The wheel (ISO 8855, docs/conventions.md): its origin at the axle centre,
+// its Y the spin axis (to the left on a car), a forward roll a positive
+// rotation about it. Its spin Omega is its angular velocity about that axis;
+// the contact point's velocity is the wheel's without that spin. With Vx and
+// Vy that velocity along the heading and to the left, and R_eff = R_free -
+// depth / 2 the rolling radius, the slip speeds are Vsx = Vx - Omega R_eff
+// and Vsy = Vy. The inclination is gamma = asin(a . n), a the spin axis and n
+// the road's normal: positive when the wheel's top leans to the right of its
+// heading.
 //
-// The slips (task 7.3): the wheel's spin Omega is its angular velocity about
-// its own axis, as the body turns; the contact point's velocity is the
-// wheel's without that spin, at the contact point. Then
-//     kappa = (Omega R_eff - Vx) / max(|Vx|, V_low),
-//     alpha = -atan(Vy / max(|Vx|, V_low)),
-// with Vx and Vy that velocity along the heading and to the left, and R_eff
-// the rolling radius. The forces act at the contact point, so they turn the
-// wheel about its axle with the arm from the centre to the road.
+// The slips lag behind the motion (Pacejka, 3rd ed., section 8.6, the
+// semi-non-linear model): two states, the tread's deflections u and v,
+//     du/dt = -Vsx - |Vx| u / sigma_kappa,    kappa' = u / sigma_kappa,
+//     dv/dt =  Vsy - |Vx| v / sigma_alpha,    tan(alpha') = v / sigma_alpha,
+// sigma the Magic Formula's relaxation lengths at the load (at least
+// sigma_min). In a steady state kappa' = -Vsx / |Vx| and tan(alpha') = Vsy
+// / |Vx|, the steady-state slips; at rest the deflections follow the
+// contact's motion and the tyre holds like a spring, of stiffness K / sigma.
+// Below V_low (the file's VXLOW) two terms keep this sane (8.112 to 8.114,
+// 8.127, 8.128): a damping k_V_low, from k_V_low0 at rest to 0 at V_low,
+// added to the slips as -k_V_low Vs / K; and a deflection that would grow
+// past limit_factor times the slip of full sliding (3 D / K) is held. The
+// Magic Formula's shifts fade out below VXLOW too (magic_formula.hpp), and
+// the rolling resistance moment acts in full once the wheel rolls at V_roll,
+// in proportion below it. Without lag (lag = false) the slips are the
+// steady-state ones over max(|Vx|, V_low).
+//
+// The tyre is a state element too (mbd/kernel/state_element.hpp): a
+// simulator made from a system that holds it integrates its two states.
 
-class FullTireForce : public ForceElement {
+class FullTireForce : public ForceElement, public kernel::StateElement {
 public:
     BodyIndex wheel_body_idx;  ///< The wheel: origin at the axle centre, Y its spin axis
 
-    // Tire geometry
-    Real R_free;          ///< Unloaded radius [m]
-    Real R_loaded_approx; ///< Approximate loaded radius for effective radius calc
+    MagicFormulaTyre tyre;     ///< The forces and moments, from the parameter set
 
-    // Vertical contact
-    Real k_z;             ///< Vertical stiffness [N/m]
-    Real c_z;             ///< Vertical damping [Ns/m]
+    Real R_free;               ///< Free radius [m]: the set's UNLOADED_RADIUS
+    Real k_z;                  ///< Vertical stiffness [N/m]: VERTICAL_STIFFNESS
+    Real c_z;                  ///< Vertical damping [N s/m]: VERTICAL_DAMPING
     std::shared_ptr<const Road> road;  ///< The ground (never null): height, normal, friction
-
-    // Pacejka model
-    PacejkaTire pacejka;
-
-    // Low-speed threshold to avoid singularity in slip computation
-    Real V_low{1.0};     ///< [m/s] — below this speed, slip is clamped
 
     /// The angle by which the wheel plane is turned about the road's normal
     /// [rad], positive to the left: how a simple corner, whose wheel turns on
@@ -131,26 +144,60 @@ public:
     /// their uprights and leave it at zero.
     Real steer_angle{0.0};
 
-    // --- Cached output (updated each apply() call) ---
-    mutable TireForceResult last_result;
+    /// True when the tyre is mounted on the other side of the vehicle than
+    /// its parameters describe (their TYRESIDE): the formula is then evaluated
+    /// mirrored, as TNO's MF-Tyre does: the slip angle and the inclination
+    /// negated going in, the side force, the overturning and the aligning
+    /// moments negated coming out. A car's left and right tyres from one
+    /// file then pull against each other, not together.
+    bool mirrored{false};
+
+    /// Mount the tyre on the vehicle's right side (true) or its left: sets
+    /// `mirrored`. The vehicle builders call it for every corner.
+    void mount(bool right_side) { mirrored = right_side != (tyre.parameters().side == TyreSide::Right); }
+
+    // --- The lag (set before a simulator is made) ---
+    bool lag{true};            ///< Two deflection states; without, the steady-state slips
+    Real V_low;                ///< [m/s] Below it, the low-speed damping and limit: the set's VXLOW
+    Real k_V_low0{770.0};      ///< [N s/m] The low-speed damping at rest (Pacejka's Table 8.4)
+    Real sigma_min{0.02};      ///< [m] The shortest relaxation length (Pacejka's Table 8.4)
+    Real limit_factor{1.0};    ///< A of (8.112): the deflection is held past A times full sliding
+    /// [m/s] The rolling resistance acts in full once the wheel rolls at
+    /// this speed (Omega R_eff), and in proportion below it: dry friction,
+    /// smoothed, so that a wheel at rest has none.
+    Real V_roll{0.01};
+
+    // --- Cached at each apply() ---
+    mutable MagicFormulaOutput last_output;   ///< The Magic Formula's outputs (zero off the road)
+    mutable Real last_kappa{0.0};       ///< The longitudinal slip the Magic Formula took
+    mutable Real last_alpha{0.0};       ///< The slip angle it took [rad], ISO: positive to the left
+    mutable Real last_gamma{0.0};       ///< The inclination [rad]
     mutable Real last_Fz{0.0};
     mutable Real last_deflection{0.0};
     mutable Vec3 last_contact_pos_W{Vec3::Zero()};  ///< The contact point (on the road)
     mutable Vec3 last_forward_W{Vec3::UnitX()};
     mutable Vec3 last_lateral_W{Vec3::UnitY()};
-    mutable Real last_V_abs{1.0};   ///< Speed used to normalize slip [m/s]
-    mutable Real last_R_eff{0.0};   ///< Rolling radius used for slip [m]
-    mutable Real last_friction{1.0};  ///< The road's friction at the contact [-]
-    mutable Real last_spin{0.0};    ///< The wheel's spin about its axis [rad/s]
-    /// The moment of the tyre's force about the wheel's spin axis, through
-    /// the centre [N m]: positive turns the wheel forward. Zero off the road.
+    mutable Real last_Vx{0.0};          ///< The contact's speed along the heading [m/s]
+    mutable Real last_Vsx{0.0};         ///< Longitudinal slip speed Vx - Omega R_eff [m/s]
+    mutable Real last_Vsy{0.0};         ///< Lateral slip speed [m/s]
+    mutable Real last_R_eff{0.0};       ///< Rolling radius used for slip [m]
+    mutable Real last_friction{1.0};    ///< The road's friction at the contact [-]
+    mutable Real last_spin{0.0};        ///< The wheel's spin about its axis [rad/s]
+    mutable Real last_sigma_kappa{0.0}; ///< The relaxation lengths in use [m]
+    mutable Real last_sigma_alpha{0.0};
+    mutable Real last_My{0.0};          ///< The rolling resistance moment applied [N m]
+    /// The moment of the tyre's forces and moments about the wheel's spin
+    /// axis, through the centre [N m]: positive turns the wheel forward. Zero
+    /// off the road.
     mutable Real last_axle_moment{0.0};
 
+    /// The tyre of `parameters` on `wheel_idx`, on `on_road` (a level road at
+    /// height 0 if none is given). Throws MBD-F011 for a free radius that is
+    /// not positive or a negative stiffness or damping, MBD-F053 for a set the
+    /// Magic Formula cannot evaluate, MBD-F054 for one without relaxation
+    /// lengths.
     FullTireForce(BodyIndex wheel_idx,
-                  Real free_radius,
-                  Real vert_stiffness,
-                  Real vert_damping,
-                  const PacejkaTireParams& tire_params,
+                  const MagicFormulaParameters& parameters,
                   std::shared_ptr<const Road> on_road = nullptr);
 
     const char* name() const override { return "tyre"; }
@@ -158,6 +205,22 @@ public:
 
     void apply(const std::vector<RigidBodyState>& states,
                std::vector<RigidBodyForces>& forces) const override;
+
+    // --- The lag, as a state element ---
+    int size() const override { return lag ? 2 : 0; }
+    void initial_states(kernel::VecRef x) const override { x.setZero(); }
+    void begin_evaluation(const kernel::Simulator& sim, Real t, kernel::ConstVecRef x) override;
+    void rates(const kernel::Simulator& sim, Real t, kernel::ConstVecRef x, kernel::VecRef x_dot) override;
+
+    /// The deflections the next apply() takes [m], as begin_evaluation hands
+    /// them: for calling apply() without a simulator.
+    void set_deflections(Real u, Real v)
+    {
+        u_ = u;
+        v_ = v;
+    }
+    Real deflection_u() const { return u_; }   ///< Longitudinal [m]
+    Real deflection_v() const { return v_; }   ///< Lateral [m]
 
     /// The spin at which the wheel would roll without longitudinal slip in
     /// the state `states` [rad/s]: Vx / R_eff, the contact point's speed
@@ -168,28 +231,23 @@ public:
 
     Real get_vertical_force() const { return last_Fz; }
     Real get_deflection() const { return last_deflection; }
-    Real get_slip_ratio() const { return last_result.kappa; }
-    Real get_slip_angle() const { return last_result.alpha; }
-    Real get_Fx() const { return last_result.Fx; }
-    Real get_Fy() const { return last_result.Fy; }
-    const TireForceResult& get_last_result() const { return last_result; }
+    Real get_slip_ratio() const { return last_kappa; }
+    Real get_slip_angle() const { return last_alpha; }
+    Real get_Fx() const { return last_output.Fx; }
+    Real get_Fy() const { return last_output.Fy; }
+    Real get_Mz() const { return last_output.Mz; }
 
     /// Rolling radius: the radius that converts wheel spin into slip [m],
     /// R_free - deflection / 2.
     Real get_rolling_radius() const { return R_free - last_deflection * 0.5; }
 
-    /// How fast the longitudinal force grows with wheel spin, dFx/d(omega)
-    /// [N s/rad], at the state of the last apply() call.
-    ///
-    ///   Fx depends on omega through the slip ratio,
-    ///   kappa = (omega * R_eff - Vx) / V_abs, so
-    ///   dFx/d(omega) = dFx/d(kappa) * R_eff / V_abs.
-    ///
-    /// Zero when the tyre is off the ground. Past the friction peak, where
-    /// the force falls as slip grows, zero is returned instead of a negative
-    /// value: callers use this to treat the stiff, stable part of the tyre
-    /// implicitly, and must not be handed a destabilizing term.
-    Real longitudinal_force_slope() const;
+private:
+    Real u_{0.0}, v_{0.0};             // the deflections of this evaluation
+    Real sigma_kappa_nominal_{0.0};    // the relaxation lengths at FNOMIN: off the road
+    Real sigma_alpha_nominal_{0.0};
+    mutable bool in_contact_{false};
+    mutable Real kappa_sliding_{0.0};  // 3 D / K: the slips of full sliding
+    mutable Real alpha_sliding_{0.0};
 };
 
 } // namespace mbd

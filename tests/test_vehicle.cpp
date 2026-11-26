@@ -174,7 +174,7 @@ TEST_CASE("Vehicle: undamped bounce conserves energy",
     kernel::System sys;
     VehicleParams params;
     params.c_susp = 0.0;  // No suspension damping
-    params.tire_c_z = 0.0; // No tire damping
+    params.tyre.VERTICAL_DAMPING = 0.0; // No tire damping
     auto vm = build_simple_vehicle(sys, params);
 
     kernel::Simulator sim(sys);
@@ -206,7 +206,7 @@ TEST_CASE("Vehicle: undamped bounce conserves energy",
         Real PE_tire = 0.0;
         for (int c = 0; c < 4; ++c) {
             const Real defl = vm.tires[c]->get_deflection();
-            PE_tire += 0.5 * params.tire_k_z * defl * defl;
+            PE_tire += 0.5 * params.tyre.VERTICAL_STIFFNESS * defl * defl;
         }
 
         return KE + PE_grav + PE_spring + PE_tire;
@@ -267,6 +267,10 @@ TEST_CASE("Vehicle: forward force accelerates vehicle in X",
 
     kernel::System sys;
     VehicleParams params;
+    // The tyres' rolling resistance set aside (task 7.4: test_full_tire has
+    // its own tests), to keep the hand calculation below to the drive force
+    // and the wheels' inertia.
+    params.tyre.QSY1 = params.tyre.QSY3 = params.tyre.QSY4 = 0.0;
     auto vm = build_simple_vehicle(sys, params);
 
     kernel::Simulator sim(sys);
@@ -287,17 +291,19 @@ TEST_CASE("Vehicle: forward force accelerates vehicle in X",
 
     // Expected: the wheels roll, so the tyres must spin them up (task 7.3):
     // a wheel's I a / R_eff = F_tyre r_l, with R_eff = R - d / 2 its rolling
-    // radius and r_l = R - d the arm of the tyre's force; d = m g / 4 / k_z =
-    // 0.01912 m. The car: m a = F - sum(F_tyre), so
-    //   a = F / (m + 4 I / (R_eff r_l)) = 5000 / (1560 + 4 x 2.45 / (0.34044
-    //     x 0.33088)) = 5000 / (1560 + 87.0) = 3.0358 m/s^2.
-    // After 1 s: v = 3.036 m/s, x = 1.518 m. The tyres' slip in spinning the
+    // radius and r_l = R - d the arm of the tyre's force; with the Appendix 3
+    // tyre (task 7.4), R = 0.3135 m and d = m g / 4 / k_z = 3825.9 / 209651
+    // = 0.018249 m, I = 40 x 0.3135^2 / 2 = 1.9656 kg m^2. The car: m a = F -
+    // sum(F_tyre), so
+    //   a = F / (m + 4 I / (R_eff r_l)) = 5000 / (1560 + 4 x 1.9656 /
+    //     (0.30438 x 0.29525)) = 5000 / (1560 + 87.5) = 3.0349 m/s^2.
+    // After 1 s: v = 3.035 m/s, x = 1.517 m. The tyres' slip in spinning the
     // wheels (about 1e-3) and the load moving between the axles change this
     // by less than 1e-3 of it.
     const Real d = params.tire_deflection_eq();
-    const Real R_eff = params.tire_free_radius - 0.5 * d;
-    const Real r_l = params.tire_free_radius - d;
-    const Real I_spin = 0.5 * params.wheel_mass * params.tire_free_radius * params.tire_free_radius;
+    const Real R_eff = params.tyre.UNLOADED_RADIUS - 0.5 * d;
+    const Real r_l = params.tyre.UNLOADED_RADIUS - d;
+    const Real I_spin = 0.5 * params.wheel_mass * params.tyre.UNLOADED_RADIUS * params.tyre.UNLOADED_RADIUS;
     const Real a_expected = F_drive / (params.total_mass() + 4.0 * I_spin / (R_eff * r_l));
     const Real v_expected = a_expected * 1.0;
     const Real x_expected = 0.5 * a_expected * 1.0 * 1.0;

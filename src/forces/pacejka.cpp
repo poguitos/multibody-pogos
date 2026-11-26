@@ -2,6 +2,48 @@
 
 namespace mbd {
 
+PacejkaTireParams PacejkaTireParams::FromMagicFormula(const MagicFormulaParameters& m)
+{
+    PacejkaTireParams p = DefaultPassengerCar();
+    const Real Fz0 = m.LFZO * m.FNOMIN;
+
+    // Longitudinal: Kxk = Fz (pKx1 + pKx2 dfz) exp(pKx3 dfz) lKx (4.E15),
+    // with Fz = Fz0 (1 + dfz): Fz0 pKx1 lKx at dfz = 0, its slope there Fz0
+    // (pKx1 + pKx2 + pKx1 pKx3) lKx.
+    p.longitudinal.Fz0 = Fz0;
+    p.longitudinal.mu0 = m.PDX1 * m.LMUX;
+    p.longitudinal.mu_Fz = m.PDX2 * m.LMUX;
+    p.longitudinal.C = m.PCX1 * m.LCX;
+    p.longitudinal.K0 = Fz0 * m.PKX1 * m.LKX;
+    p.longitudinal.K_Fz = Fz0 * (m.PKX1 + m.PKX2 + m.PKX1 * m.PKX3) * m.LKX;
+    p.longitudinal.E0 = m.PEX1 * m.LEX;
+    p.longitudinal.E_Fz = m.PEX2 * m.LEX;
+
+    // Lateral, upright and at the nominal pressure: Kya = pKy1 Fz0 sin(pKy4
+    // atan((1 + dfz) / pKy2)) lKy (4.E25); d atan((1 + dfz) / pKy2) / d dfz
+    // at 0 is x / (1 + x^2), x = 1 / pKy2.
+    const Real x = 1.0 / m.PKY2;
+    const Real Kya = m.PKY1 * Fz0 * std::sin(m.PKY4 * std::atan(x)) * m.LKY;
+    const Real slope = m.PKY1 * Fz0 * std::cos(m.PKY4 * std::atan(x)) * m.PKY4 * x / (1.0 + x * x) * m.LKY;
+    const Real sign = Kya < 0.0 ? -1.0 : 1.0;   // ISO's stiffness is negative
+    p.lateral.Fz0 = Fz0;
+    p.lateral.mu0 = m.PDY1 * m.LMUY;
+    p.lateral.mu_Fz = m.PDY2 * m.LMUY;
+    p.lateral.C = m.PCY1 * m.LCY;
+    p.lateral.K0 = sign * Kya;
+    p.lateral.K_Fz = sign * slope;
+    p.lateral.E0 = m.PEY1 * m.LEY;
+    p.lateral.E_Fz = m.PEY2 * m.LEY;
+
+    p.Gx_alpha.B_comb = m.RBX1 * m.LXAL;
+    p.Gx_alpha.C_comb = m.RCX1;
+    p.Gx_alpha.D_comb = 1.0;
+    p.Gy_kappa.B_comb = m.RBY1 * m.LYKA;
+    p.Gy_kappa.C_comb = m.RCY1;
+    p.Gy_kappa.D_comb = 1.0;
+    return p;
+}
+
 PacejkaTireParams PacejkaTireParams::DefaultPassengerCar()
 {
     PacejkaTireParams p;

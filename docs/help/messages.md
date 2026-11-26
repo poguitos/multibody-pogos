@@ -846,6 +846,18 @@ Note: `<n> of the <m> constraint equations are redundant at this configuration (
 - **What to do:** check the .tir file's [VERTICAL], [DIMENSION], [MODEL],
   [OPERATING_CONDITIONS] and [SCALING_COEFFICIENTS] values.
 
+### MBD-F054
+
+`FullTireForce: the tyre's relaxation lengths at its nominal load are <a> and <b> m; the lag needs both positive`
+
+- **Means:** a tyre on a wheel (`FullTireForce`, `mbd/forces/tire.hpp`, task
+  7.4) lags its slips over its relaxation lengths, and its parameter set gives
+  none at its nominal load: for MF 6.1 the carcass's stiffnesses
+  LONGITUDINAL_STIFFNESS and LATERAL_STIFFNESS of [STRUCTURAL] are missing or
+  zero, for MF 5.2 PTX1, or PTY1 and PTY2.
+- **What to do:** use a .tir file that has them, or give them (a measured
+  relaxation length sigma gives a stiffness of the slip stiffness over sigma).
+
 ## A: analysis
 
 ### MBD-A001
@@ -1021,7 +1033,7 @@ elements and joint forces)
 
 ### MBD-I024
 
-`<file>, line <n>: <KEY> = '<value>' is not a number` or `a section header without ']'`
+`<file>, line <n>: <KEY> = '<value>' is not a number`, `a section header without ']'` or `TYRESIDE = '<value>' is not 'LEFT' or 'RIGHT'`
 
 - **Means:** a line of the file could not be read.
 - **What to do:** correct the line the message names.

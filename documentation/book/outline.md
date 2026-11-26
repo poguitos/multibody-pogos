@@ -319,7 +319,16 @@ than a point of a body; a gyroscope as a test with an exact answer at one
 angle; a brake's stick as a state change, not a force; and how moving the
 spins from first-order states into the bodies moved their stiffness into
 every vehicle and took away an integrator's purpose. *J: Phase 7, the wheel.
-D62.*
+D62.* The tyre:
+which Magic Formula to implement when the textbook, the paper and the
+industry's solver disagree, and how an independent implementation that was
+compared with that solver settles it; a comparison that catches every one
+of the book's forms put back (a table of what each changes); reference
+curves that cannot be redrawn without their tyres' parameters, and what to
+check instead; the tyre's lag as a state of the tread, a spring at rest and
+a first-order lag in distance when rolling, and the car on a slope that
+crept for a lack of it; why a fitted curve's shifts must fade at rest, and
+why a car's right tyres are mirrored. *J: Phase 7, the tyre. D63, D64.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

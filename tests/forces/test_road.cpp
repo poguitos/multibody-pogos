@@ -19,6 +19,17 @@ using Catch::Matchers::WithinAbs;
 
 namespace {
 
+/// Pacejka's Appendix 3 tyre with this free radius and vertical stiffness,
+/// no vertical damping (task 7.4).
+MagicFormulaParameters tyre_of(Real free_radius, Real stiffness)
+{
+    MagicFormulaParameters p = pacejka_appendix3_tyre();
+    p.UNLOADED_RADIUS = free_radius;
+    p.VERTICAL_STIFFNESS = stiffness;
+    p.VERTICAL_DAMPING = 0.0;
+    return p;
+}
+
 /// The normal a road should have at (x, y), from central differences of its
 /// heights: (-dh/dx, -dh/dy, 1), normalised. With a step of 1e-6 m the
 /// truncation error is about 1e-12 times the third derivative and the
@@ -295,12 +306,17 @@ TEST_CASE("Road: a tyre on a bump's flank pushes along the road's normal", "[roa
     const Vec3 n_P = normal(P.x());
     const Real depth = (h(P.x()) - P.z()) * n_P.z();
     const auto bump = std::make_shared<BumpRoad>(1.0, L, H);
-    FullTireForce tyre(1, R, 200000.0, 0.0, PacejkaTireParams::DefaultPassengerCar(), bump);
+    FullTireForce tyre(1, tyre_of(R, 200000.0), bump);
     std::vector<RigidBodyState> states(2);
     states[1] = RigidBodyState(c, Quat::Identity(), Vec3::Zero(), Vec3::Zero());
     std::vector<RigidBodyForces> forces(2);
     tyre.apply(states, forces);
-    const Vec3 expected = 200000.0 * depth * n_P;
+    // The normal force along the normal there; in the road's plane the Magic
+    // Formula's forces at zero slip (its shifts, task 7.4).
+    const Vec3 expected = 200000.0 * depth * n_P + tyre.get_Fx() * tyre.last_forward_W
+                        + tyre.get_Fy() * tyre.last_lateral_W;
+    CHECK(std::abs(tyre.last_forward_W.dot(n_P)) < 1e-15);
+    CHECK(std::abs(tyre.last_lateral_W.dot(n_P)) < 1e-15);
     INFO("force " << forces[1].f_W.transpose() << ", expected " << expected.transpose() << "; depth " << depth);
     CHECK_THAT(depth, WithinAbs(0.011921, 1e-6));
     CHECK((forces[1].f_W - expected).norm() < 1e-9 * expected.norm());
@@ -323,48 +339,52 @@ TEST_CASE("Road: a tyre on a bump's flank pushes along the road's normal", "[roa
 
 TEST_CASE("Road: the road's friction scales a tyre's peak force and not its stiffness", "[road][tyre]")
 {
-    // A wheel loaded to Fz = k d = 200000 * 0.02 = 4000 N (the tyre's nominal
-    // load, where its lateral friction is mu0 = 1.0), sliding sideways at
-    // speeds that sweep its slip angle past the peak. The Magic Formula's
-    // peak is D = mu Fz times the road's friction, reached where
-    // C atan(...) = pi / 2 (C = 1.3 > 1). On a road of friction 0.5 the peak
-    // is 2000 N, on 1.0 4000 N. Sampled every 3e-4 rad, a maximum falls short
-    // of the peak by at most |f''| (1.5e-4)^2 / 2, f'' = -D theta'^2 with
-    // theta = C atan(u) the angle under the sine: theta' is about 6 rad^-1
-    // on the road of 0.5 (B = K / (C D) = 17.3), so the shortfall is about
-    // 4e-7 relative: allowed 1e-5. Near zero slip both give the cornering
-    // stiffness K = BCD, the same on both roads: at 1e-7 rad they differ by
-    // the cubic term, about (B alpha)^2 = 3e-12 relative: allowed 1e-9.
+    // A wheel loaded to Fz = k d = 200000 * 0.02 = 4000 N, the Appendix 3
+    // tyre's nominal load (task 7.4), sliding sideways at speeds that sweep
+    // its slip angle past the peak, without lag (the steady-state slips). The
+    // road's friction multiplies the Magic Formula's LMUY: the side force's
+    // extreme is -Dy + SVy, Dy = pDy1 Fz friction and SVy = Fz pVy1 friction
+    // ((4.E22), (4.E29), dfz = 0, upright): -0.8785 x 4000 - 0.00661 x 4000
+    // = -3540.44 N on a road of friction 1, half that on 0.5 (the curve's
+    // C = 1.338 > 1 reaches it). Sampled every 1e-4 rad, an extreme falls
+    // short of the peak by at most D (theta' 1e-4)^2 / 8 for the angle theta
+    // under the sine, theta' at most B C, about 31 rad^-1 on the road of 0.5:
+    // 1.2e-6 relative, allowed 1e-5. The cornering stiffness Kya = BCD has no
+    // friction in it (4.E25): the slope at the curve's centre, alpha = -SHy =
+    // pHy1's opposite, 0.001806 rad, is the same on both roads; by central
+    // differences of 1e-7 rad, to the rounding of 4000 x 1e-16 / 1e-7 =
+    // 4e-6 N/rad: allowed 1e-9 of it.
     auto peak_and_slope = [](Real friction) {
-        FullTireForce tyre(1, 0.35, 200000.0, 0.0, PacejkaTireParams::DefaultPassengerCar(),
-                           std::make_shared<FlatRoad>(0.0, friction));
+        FullTireForce tyre(1, tyre_of(0.35, 200000.0), std::make_shared<FlatRoad>(0.0, friction));
+        tyre.lag = false;
         std::vector<RigidBodyState> states(2);
         std::vector<RigidBodyForces> forces(2);
         auto lateral_force = [&](Real alpha) {
-            // Forward at 20 m/s, sideways at -20 tan(alpha): slip angle alpha.
-            // The wheel spins at free rolling, 20 / R_eff with R_eff = 0.35 -
-            // 0.02 / 2 (task 7.3: the tyre takes the spin from the wheel).
+            // Forward at 20 m/s, to the left at 20 tan(alpha): slip angle
+            // alpha (ISO). The wheel spins at free rolling, 20 / R_eff with
+            // R_eff = 0.35 - 0.02 / 2 (task 7.3).
             states[1] = RigidBodyState(Vec3(0.0, 0.0, 0.33), Quat::Identity(),
-                                       Vec3(20.0, -20.0 * std::tan(alpha), 0.0), Vec3(0.0, 20.0 / 0.34, 0.0));
+                                       Vec3(20.0, 20.0 * std::tan(alpha), 0.0), Vec3(0.0, 20.0 / 0.34, 0.0));
             forces.assign(2, RigidBodyForces{});
             tyre.apply(states, forces);
             return tyre.get_Fy();
         };
         Real peak = 0.0;
-        for (int i = 1; i <= 4000; ++i) peak = std::max(peak, lateral_force(i * 3e-4));
-        return std::pair<Real, Real>(peak, lateral_force(1e-7) / 1e-7);
+        for (int i = 1; i <= 12000; ++i) peak = std::min(peak, lateral_force(i * 1e-4));
+        const Real a0 = 0.001806, h = 1e-7;
+        return std::pair<Real, Real>(peak, (lateral_force(a0 + h) - lateral_force(a0 - h)) / (2.0 * h));
     };
     const auto [peak_dry, slope_dry] = peak_and_slope(1.0);
     const auto [peak_wet, slope_wet] = peak_and_slope(0.5);
     INFO("peaks " << peak_dry << " and " << peak_wet << " N; slopes " << slope_dry << " and " << slope_wet);
-    CHECK(std::abs(peak_dry - 4000.0) < 1e-5 * 4000.0);
-    CHECK(std::abs(peak_wet - 2000.0) < 1e-5 * 2000.0);
-    CHECK(std::abs(slope_wet - slope_dry) < 1e-9 * slope_dry);
+    CHECK(std::abs(peak_dry + 3540.44) < 1e-5 * 3540.44);
+    CHECK(std::abs(peak_wet + 1770.22) < 1e-5 * 1770.22);
+    CHECK(std::abs(slope_wet - slope_dry) < 1e-9 * std::abs(slope_dry));
 }
 
 TEST_CASE("Road: a tyre with no road is refused (MBD-F051)", "[road][tyre]")
 {
-    FullTireForce tyre(1, 0.35, 200000.0, 0.0, PacejkaTireParams::DefaultPassengerCar());
+    FullTireForce tyre(1, pacejka_appendix3_tyre());
     REQUIRE(tyre.road != nullptr);   // a level road by default
     CHECK(tyre.road->at(3.0, 4.0).height == 0.0);
     tyre.road = nullptr;

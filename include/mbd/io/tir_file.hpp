@@ -17,8 +17,11 @@
 //     required (MBD-I023); every other
 //     parameter takes its default when left out (magic_formula.hpp).
 //   - Keys are matched by name, whatever their section. A key the tyre does
-//     not use (a SWIFT parameter, TYRESIDE, the file's header) is listed in
-//     TirFile::ignored, not refused: .tir files carry many.
+//     not use (a SWIFT parameter, the contact patch's, the file's header) is
+//     listed in TirFile::ignored, not refused: .tir files carry many.
+//   - TYRESIDE ('LEFT', the default, or 'RIGHT') says which side of a vehicle
+//     the parameters describe; a tyre mounted on the other is mirrored
+//     (FullTireForce::mount, mbd/forces/tire.hpp).
 
 #include <string>
 #include <vector>

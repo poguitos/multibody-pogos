@@ -87,7 +87,7 @@ VehicleModel build_simple_vehicle(kernel::System& sys,
 
         // --- The wheel on its spin joint (task 7.3) ---
         vm.wheel_bodies[c] = add_wheel(sys.model, vm.carrier_bodies[c], Vec3::Zero(), p.wheel_mass,
-                                       p.tire_free_radius, names[c]);
+                                       p.tyre.UNLOADED_RADIUS, names[c]);
         vm.spin_v[c] = sys.model.idx_v[vm.wheel_bodies[c]];
 
         // --- Suspension spring-damper: chassis mount to the carrier's origin ---
@@ -96,13 +96,9 @@ VehicleModel build_simple_vehicle(kernel::System& sys,
             mount_pos[c], Vec3::Zero(),
             p.k_susp, p.c_susp, p.susp_rest_length));
 
-        // --- Tire force ---
-        auto tire = std::make_shared<FullTireForce>(
-            vm.wheel_bodies[c],
-            p.tire_free_radius,
-            p.tire_k_z,
-            p.tire_c_z,
-            p.tire_params);
+        // --- Tyre: the Magic Formula with its lag (task 7.4) ---
+        auto tire = std::make_shared<FullTireForce>(vm.wheel_bodies[c], p.tyre);
+        tire->mount(c % 2 == 1);   // FR and RR on the right
         vm.tires[c] = tire.get();
         sys.force_elements.push_back(std::move(tire));
     }

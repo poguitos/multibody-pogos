@@ -1,5 +1,8 @@
 #include "mbd/forces/tire.hpp"
 
+#include <algorithm>
+#include <cmath>
+
 namespace mbd {
 
 namespace {
@@ -124,22 +127,28 @@ Real TireContactForce::get_vertical_force(const std::vector<RigidBodyState>& sta
 }
 
 FullTireForce::FullTireForce(BodyIndex wheel_idx,
-                             Real free_radius,
-                             Real vert_stiffness,
-                             Real vert_damping,
-                             const PacejkaTireParams& tire_params,
+                             const MagicFormulaParameters& parameters,
                              std::shared_ptr<const Road> on_road)
     : wheel_body_idx(wheel_idx)
-    , R_free(free_radius)
-    , R_loaded_approx(free_radius * 0.97)
-    , k_z(vert_stiffness)
-    , c_z(vert_damping)
+    , tyre(parameters)
+    , R_free(parameters.UNLOADED_RADIUS)
+    , k_z(parameters.VERTICAL_STIFFNESS)
+    , c_z(parameters.VERTICAL_DAMPING)
     , road(road_or_level(std::move(on_road)))
-    , pacejka(tire_params)
+    , V_low(parameters.VXLOW)
 {
     MBD_THROW_IF(R_free <= 0.0, "MBD-F011: FullTireForce: free radius must be > 0");
     MBD_THROW_IF(k_z < 0.0, "MBD-F011: FullTireForce: vertical stiffness must be >= 0");
     MBD_THROW_IF(c_z < 0.0, "MBD-F011: FullTireForce: vertical damping must be >= 0");
+    MBD_THROW_IF(!(V_low > 0.0), "MBD-F011: FullTireForce: VXLOW must be > 0");
+    const MagicFormulaOutput nominal = tyre.characteristics(parameters.FNOMIN, 0.0);
+    sigma_kappa_nominal_ = nominal.sigma_kappa;
+    sigma_alpha_nominal_ = nominal.sigma_alpha;
+    MBD_THROW_IF(!(sigma_kappa_nominal_ > 0.0) || !(sigma_alpha_nominal_ > 0.0),
+                 "MBD-F054: FullTireForce: the tyre's relaxation lengths at its nominal load are "
+                     + std::to_string(sigma_kappa_nominal_) + " and " + std::to_string(sigma_alpha_nominal_)
+                     + " m; the lag needs both positive (MF 6.1: LONGITUDINAL_STIFFNESS and LATERAL_STIFFNESS;"
+                       " MF 5.2: PTX1 and PTY1, PTY2)");
 }
 
 void FullTireForce::apply(const std::vector<RigidBodyState>& states,
@@ -156,59 +165,122 @@ void FullTireForce::apply(const std::vector<RigidBodyState>& states,
     last_deflection = std::max(Real(0.0), contact.penetration);
     last_friction = contact.friction;
     last_spin = s.w_WB.dot(axis);
+    last_forward_W = contact.forward;
+    last_lateral_W = contact.lateral;
 
-    if (contact.penetration <= Real(0.0)) {
-        // No contact: clear cached results
-        last_Fz = 0.0;
+    // The contact point's velocity, carried by the wheel without its spin,
+    // and the slip speeds; the rates need them off the road too.
+    const Vec3 v_contact_W = s.v_WB + without_spin(s, axis).cross(r_W);
+    const Real Vx = v_contact_W.dot(contact.forward);
+    const Real Vy = v_contact_W.dot(contact.lateral);
+    const Real R_eff = R_free - last_deflection * 0.5;
+    last_Vx = Vx;
+    last_R_eff = R_eff;
+    last_Vsx = Vx - last_spin * R_eff;
+    last_Vsy = Vy;
+
+    Real Fz = contact.penetration > 0.0 ? k_z * contact.penetration - c_z * n.dot(v_contact_W) : 0.0;
+    if (Fz < Real(0.0)) Fz = Real(0.0);   // the tyre cannot pull
+    last_Fz = Fz;
+    in_contact_ = Fz > 0.0;
+    if (!in_contact_) {
+        last_output = MagicFormulaOutput{};
+        last_kappa = 0.0;
+        last_alpha = 0.0;
+        last_My = 0.0;
         last_axle_moment = 0.0;
-        last_result = TireForceResult{};
         return;
     }
 
-    // The contact point's velocity, carried by the wheel without its spin.
-    const Vec3 v_contact_W = s.v_WB + without_spin(s, axis).cross(r_W);
+    // --- The slips: the deflections over the relaxation lengths, with the
+    // low-speed damping; or the steady-state slips ---
+    last_gamma = std::asin(std::clamp(axis.dot(n), Real(-1.0), Real(1.0)));
+    const Real side = mirrored ? -1.0 : 1.0;   // a mirrored tyre: alpha and gamma negated
+    const MagicFormulaOutput c = tyre.characteristics(Fz, side * last_gamma, -1.0, contact.friction);
+    last_sigma_kappa = std::max(c.sigma_kappa, sigma_min);
+    last_sigma_alpha = std::max(c.sigma_alpha, sigma_min);
+    kappa_sliding_ = c.Kxk > 0.0 ? 3.0 * c.mux * Fz / c.Kxk : 0.0;                          // (8.114)
+    alpha_sliding_ = c.Kya != 0.0 ? 3.0 * std::abs(c.muy) * Fz / std::abs(c.Kya) : 0.0;
+    Real kappa, tan_alpha;
+    if (lag) {
+        const Real speed = std::abs(Vx);
+        const Real k_low = speed < V_low ? 0.5 * k_V_low0 * (1.0 + std::cos(pi * speed / V_low)) : 0.0;   // (8.128)
+        kappa = u_ / last_sigma_kappa - (c.Kxk > 0.0 ? k_low * last_Vsx / c.Kxk : 0.0);              // (8.111), (8.127)
+        tan_alpha = v_ / last_sigma_alpha - (c.Kya != 0.0 ? k_low * last_Vsy / c.Kya : 0.0);
+    } else {
+        const Real speed = std::max(std::abs(Vx), V_low);
+        kappa = -last_Vsx / speed;
+        tan_alpha = last_Vsy / speed;
+    }
+    last_kappa = kappa;
+    last_alpha = std::atan(tan_alpha);
 
-    Real Fz = k_z * contact.penetration - c_z * n.dot(v_contact_W);
-    if (Fz < Real(0.0)) Fz = Real(0.0);
-    last_Fz = Fz;
+    // --- The Magic Formula ---
+    MagicFormulaInput in;
+    in.Fz = Fz;
+    in.kappa = kappa;
+    in.alpha = side * last_alpha;
+    in.gamma = side * last_gamma;
+    in.Vcx = Vx;
+    in.friction = contact.friction;
+    last_output = tyre.evaluate(in);
+    if (mirrored) {
+        for (Real* m : {&last_output.Fy, &last_output.Fy0, &last_output.Mx, &last_output.Mz, &last_output.Mz0,
+                        &last_output.Mzr}) {
+            *m = -*m;
+        }
+    }
+    const MagicFormulaOutput& o = last_output;
 
-    const Vec3& forward_W = contact.forward;
-    const Vec3& lateral_W = contact.lateral;
-    last_forward_W = forward_W;
-    last_lateral_W = lateral_W;
+    // The rolling resistance against the wheel's rolling: the formula's
+    // moment for rolling forwards, scaled by the rolling speed over V_roll
+    // below it, so that a wheel at rest has none.
+    const Real forwards = Vx < 0.0 ? -o.My : o.My;
+    last_My = forwards * std::clamp(last_spin * R_eff / V_roll, Real(-1.0), Real(1.0));
 
-    // --- Slip computation ---
-    const Real Vx = v_contact_W.dot(forward_W);
-    const Real Vy = v_contact_W.dot(lateral_W);
-
-    const Real V_abs = std::max(std::abs(Vx), V_low);
-
-    // Effective rolling radius
-    const Real R_eff = R_free - last_deflection * 0.5;
-
-    last_V_abs = V_abs;
-    last_R_eff = R_eff;
-
-    // Slip ratio: kappa = (omega*R_eff - Vx) / V_abs
-    const Real kappa = (last_spin * R_eff - Vx) / V_abs;
-    // Slip angle: alpha = -atan2(Vy, V_abs)
-    // The sign convention: positive alpha → positive Fy
-    // Vy positive means tire moving to the left, which requires
-    // a rightward force: negative alpha, negative Fy.
-    const Real alpha = -std::atan2(Vy, V_abs);
-
-    // --- Pacejka forces ---
-    last_result = pacejka.compute(kappa, alpha, Fz, contact.friction);
-
-    // --- Apply forces in world frame at the contact point ---
-    const Vec3 F_W = last_result.Fx * forward_W
-                   + last_result.Fy * lateral_W
-                   + Fz * n;
-    const Vec3 moment_W = r_W.cross(F_W);
+    // --- Forces and moments at the contact point, in the W axes ---
+    const Vec3 F_W = o.Fx * contact.forward + o.Fy * contact.lateral + Fz * n;
+    const Vec3 moment_W = r_W.cross(F_W) + o.Mx * contact.forward + last_My * contact.lateral + o.Mz * n;
     last_axle_moment = moment_W.dot(axis);
 
     forces[static_cast<size_t>(wheel_body_idx)].f_W   += F_W;
     forces[static_cast<size_t>(wheel_body_idx)].tau_W += moment_W;
+}
+
+void FullTireForce::begin_evaluation(const kernel::Simulator& sim, Real t, kernel::ConstVecRef x)
+{
+    (void)sim;
+    (void)t;
+    if (x.size() == 2) {
+        u_ = x(0);
+        v_ = x(1);
+    }
+}
+
+void FullTireForce::rates(const kernel::Simulator& sim, Real t, kernel::ConstVecRef x, kernel::VecRef x_dot)
+{
+    (void)sim;
+    (void)t;
+    if (x.size() != 2) return;
+    const Real u = x(0);
+    const Real v = x(1);
+    const Real speed = std::abs(last_Vx);
+    if (!in_contact_) {
+        // Off the road the tread's deflections relax over their lengths.
+        x_dot(0) = -(speed + V_low) * u / sigma_kappa_nominal_;
+        x_dot(1) = -(speed + V_low) * v / sigma_alpha_nominal_;
+        return;
+    }
+    Real du = -last_Vsx - speed * u / last_sigma_kappa;                       // (8.110)
+    Real dv = last_Vsy - speed * v / last_sigma_alpha;
+    // (8.112): at low speed, a deflection past the slip of full sliding is
+    // not let grow.
+    if (speed < V_low) {
+        if (std::abs(u / last_sigma_kappa) > limit_factor * kappa_sliding_ && du * u > 0.0) du = 0.0;
+        if (std::abs(v / last_sigma_alpha) > limit_factor * alpha_sliding_ && dv * v > 0.0) dv = 0.0;
+    }
+    x_dot(0) = du;
+    x_dot(1) = dv;
 }
 
 Real FullTireForce::free_rolling_spin(const std::vector<RigidBodyState>& states) const
@@ -219,20 +291,6 @@ Real FullTireForce::free_rolling_spin(const std::vector<RigidBodyState>& states)
     const Vec3 v_contact_W = s.v_WB + without_spin(s, axis).cross(contact.point - s.p_WB);
     const Real R_eff = R_free - std::max(Real(0.0), contact.penetration) * 0.5;
     return v_contact_W.dot(contact.forward) / R_eff;
-}
-
-Real FullTireForce::longitudinal_force_slope() const
-{
-    if (last_Fz <= Real(0.0) || last_R_eff <= Real(0.0)) {
-        return Real(0.0);
-    }
-    const Real eps = Real(1e-4);
-    const Real Fx_plus  = pacejka.compute(last_result.kappa + eps,
-                                          last_result.alpha, last_Fz, last_friction).Fx;
-    const Real Fx_minus = pacejka.compute(last_result.kappa - eps,
-                                          last_result.alpha, last_Fz, last_friction).Fx;
-    const Real dFx_dkappa = (Fx_plus - Fx_minus) / (Real(2.0) * eps);
-    return std::max(dFx_dkappa, Real(0.0)) * last_R_eff / last_V_abs;
 }
 
 } // namespace mbd

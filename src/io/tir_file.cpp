@@ -121,6 +121,15 @@ TirFile parse_tir(const std::string& text, const std::string& name)
             continue;
         }
 
+        if (key == "TYRESIDE") {
+            // The side the parameters describe; a tyre on the other is mirrored.
+            const std::string side = unquote(value);
+            MBD_THROW_IF(side != "left" && side != "right",
+                         "MBD-I024: " + where + ": TYRESIDE = '" + value + "' is not 'LEFT' or 'RIGHT'");
+            p.side = side == "right" ? TyreSide::Right : TyreSide::Left;
+            continue;
+        }
+
         if (key == "PROPERTY_FILE_FORMAT") {
             // Adams's name for the formulas, in files without FITTYP.
             const std::string format = unquote(value);

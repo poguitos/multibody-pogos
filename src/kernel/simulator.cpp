@@ -142,6 +142,11 @@ Simulator::Simulator(System& sys)
     for (auto& d : dense_x_) d = x;
     states_.resize(static_cast<std::size_t>(model.nbodies()));
     forces_.resize(static_cast<std::size_t>(model.nbodies()));
+    // A force element with states of its own (a tyre's lag, task 7.4) is
+    // integrated with them from the start, in the order of the elements.
+    for (const auto& f : system.force_elements) {
+        if (auto* element = dynamic_cast<StateElement*>(f.get())) attach(*element);
+    }
     refresh();
 }
 

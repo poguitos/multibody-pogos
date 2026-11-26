@@ -50,11 +50,12 @@ struct VehicleParams {
     Real c_susp{2000.0};             ///< Damping per corner [Ns/m]
     Real susp_rest_length{0.35};     ///< Spring free length [m]
 
-    // --- Tires ---
-    Real tire_free_radius{0.35};     ///< Unloaded radius [m]
-    Real tire_k_z{200000.0};         ///< Vertical stiffness [N/m]
-    Real tire_c_z{500.0};            ///< Vertical damping [Ns/m]
-    PacejkaTireParams tire_params{PacejkaTireParams::DefaultPassengerCar()};
+    // --- Tyres ---
+    /// Every corner's tyre (task 7.4): its Magic Formula, and its free radius,
+    /// vertical stiffness and damping (UNLOADED_RADIUS, VERTICAL_STIFFNESS,
+    /// VERTICAL_DAMPING); Pacejka's Appendix 3 tyre, a 205/60R15, unless set
+    /// (mbd/io/tir_file.hpp reads one from a file).
+    MagicFormulaParameters tyre{pacejka_appendix3_tyre()};
 
     // --- Derived quantities ---
 
@@ -70,12 +71,12 @@ struct VehicleParams {
 
     Real tire_deflection_eq() const
     {
-        return weight_per_wheel() / tire_k_z;
+        return weight_per_wheel() / tyre.VERTICAL_STIFFNESS;
     }
 
     Real wheel_center_height_eq() const
     {
-        return tire_free_radius - tire_deflection_eq();
+        return tyre.UNLOADED_RADIUS - tire_deflection_eq();
     }
 
     Real spring_force_eq() const

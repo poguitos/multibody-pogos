@@ -295,7 +295,9 @@ public:
 
     /// Integrate `element`'s states with the multibody state from now on; its
     /// states start at its initial_states(). The element is not owned: it
-    /// must outlive the simulator. Allocates; attach before stepping.
+    /// must outlive the simulator. Allocates; attach before stepping. A force
+    /// element of the system that is also a state element (a tyre with its
+    /// lag) is attached when the simulator is made.
     void attach(StateElement& element);
     /// The attached elements, and where each one's states start in x.
     const std::vector<StateElement*>& state_elements() const { return state_elements_; }

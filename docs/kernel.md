@@ -362,7 +362,9 @@ replace the callbacks before the forces and after each step: an element that
 owns first-order states (a tyre's lag, an actuator, a controller) is
 attached with `sim.attach(element)` and its states are integrated by the same
 method and in the same stages as the bodies, so a force that depends on them
-is as accurate as the integrator. The drivetrain was the first: its wheel
+is as accurate as the integrator. A force element of the system that is also
+a state element (the tyre with its lag, task 7.4, D64) is attached when the
+simulator is made, in the order of the force elements. The drivetrain was the first: its wheel
 spins were its states until task 7.3 (D62) made the wheels bodies on spin
 joints, their spins part of the multibody state. It is still attached as an
 element, with no states, for its `end_step`: its brakes lock a wheel at rest
@@ -496,10 +498,9 @@ where the spins hold RK4 under a millisecond, the sedan drove at 3 ms with
 6 fast steps as RK4 does at 0.5 ms (top speed within 0.14 %), 2.8 times
 faster. Each part must keep inside its own stability: the fast steps inside
 the states', the step inside the bodies'. Since task 7.3 (D62) a vehicle's
-wheel spins are joints of the multibody model, no longer states: a vehicle
-has no fast states for multirate until the tyre's lag (task 7.4) or a
-powertrain with a speed of its own (task 7.8) gives it some, and the sedan's
-measurement above belongs to the model before.
+wheel spins are joints of the multibody model, no longer states, and the
+sedan's measurement above belongs to the model before. Since task 7.4 (D64)
+the tyres' deflections are a vehicle's fast states again.
 
 **Constraints per integrator** (task 4.7, decision D37). Every evaluation
 solves the loop constraints at the acceleration level, so a step's result

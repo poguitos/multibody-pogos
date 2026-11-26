@@ -14,6 +14,7 @@
 #include <string>
 
 #include "mbd/forces/magic_formula.hpp"
+#include "mbd/forces/pacejka.hpp"
 #include "mbd/io/tir_file.hpp"
 
 using Catch::Matchers::ContainsSubstring;
@@ -183,4 +184,81 @@ TEST_CASE("Magic Formula: rolling resistance and relaxation lengths at the book'
     CHECK_THAT(o.My, WithinRel(-4000.0 * 0.3135 * (0.00702 + 0.001515 + 8.514e-5), 1e-13));
     CHECK_THAT(o.sigma_kappa, WithinRel(4000.0 * p.PKX1 / p.LONGITUDINAL_STIFFNESS, 1e-13));
     CHECK_THAT(o.sigma_alpha, WithinRel(std::abs(o.Kya) / p.LATERAL_STIFFNESS, 1e-13));
+}
+
+TEST_CASE("Magic Formula: the library's Appendix 3 tyre is the file's", "[tyre][mf][tir]")
+{
+    // pacejka_appendix3_tyre(), the vehicles' default (task 7.4), against the
+    // file written from the same table: every parameter equal, bit for bit
+    // (both are the table's decimals read as doubles).
+    const MagicFormulaParameters a = pacejka_appendix3_tyre();
+    const MagicFormulaParameters b = io::read_tir(data("pacejka_a3_205_60R15.tir")).parameters;
+    CHECK(a.version == b.version);
+    CHECK(a.FITTYP == b.FITTYP);
+    CHECK(a.side == b.side);
+#define MBD_SAME(section, name, value) CHECK(a.name == b.name);
+    MBD_MAGIC_FORMULA_PARAMETERS(MBD_SAME)
+#undef MBD_SAME
+}
+
+TEST_CASE("Magic Formula: the reader takes TYRESIDE", "[tyre][mf][tir]")
+{
+    const std::string base = "[MODEL]\nFITTYP = 61\n[DIMENSION]\nUNLOADED_RADIUS = 0.3\n[VERTICAL]\nFNOMIN = 4000\n";
+    CHECK(io::parse_tir(base).parameters.side == TyreSide::Left);
+    CHECK(io::parse_tir("[MODEL]\nTYRESIDE = 'RIGHT'\n" + base.substr(8)).parameters.side == TyreSide::Right);
+    CHECK(io::parse_tir("[MODEL]\nTYRESIDE = 'Left'\n" + base.substr(8)).parameters.side == TyreSide::Left);
+    CHECK_THROWS_WITH(io::parse_tir("[MODEL]\nTYRESIDE = 'MIDDLE'\n" + base.substr(8)),
+                      ContainsSubstring("MBD-I024"));
+}
+
+TEST_CASE("Magic Formula: a road's friction is LMUX and LMUY scaled", "[tyre][mf]")
+{
+    // MagicFormulaInput::friction multiplies LMUX and LMUY, and nothing else:
+    // at a friction of 0.6 the outputs are those of the set with both scaling
+    // factors 0.6 times theirs, to the last bit at a combined slip.
+    MagicFormulaParameters scaled = io::read_tir(data("pacejka_a3_205_60R15.tir")).parameters;
+    const MagicFormulaTyre tyre(scaled);
+    scaled.LMUX *= 0.6;
+    scaled.LMUY *= 0.6;
+    const MagicFormulaTyre slippery(scaled);
+    MagicFormulaInput in = nominal(-0.07, 0.04);
+    in.gamma = 0.02;
+    const MagicFormulaOutput reference = slippery.evaluate(in);
+    in.friction = 0.6;
+    const MagicFormulaOutput o = tyre.evaluate(in);
+    CHECK(o.Fx == reference.Fx);
+    CHECK(o.Fy == reference.Fy);
+    CHECK(o.Mz == reference.Mz);
+    CHECK(o.Mx == reference.Mx);
+}
+
+TEST_CASE("Magic Formula: reduced to the simple formula, the stiffnesses and friction are kept", "[tyre][mf]")
+{
+    // PacejkaTireParams::FromMagicFormula, for the bicycle model of a vehicle
+    // (task 7.4). At the nominal load the simple tyre's slip stiffnesses are
+    // the Magic Formula's (|Kya| positive), to rounding; its friction is
+    // pDx1 + pDx2 dfz and pDy1 + pDy2 dfz, as the Magic Formula's upright,
+    // at every load (both linear in dfz); its stiffness's slope in dfz is the
+    // derivative of the Magic Formula's at dfz = 0: central differences of
+    // 1e-4 in dfz, truncation (1e-4)^2 times the third derivative (order
+    // 1e5 N here) and rounding 1e-16 x 1e5 / 1e-4: allowed 1e-6 relative.
+    const MagicFormulaParameters p = io::read_tir(data("pacejka_a3_205_60R15.tir")).parameters;
+    const MagicFormulaTyre mf(p);
+    const PacejkaTire simple(PacejkaTireParams::FromMagicFormula(p));
+    const MagicFormulaOutput c = mf.characteristics(4000.0, 0.0);
+    CHECK_THAT(simple.cornering_stiffness(4000.0), WithinRel(-c.Kya, 1e-14));
+    CHECK_THAT(simple.longitudinal_stiffness(4000.0), WithinRel(c.Kxk, 1e-14));
+    for (const Real Fz : {2500.0, 4000.0, 6500.0}) {
+        const MagicFormulaOutput at = mf.characteristics(Fz, 0.0);
+        CHECK_THAT(simple.peak_mu_lateral(Fz), WithinRel(at.muy, 1e-14));
+        CHECK_THAT(simple.peak_mu_longitudinal(Fz), WithinRel(at.mux, 1e-14));
+    }
+    const Real h = 1e-4;
+    const Real dKya = (mf.characteristics(4000.0 * (1 + h), 0.0).Kya - mf.characteristics(4000.0 * (1 - h), 0.0).Kya)
+                    / (2 * h);
+    const Real dKxk = (mf.characteristics(4000.0 * (1 + h), 0.0).Kxk - mf.characteristics(4000.0 * (1 - h), 0.0).Kxk)
+                    / (2 * h);
+    const PacejkaTireParams sp = PacejkaTireParams::FromMagicFormula(p);
+    CHECK_THAT(sp.lateral.K_Fz, WithinRel(-dKya, 1e-6));
+    CHECK_THAT(sp.longitudinal.K_Fz, WithinRel(dKxk, 1e-6));
 }

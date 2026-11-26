@@ -99,11 +99,11 @@ struct AxleConfig {
     /// its upright and arms.
     Real wheel_mass{40.0};
 
-    // Tire
-    Real tire_free_radius{0.35};
-    Real tire_k_z{200000.0};
-    Real tire_c_z{500.0};
-    PacejkaTireParams tire_params{PacejkaTireParams::DefaultPassengerCar()};
+    /// The axle's tyres (task 7.4): their Magic Formula, and their free
+    /// radius, vertical stiffness and damping (UNLOADED_RADIUS,
+    /// VERTICAL_STIFFNESS, VERTICAL_DAMPING); Pacejka's Appendix 3 tyre, a
+    /// 205/60R15, unless set (mbd/io/tir_file.hpp reads one from a file).
+    MagicFormulaParameters tyre{pacejka_appendix3_tyre()};
 
     // Hardpoints (used only when suspension_type != Simple)
     DwbHardpoints dwb;
