@@ -55,6 +55,10 @@ code exactly:
   from Python, its rest and its modes, a force written in Python, a model
   and a run saved and read back, a run played back in Rerun, the engine's
   errors and warnings caught.
+- [Vehicles](howto/vehicles.md) (Phase 7): a car built from its template,
+  a driver put in it and its mass report read; a corner analysed alone;
+  brakes, a powertrain and aerodynamics from a map, each checked against a
+  hand calculation.
 
 By task, with the tests as further worked examples:
 

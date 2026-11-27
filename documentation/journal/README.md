@@ -114,3 +114,4 @@ work began, `YYYY-MM-DD_short-title.md`.
 | 27 Nov 2026 | [Phase 7: the aerodynamic element](2026-11-27_phase-7-aerodynamics.md) | 7.10, F12, D71 | see git log | At the time |
 | 27 Nov 2026 | [Phase 7: mass properties](2026-11-27_phase-7-mass-properties.md) | 7.11, F9, D72 | see git log | At the time |
 | 27 Nov 2026 | [Phase 7: subsystem tests](2026-11-27_phase-7-subsystem-tests.md) | 7.12, D73 | see git log | At the time |
+| 27 Nov 2026 | [Phase 7 retrospective](2026-11-27_phase-7-retrospective.md) | Phase 7 gate; H.6 for Phase 7 | see git log | At the time |

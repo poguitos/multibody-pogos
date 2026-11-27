@@ -97,7 +97,7 @@ spdlog.
    second with the laptop on battery. The last line says
 
    ```
-   Successfully installed multibody-0.7.0
+   Successfully installed multibody-0.8.0
    ```
 
    with NumPy added if the environment lacked it. The prompt then shows
@@ -114,7 +114,7 @@ spdlog.
    repository itself:
 
    ```
-   0.7.0 C:\dev\multibody\python\multibody\__init__.py
+   0.8.0 C:\dev\multibody\python\multibody\__init__.py
    ```
 
    The second runs the package's tests and ends with `72 passed, 10
