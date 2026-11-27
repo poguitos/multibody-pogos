@@ -82,6 +82,7 @@ and the journal entry of the work refers to them by number
 | D69 | The powertrain as a state element: an engine with its own speed, a converter or clutch, a gearbox with shift time, differentials and compliant half-shafts, reacting on the housing and the chassis | 27 Nov 2026 | In force, task 7.8 |
 | D70 | The brakes as a state element: line pressures lagging the pedal, a proportioning valve, dry friction that locks a wheel, a slip-switched anti-lock controller | 27 Nov 2026 | In force, task 7.9 |
 | D71 | The aerodynamic element's forces and moments from a map over ride heights, pitch, roll and yaw, in the chassis's axes, with wind; the constant model a one-node map | 27 Nov 2026 | In force, task 7.10 |
+| D72 | Mass properties: the chassis's own centre of mass and inertia tensor, lumped masses added to its body, and a roll-up of the built car; unsprung mass by virtual work, sprung mass by the lever rule along the road | 27 Nov 2026 | In force, task 7.11 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -3526,3 +3527,97 @@ and the journal entry of the work refers to them by number
     Python.
 - **Record.** Journal: Phase 7, the aerodynamic element;
   `docs/aerodynamics.md`, `tests/forces/test_aerodynamics.cpp`.
+- **Afterwards.** On 27 November 2026 the author chose not to keep the old
+  constant model (forces along the velocity and the ground normal) as an
+  option.
+
+## D72. Mass properties: the chassis's own centre of mass and inertia tensor, lumped masses added to its body, and a roll-up of the built car; unsprung mass by virtual work, sprung mass by the lever rule along the road
+
+- **Context.** Task 7.11: "Mass properties (F9). Explicit centre of mass
+  and full inertia tensor for the body. Lumped driver, fuel and payload. A
+  roll-up report of total mass, centre-of-gravity height, sprung and
+  unsprung mass per corner, and yaw inertia. Done when the report matches
+  the inputs." Of finding F9, task 7.6 had placed the suspension parts'
+  masses and 7.7 used the steering fields; left was "`cg_offset` never
+  reaches the multibody model". The chassis was a solid box of
+  `half_extents` with its centre of mass at the chassis frame's origin; a
+  car of simple corners only was placed at rest as if all its mass were
+  there.
+- **Decision.**
+  - **The chassis's inputs** (`ChassisConfig`): `mass` (the body alone),
+    `com` (its centre of mass in the chassis frame, replacing `cg_offset`,
+    which nothing read but the lap model's estimate), `inertia` (optional,
+    about `com` in the chassis's axes, products included; without it the
+    box), and `lumped_masses` (a name, a mass, a position, an inertia of
+    its own or zero). The lumped masses are added to the chassis body by
+    parallel axes (`chassis_inertia`, `mbd/vehicle/mass_properties.hpp`):
+    one rigid body, no new coordinates.
+  - **Checked by the kernel's rule.** The test that `validate()` applies to
+    every body's inertia (symmetric, no negative principal moment, the
+    triangle inequality) becomes one function, `inertia_fault`
+    (`mbd/model/rigid_body.hpp`), used by `validate()` and by the builder;
+    the builder's refusals are MBD-V008.
+  - **The report reads the built model**, not the template:
+    `mass_report(sim, vh)` sums the bodies as the simulator holds them, so
+    that it shows where the builder put each mass (the question F9 asked).
+    The centre of mass and the inertia are in the chassis frame; the height
+    of the centre of mass is above the road beneath it, along its normal.
+  - **Unsprung mass by virtual work.** SAE J670's definition (what the tyre
+    carries directly) made exact: with the chassis held and the spring
+    taken away, the weight the corner's parts put on the tyre, each part's
+    weight times the rise of its centre of mass per rise of the contact.
+    The rates are the ones the builder already computes to set the springs
+    (`corner_motion`), so the number costs nothing and agrees with the
+    springs' statics. The usual "half the arms" is what it gives for an arm
+    whose centre of mass is midway, not an assumption.
+  - **Sprung mass per corner by the lever rule along the road.** The sprung
+    weight acts where the car's does once each unsprung weight is taken off
+    at its contact; it is shared between the axles, then side to side on
+    each axle, with positions measured along the road (forward and left of
+    the centre of mass), not along the chassis's axes.
+  - **The same masses for the design loads.** The axle loads the springs
+    are set for use the lever rule's one function (`detail::lever_share`),
+    and the placement of a car of simple corners now takes them instead of
+    putting the whole mass at the origin.
+- **Alternatives.**
+  - Lumped masses as bodies on fixed joints: the report could list them, but
+    each would add a body to every evaluation for nothing that moves. A
+    sloshing tank or a compliant seat would need bodies; neither is asked
+    for.
+  - A report from the template's inputs: it could not show what the builder
+    made, and the unsprung shares need the mechanism's motion anyway.
+  - The unsprung mass by convention (wheel, upright, half of each arm): for
+    the sports car's double wishbone it gives 55 kg against 54.78 kg by
+    virtual work; the convention ignores how the upright turns.
+  - The lever rule along the chassis's X: the car at rest is pitched nose
+    down (by 7.3e-4 rad in the test), and the centre of mass, 0.17 m above
+    the chassis frame's origin there, then lies 1.2e-4 m further forward
+    along the road than along X.
+  - Corner weighting (each side's spring set for its own load when the
+    centre of mass is off the centre line): not done. A road car's springs
+    are alike on both sides; such a car rests slightly rolled, and
+    `kernel::static_equilibrium` finds where.
+- **Consequences.**
+  - The plan's test: for a car with a chassis tensor with products, an
+    offset centre of mass, a driver with an inertia of its own, fuel and a
+    payload, on simple corners and trailing arms, every number of the report
+    equals the one computed from the inputs part by part: the total mass
+    exactly, the centre of mass to 4.2e-17 m, the inertia to 4.5e-13 kg m^2
+    of 3044, the height of the centre of mass exactly, the unsprung masses
+    exactly, the sprung ones to 5.7e-14 kg.
+  - A double wishbone's unsprung mass from positions (central differences,
+    extrapolated) equals the one from velocities within 1.4e-9 kg.
+  - The lap model's `cg_height` is the report's for the car built from the
+    template (it was the tyre's radius plus the box's half-height, less
+    `cg_offset.z`); nothing in the lap model reads it yet.
+  - Without the new inputs every car is built as before; the design loads
+    and the simple car's placement changed in their arithmetic only. No
+    regression scenario was written again: the sedan's four and the sports
+    car's are unchanged bitwise, the hatchback's (a mixed car) moved by
+    1.2e-15 in one channel (1e-5 of its tolerance).
+  - The presets keep their chassis's centre of mass at the wheel centres'
+    height: 0.30 m above the road for the sports car, where a real car's is
+    about 0.45 m to 0.55 m. Changing them would move every regression
+    scenario; `com` sets it.
+- **Record.** Journal: Phase 7, mass properties; `docs/mass-properties.md`,
+  `tests/vehicle/test_mass_properties.cpp`.

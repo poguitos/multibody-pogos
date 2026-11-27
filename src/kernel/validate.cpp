@@ -110,23 +110,22 @@ void check_bodies(const Model& model, ValidationReport& r)
             r.errors.push_back("MBD-M011: " + b + ": its mass is negative (" + number(in.mass) + " kg).");
         }
 
-        const Mat3& J = in.I_com_B;
-        const Real scale = J.cwiseAbs().maxCoeff();
-        if ((J - J.transpose()).cwiseAbs().maxCoeff() > 1e-9 * scale) {
-            r.errors.push_back("MBD-M012: " + b + ": its rotational inertia is not symmetric.");
-        } else {
-            // Principal moments, ascending. A real body has none negative, and
-            // the two smaller add up to at least the largest.
-            const Vec3 m = Eigen::SelfAdjointEigenSolver<Mat3>(J, Eigen::EigenvaluesOnly).eigenvalues();
-            const Real tol = 1e-9 * scale;
-            if (m(0) < -tol) {
+        // Principal moments, ascending (inertia_fault, mbd/model/rigid_body.hpp).
+        Vec3 m = Vec3::Zero();
+        switch (inertia_fault(in.I_com_B, &m)) {
+            case InertiaFault::NotSymmetric:
+                r.errors.push_back("MBD-M012: " + b + ": its rotational inertia is not symmetric.");
+                break;
+            case InertiaFault::NegativeMoment:
                 r.errors.push_back("MBD-M013: " + b + ": its rotational inertia has a negative principal moment ("
                                    + number(m(0)) + " kg m^2).");
-            } else if (m(0) + m(1) < m(2) - tol) {
+                break;
+            case InertiaFault::TriangleInequality:
                 r.errors.push_back("MBD-M014: " + b + ": its principal moments of inertia (" + number(m(0)) + ", "
                                    + number(m(1)) + ", " + number(m(2))
                                    + " kg m^2) break the triangle inequality: no real body has them.");
-            }
+                break;
+            case InertiaFault::None: break;
         }
 
         if (!close(model.I[i], spatial_inertia_matrix(in))) {

@@ -233,6 +233,15 @@ a synthetic map over the ride heights, pitch, roll and yaw, with wind,
 reproduced through the element to 4.6e-13 N on 946 N; the constant model
 equal to its map to 1e-12.
 
+Mass properties (task 7.11, D72; [mass-properties.md](mass-properties.md)):
+the roll-up of a built car against the same numbers computed from its
+inputs part by part: the total mass exactly, the centre of mass to 4.2e-17
+m, the inertia to 4.5e-13 kg m^2 of 3044, the height of the centre of mass
+and the unsprung masses exactly, the sprung masses to 5.7e-14 kg; a double
+wishbone's unsprung mass by virtual work against central differences of
+its positions, to 1.4e-9 kg. The split of the sprung mass side to side is a
+convention, not a result.
+
 ## 10. A vehicle-sized stiff model: the HMMWV
 
 Task 5.4 (D47, D48; [the HMMWV benchmark](hmmwv.md)). The fourteen-body HMMWV

@@ -34,6 +34,10 @@ RigidBodyInertia rod_inertia(Real mass, const Vec3& a, const Vec3& b);
 /// solid sphere of radius lump_radius.
 RigidBodyInertia lumped_inertia(Real mass, const std::vector<Vec3>& points);
 
+/// The rotational inertia about a point of a mass m at r from it: m (|r|^2 1
+/// - r r^T), the parallel-axis term.
+Mat3 point_inertia(Real m, const Vec3& r);
+
 /// Two parts of one body as one: the masses added, the centre of mass their
 /// weighted mean, the inertias moved to it (parallel axes) and added.
 RigidBodyInertia combine(const RigidBodyInertia& a, const RigidBodyInertia& b);

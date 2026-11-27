@@ -10,6 +10,39 @@ namespace mbd
 {
 
 //------------------------------------------------------------------------------
+// Whether a rotational inertia is one a real body can have
+//------------------------------------------------------------------------------
+
+/// What makes a rotational inertia (about the centre of mass) one that no
+/// real body has. The kernel's validate() and the vehicle builder (task 7.11)
+/// judge by inertia_fault.
+enum class InertiaFault { None, NotSymmetric, NegativeMoment, TriangleInequality };
+
+/// J's fault, each test made to 1e-9 of J's largest entry: not symmetric; a
+/// principal moment negative; or the two smaller principal moments adding
+/// up to less than the largest (a real body's never do). `moments`, when
+/// given, receives the principal moments in ascending order (not for a J
+/// that is not symmetric).
+inline InertiaFault inertia_fault(const Mat3& J, Vec3* moments = nullptr)
+{
+    const Real tol = Real(1e-9) * J.cwiseAbs().maxCoeff();
+    if ((J - J.transpose()).cwiseAbs().maxCoeff() > tol) {
+        return InertiaFault::NotSymmetric;
+    }
+    const Vec3 m = Eigen::SelfAdjointEigenSolver<Mat3>(J, Eigen::EigenvaluesOnly).eigenvalues();
+    if (moments) {
+        *moments = m;
+    }
+    if (m(0) < -tol) {
+        return InertiaFault::NegativeMoment;
+    }
+    if (m(0) + m(1) < m(2) - tol) {
+        return InertiaFault::TriangleInequality;
+    }
+    return InertiaFault::None;
+}
+
+//------------------------------------------------------------------------------
 // Rigid body inertia (about a body-fixed frame)
 //------------------------------------------------------------------------------
 //

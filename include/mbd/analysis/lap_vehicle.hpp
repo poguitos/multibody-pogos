@@ -67,8 +67,9 @@ struct LapVehicle {
 // ============================================================================
 
 /// Build a LapVehicle from a VehicleTemplate, extracting:
-/// - mass: chassis + 4 wheels (approximate)
-/// - cg_height: chassis ride height + half of half_extents.y (rough estimate)
+/// - mass: every body the template makes (VehicleTemplate::total_mass)
+/// - cg_height: the roll-up's (mass_report, task 7.11) of the car built from
+///   the template and placed at rest by set_vehicle_equilibrium
 /// - wheelbase: from front/rear axle X positions
 /// - track: from average half_track
 /// - mu: mean of Pacejka peak mu_x and mu_y

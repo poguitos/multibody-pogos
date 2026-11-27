@@ -34,6 +34,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -294,15 +295,42 @@ struct SteeringConfig {
 // Chassis configuration
 // ============================================================================
 
+/// A mass the chassis carries (task 7.11, D72): a driver, fuel, payload,
+/// ballast. It moves with the chassis: the builder adds it to the chassis
+/// body (mbd/vehicle/mass_properties.hpp, chassis_inertia).
+struct LumpedMass {
+    std::string name;
+    Real mass{0.0};                    ///< [kg], not negative
+    Vec3 position{Vec3::Zero()};       ///< Its centre of mass in the chassis frame [m]
+    /// Its rotational inertia about its centre of mass, in the chassis's axes
+    /// [kg m^2]; zero for a point mass.
+    Mat3 inertia{Mat3::Zero()};
+};
+
+// The chassis frame: its origin is the point the axles' positions are
+// measured from (front_axle_x ahead of it, rear_axle_x behind); its axes
+// ISO 8855's. In a car with a linkage corner the wheel centres are at its
+// height at the design position; a car of simple corners only hangs them
+// below it by its springs' lengths.
 struct ChassisConfig {
+    /// The chassis body's own mass [kg], without lumped_masses.
     Real mass{1400.0};
+    /// The solid box whose inertia the chassis has when `inertia` is not
+    /// given: half its lengths along X, Y and Z [m].
     Vec3 half_extents{1.5, 0.8, 0.3};
-    Vec3 cg_offset{0.0, 0.0, 0.0};  ///< CG offset from geometric center [m]
+    /// The chassis body's centre of mass in the chassis frame [m] (task 7.11).
+    Vec3 com{Vec3::Zero()};
+    /// The chassis body's rotational inertia about `com`, in the chassis's
+    /// axes [kg m^2], products of inertia included (off the diagonal, with
+    /// their minus signs: I_xz = -sum(m x z)). Not given: the solid box.
+    std::optional<Mat3> inertia;
+    /// The driver, fuel, payload: carried by the chassis body.
+    std::vector<LumpedMass> lumped_masses;
 
     // Aerodynamics (optional)
     Real CdA{0.7};                       ///< Drag area [m^2]
     Real ClA{0.0};                       ///< Downforce area [m^2]
-    Vec3 aero_cop_offset{Vec3::Zero()};  ///< CoP offset from CG (chassis frame)
+    Vec3 aero_cop_offset{Vec3::Zero()};  ///< The centre of pressure in the chassis frame [m]
     Real aero_h_ref{0.10};
     Real aero_dClA_dh{0.0};
     /// A map of the forces and moments (task 7.10, mbd/forces/aerodynamics.hpp);
@@ -326,15 +354,18 @@ struct VehicleTemplate {
     SteeringConfig steering;
     DrivetrainParams drivetrain;
 
-    // Axle positions relative to chassis CG
+    // The axles' wheel centres ahead of and behind the chassis frame's
+    // origin [m] (the chassis's centre of mass is ChassisConfig::com)
     Real front_axle_x{1.35};
     Real rear_axle_x{1.35};
 
     Real wheelbase() const { return front_axle_x + rear_axle_x; }
 
-    /// The mass of every body the builder makes [kg]: the chassis, the
-    /// wheels, the linkages' arms, uprights, rockers and axles, the steering
-    /// racks and the halves of anti-roll bars on drop links (task 7.6, F9).
+    /// The mass of every body the builder makes [kg]: the chassis with its
+    /// lumped masses, the wheels, the linkages' arms, uprights, rockers and
+    /// axles, the steering racks and the halves of anti-roll bars on drop
+    /// links (tasks 7.6 and 7.11, F9). mass_report gives it from the built
+    /// model, with where it lies.
     Real total_mass() const;
 
     // --- Presets ---
@@ -438,6 +469,15 @@ struct CornerHandle {
     MaxwellDamper* top_mount{nullptr};   ///< Its damper in series with its top mount, when it has one
     Real design_spring_force{0.0};       ///< The spring's force at the design position, pushing apart [N]
     Real design_spring_length{0.0};      ///< The unit's length there [m]
+
+    /// The corner's unsprung mass [kg] (task 7.11, D72): the weight its tyre
+    /// carries from the corner's own parts, the chassis held and the spring
+    /// taken away, over g. By virtual work at the design position: each part's
+    /// mass times the rise of its centre of mass per rise of the tyre's
+    /// contact (corner_motion's weight_rate over its contact_rate). A wheel
+    /// and an upright count about whole, an arm about half. A simple corner's
+    /// is its wheel's mass.
+    Real unsprung_mass{0.0};
 };
 
 // ============================================================================

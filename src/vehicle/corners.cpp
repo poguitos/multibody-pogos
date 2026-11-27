@@ -45,7 +45,9 @@ Real axle_mass_of(const AxleConfig& ax)
 
 Real VehicleTemplate::total_mass() const
 {
-    return chassis.mass + axle_mass_of(front_axle) + axle_mass_of(rear_axle);
+    Real lumped = 0.0;
+    for (const LumpedMass& l : chassis.lumped_masses) lumped += l.mass;
+    return chassis.mass + lumped + axle_mass_of(front_axle) + axle_mass_of(rear_axle);
 }
 
 // ============================================================================

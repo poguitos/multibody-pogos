@@ -119,6 +119,7 @@ mbd_add_test_exe(test_vehicle
     vehicle/test_steering_system.cpp
     vehicle/test_powertrain.cpp
     vehicle/test_brakes.cpp
+    vehicle/test_mass_properties.cpp
     test_vehicle.cpp
     test_vehicle_template.cpp
     test_steering.cpp

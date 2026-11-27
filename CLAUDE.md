@@ -13,7 +13,7 @@ agent (plan task H.7, decision D42). Read them before the first change.
 | Design decisions D1 onwards, with context and alternatives | `documentation/decisions.md` |
 | The journal: an entry per task, its index, the template | `documentation/journal/` (`README.md`, `TEMPLATE.md`), raw measurements in `journal/data/` |
 | The book's outline and bibliography | `documentation/book/` |
-| How the program works | `docs/conventions.md`, `docs/kernel.md`, `docs/integrators.md`, `docs/performance.md`, `docs/hmmwv.md`, `docs/python.md`, `docs/model-files.md`, `docs/tyres.md`, `docs/suspensions.md`, `docs/powertrain.md`, `docs/brakes.md`, `docs/aerodynamics.md` |
+| How the program works | `docs/conventions.md`, `docs/kernel.md`, `docs/integrators.md`, `docs/performance.md`, `docs/hmmwv.md`, `docs/python.md`, `docs/model-files.md`, `docs/tyres.md`, `docs/suspensions.md`, `docs/powertrain.md`, `docs/brakes.md`, `docs/aerodynamics.md`, `docs/mass-properties.md` |
 | The Python interface: the package, its bindings, its tests, its packaging | `python/multibody/`, `python/src/`, `python/tests/` (D52), `pyproject.toml` (D53) |
 | What is validated, against what, and what is not | `docs/validation.md` |
 | Help: how-to guides, troubleshooting, the message catalogue | `docs/help/` |
@@ -74,8 +74,13 @@ template's `Drivetrain`, `docs/powertrain.md`), and 7.9 (D70: `BrakeSystem`,
 line pressures as states, a proportioning valve, wheel lock and an
 anti-lock controller, `docs/brakes.md`), and 7.10 (D71: the aerodynamic
 element's forces and moments from a map over ride heights, pitch, roll and
-yaw, with wind, the constant model a one-node map, `docs/aerodynamics.md`);
-7.11, mass properties, is next. Conda environments for the project pin
+yaw, with wind, the constant model a one-node map, `docs/aerodynamics.md`;
+on 27 November 2026, with the author's go-ahead, `main` fast-forwarded to
+it, `4d81e40`, not tagged), and 7.11 (D72: the chassis's own centre of
+mass and inertia tensor and its lumped masses, `ChassisConfig`; the
+roll-up `mass_report`, unsprung mass by virtual work, sprung mass by the
+lever rule along the road, `docs/mass-properties.md`); 7.12, subsystem
+tests, is next. Conda environments for the project pin
 `"libblas=*=*openblas"` (MKL's NumPy crashes on this laptop). After a change to the bindings, reinstall `mbd-try`
 (an editable install whose module is older than its Python files stops with
 MBD-P011). The nightly workflow runs on schedule from `main`.

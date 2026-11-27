@@ -10,6 +10,7 @@
 #include "mbd/kernel/joint_forces.hpp"
 #include "mbd/kernel/state_element.hpp"
 #include "mbd/vehicle/axes.hpp"
+#include "mbd/vehicle/mass_properties.hpp"
 
 namespace mbd {
 
@@ -287,6 +288,7 @@ CornerHandle detail::build_simple_corner(
         RigidBodyInertia{}, name + "_carrier");
     ch.wheel_body = add_wheel(sys.model, ch.upright_body, Vec3::Zero(), axle.wheel_mass,
                               axle.tyre_body().free_radius, name);
+    ch.unsprung_mass = axle.wheel_mass;
 
     // Spring-damper
     sys.force_elements.push_back(std::make_shared<LinearSpringDamper>(
@@ -468,11 +470,11 @@ VehicleHandle build_vehicle(kernel::System& sys,
     vh.tmpl = tmpl;
     sys.model.gravity = iso_gravity();
 
-    // --- Chassis (body 1) ---
+    // --- Chassis (body 1), with the masses it carries (task 7.11) ---
     vh.chassis_body = sys.model.add_body(
         0, std::make_shared<kernel::FreeJointModel>(),
         Transform3::Identity(), Transform3::Identity(),
-        RigidBodyInertia::from_solid_box(tmpl.chassis.mass, tmpl.chassis.half_extents),
+        chassis_inertia(tmpl.chassis),
         tmpl.name + "_chassis");
 
     // --- Steering racks: driven by their travel, but the front one's when a
@@ -550,9 +552,11 @@ VehicleHandle build_vehicle(kernel::System& sys,
 
     // --- Each axle's tyre load at rest, from the masses made and where they
     // lie (the reference configuration, the chassis at the origin): the
-    // moments of the weights about the rear contacts' line give the front's.
-    // In a mixed car the simple corners are not made yet: their wheels (all
-    // their mass, the slider having none) are at their axle's X.
+    // whole weight shared between the axles' wheel centres by the lever rule
+    // (detail::lever_share, as mass_report shares the sprung mass), half of
+    // each axle's to each wheel. In a mixed car the simple corners are not
+    // made yet: their wheels (all their mass, the slider having none) are at
+    // their axle's X.
     {
         kernel::Data data(sys.model);
         kernel::forward_kinematics(sys.model, data, sys.model.neutral_configuration());
@@ -562,17 +566,17 @@ VehicleHandle build_vehicle(kernel::System& sys,
             const RigidBodyInertia& I = sys.model.inertia[static_cast<std::size_t>(b)];
             const RigidBodyState s = kernel::body_state(data, b);
             mass += I.mass;
-            moment += I.mass * ((s.p_WB + s.q_WB * I.com_B).x() - x_r);
+            moment += I.mass * (s.p_WB + s.q_WB * I.com_B).x();
         }
         if (linkage) {
             for (int a = 0; a < 2; ++a) {
                 const AxleConfig& ax = *axles[static_cast<std::size_t>(a)];
                 if (ax.suspension_type != SuspensionType::Simple) continue;
                 mass += 2.0 * ax.wheel_mass;
-                moment += 2.0 * ax.wheel_mass * ((a == 0 ? x_f : x_r) - x_r);
+                moment += 2.0 * ax.wheel_mass * (a == 0 ? x_f : x_r);
             }
         }
-        const Real front = 0.5 * g_accel * moment / (x_f - x_r);
+        const Real front = 0.5 * g_accel * detail::lever_share(mass, moment / mass, x_f, x_r);
         vh.design_tyre_load = {{front, 0.5 * g_accel * mass - front}};
     }
 
@@ -610,9 +614,15 @@ VehicleHandle build_vehicle(kernel::System& sys,
         at_rest.Vcx = 0.0;
         const Real overturning = (tyre.side == TyreSide::Right ? -1.0 : 1.0) * ax.make_tyre()->evaluate(at_rest).Mx;
         const Real force = detail::design_spring_force(m, load, overturning);
+        // The unsprung mass by virtual work (task 7.11): the weight the
+        // corner's parts put on its tyre over g, per tyre (a solid axle's
+        // two share its heave equally, its parts being mirror images).
+        Real contacts = 0.0;
+        for (int i = 0; i < m.sides; ++i) contacts += m.contact_rate[static_cast<std::size_t>(i)];
         for (int s = 0; s < 2; ++s) {
             const std::size_t k = static_cast<std::size_t>(std::min(s, m.sides - 1));
             detail::add_spring_unit(sys, ax, vh.corners[2 * a + s], force, m.spring_length[k]);
+            vh.corners[2 * a + s].unsprung_mass = m.weight_rate / contacts;
         }
         if (ax.arb_links.enabled && (ax.k_arb > 0.0 || ax.c_arb > 0.0)) {
             const Real r = m.bar_rate[0];
@@ -682,11 +692,11 @@ void legacy_vehicle_equilibrium(kernel::Simulator& sim, const VehicleHandle& vh)
     sim.q = model.neutral_configuration();
     sim.v.setZero();
 
-    // Per-axle static load (from CG position)
-    const Real L = t.wheelbase();
-    const Real W_total = t.total_mass() * g_accel;
-    const Real W_front_per = W_total * t.rear_axle_x / L * 0.5;
-    const Real W_rear_per  = W_total * t.front_axle_x / L * 0.5;
+    // Per-wheel static load: the builder's, from the masses and where they
+    // lie (task 7.11: a centre of mass off the chassis frame's origin, or
+    // lumped masses, now count)
+    const Real W_front_per = vh.design_tyre_load[0];
+    const Real W_rear_per  = vh.design_tyre_load[1];
 
     // Per-corner world-frame wheel center height (contact at z=0)
     const Real wheel_z_front_world =

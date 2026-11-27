@@ -357,7 +357,12 @@ controller's gain on a tyre whose friction falls past its peak. *J: Phase
 as CFD gives it, multilinear interpolation and why a multilinear test
 function makes it exact; the constant model as a one-node map, and what
 moving its forces into the body's axes changed. *J: Phase 7, the
-aerodynamic element. D71.*
+aerodynamic element. D71.* Mass properties: sprung and unsprung mass as
+statics, not a list of parts; virtual work gives an arm's share (half,
+when its centre of mass is midway) and how an upright's turning changes
+it; four supports and the convention that splits a car's weight across
+them; why a lever rule must be measured along the road once the car
+pitches. *J: Phase 7, mass properties. D72.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

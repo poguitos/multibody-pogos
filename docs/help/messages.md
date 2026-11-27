@@ -1119,6 +1119,28 @@ not connected to`
   corners whose wheel's parent is the upright named; one `BrakeSystem` per
   simulator.
 
+### MBD-V008
+
+`chassis_inertia: the chassis's mass must be positive and finite, and its
+centre of mass finite` / `chassis_inertia: <the chassis or the lumped mass
+'<name>'>: its rotational inertia is not symmetric` (or `has a negative
+principal moment`, or `its principal moments of inertia (<a>, <b>, <c> kg
+m^2) break the triangle inequality: no real body has them`) /
+`chassis_inertia: the lumped mass '<name>': its mass must be finite and not
+negative, its position and inertia finite` / `mass_report: corner <FL, FR,
+RL or RR> has no tyre`
+
+- **Means:** the chassis's mass properties (`ChassisConfig`'s `mass`, `com`,
+  `inertia` and `lumped_masses`, task 7.11, `docs/mass-properties.md`) are
+  not those of a real body, or the vehicle given to `mass_report` was not
+  built by `build_vehicle`. `build_vehicle` raises the first ones when it
+  makes the chassis.
+- **What to do:** give the inertia about the centre of mass, in the chassis's
+  axes, with the products of inertia as the tensor holds them (minus the
+  sums of m x y, m x z, m y z); for any real body the two smaller principal
+  moments add up to at least the largest. A lumped mass without inertia of
+  its own takes a zero matrix.
+
 ## I: model files
 
 Every message names its place in the file, as a path from the top:

@@ -2,15 +2,10 @@
 
 namespace mbd {
 
-namespace {
-
-/// The inertia of a point mass m at offset r from a reference point: m (|r|^2 1 - r r^T).
 Mat3 point_inertia(Real m, const Vec3& r)
 {
     return m * (r.squaredNorm() * Mat3::Identity() - r * r.transpose());
 }
-
-} // namespace
 
 RigidBodyInertia rod_inertia(Real mass, const Vec3& a, const Vec3& b)
 {

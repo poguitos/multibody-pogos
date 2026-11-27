@@ -1,5 +1,7 @@
 #include "mbd/analysis/lap_vehicle.hpp"
 
+#include "mbd/vehicle/mass_properties.hpp"
+
 namespace mbd {
 
 Real LapVehicle::F_drive_max(Real V) const
@@ -14,14 +16,18 @@ LapVehicle make_lap_vehicle(const VehicleTemplate& tmpl)
 {
     LapVehicle lv;
 
-    // --- Mass (chassis + 4 wheels) ---
+    // --- Mass: every body the template makes ---
     lv.mass = tmpl.total_mass();
 
-    // --- CG height: chassis ride height ---
-    // Approximate: the front tyre's free radius + chassis half-height - cg_offset.z
-    lv.cg_height = tmpl.front_axle.tyre_body().free_radius
-                 + tmpl.chassis.half_extents.z()
-                 - tmpl.chassis.cg_offset.z();
+    // --- CG height: the roll-up of the car built from the template, at
+    // rest at its design position (task 7.11) ---
+    {
+        kernel::System sys;
+        const VehicleHandle vh = build_vehicle(sys, tmpl);
+        kernel::Simulator sim(sys);
+        set_vehicle_equilibrium(sim, vh);
+        lv.cg_height = mass_report(sim, vh).cg_height;
+    }
 
     // --- Wheelbase ---
     lv.wheelbase = tmpl.wheelbase();
