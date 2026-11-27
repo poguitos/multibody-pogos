@@ -83,8 +83,9 @@ lever rule along the road, `docs/mass-properties.md`), and 7.12 (D73: a
 table of every subsystem's analytic check in `docs/validation.md`, the gaps
 closed in `tests/vehicle/test_subsystems.cpp`). Phase 7's gate on 27
 November 2026: the retrospective, the vehicles how-to guide
-(`docs/help/howto/vehicles.md`), version 0.8.0; the merge into `main` and
-the tag `v0.8.0` wait for the author's go-ahead. Conda environments for the project pin
+(`docs/help/howto/vehicles.md`), version 0.8.0, CI green; `main`
+fast-forwarded to it and tagged `v0.8.0` with the author's go-ahead. Phase 8
+(the vehicle builder) is next, on a branch `phase-8` from `v0.8.0`. Conda environments for the project pin
 `"libblas=*=*openblas"` (MKL's NumPy crashes on this laptop). After a change to the bindings, reinstall `mbd-try`
 (an editable install whose module is older than its Python files stops with
 MBD-P011). The nightly workflow runs on schedule from `main`.

@@ -116,5 +116,10 @@ Python (Phase 8, the vehicle builder); analyses of a vehicle (Phase 9).
 ## The gate
 
 The phase's work, this entry, the vehicles how-to guide and version 0.8.0
-are on `phase-7`. CI on the gate's commit, and the author's go-ahead for
-the merge into `main` and the tag `v0.8.0`, are to be recorded here.
+are in `3262d6a` on `phase-7`. CI run 45970303885 passed all seven jobs on
+it (Windows, Linux with sanitizers, no-malloc, docs, the comparison with
+Pinocchio and Chrono, and both Python packages, built as
+multibody-0.8.0). The tasks' own commits were green before it: 7.11
+(`f20e6f7`, run 45966571409) and 7.12 (`ec307ec`, run 45968980130). With
+the author's go-ahead on 27 November 2026, `main` was fast-forwarded to
+`3262d6a` and tagged `v0.8.0` (annotated).
