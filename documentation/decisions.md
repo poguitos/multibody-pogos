@@ -83,6 +83,7 @@ and the journal entry of the work refers to them by number
 | D70 | The brakes as a state element: line pressures lagging the pedal, a proportioning valve, dry friction that locks a wheel, a slip-switched anti-lock controller | 27 Nov 2026 | In force, task 7.9 |
 | D71 | The aerodynamic element's forces and moments from a map over ride heights, pitch, roll and yaw, in the chassis's axes, with wind; the constant model a one-node map | 27 Nov 2026 | In force, task 7.10 |
 | D72 | Mass properties: the chassis's own centre of mass and inertia tensor, lumped masses added to its body, and a roll-up of the built car; unsprung mass by virtual work, sprung mass by the lever rule along the road | 27 Nov 2026 | In force, task 7.11 |
+| D73 | Subsystem tests: a table of every Phase 7 subsystem's analytic check, and the gaps it showed closed (camber gain from the front-view instant centre, a five-link as a double wishbone, the brakes holding against the powertrain) | 27 Nov 2026 | In force, task 7.12 |
 
 ## D9. One compiler at a time, enforced by the build system
 
@@ -3621,3 +3622,50 @@ and the journal entry of the work refers to them by number
     scenario; `com` sets it.
 - **Record.** Journal: Phase 7, mass properties; `docs/mass-properties.md`,
   `tests/vehicle/test_mass_properties.cpp`.
+
+## D73. Subsystem tests: a table of every Phase 7 subsystem's analytic check, and the gaps it showed closed
+
+- **Context.** Task 7.12: "Subsystem tests. An analytic check for every
+  subsystem." Each of tasks 7.1 to 7.11 had ended on a check against a
+  closed form for what it built, so the question was which subsystems, or
+  which parts of them, had none.
+- **Decision.**
+  - **A table first** (`docs/validation.md`, section 9): each subsystem, the
+    analytic check it has and the file that runs it. The axes are a
+    convention, checked by equivalence (D60), not by a closed form; the
+    Magic Formula has its own closed-form properties besides MFeval.
+  - **The gaps it showed, closed** in `tests/vehicle/test_subsystems.cpp`:
+    - the suspensions' kinematics had only their motion ratio checked
+      exactly; camber gain was checked for its sign (double wishbone,
+      McPherson) or for staying bounded (five-link). Now the camber gain and
+      the wheel centre's sideways path are checked against the front-view
+      instant centre, where the default hardpoints make that construction
+      exact (arms' axes along X, joints in the wheel centre's front-view
+      plane), and a five-link laid out as a double wishbone against the
+      double wishbone;
+    - the brakes' hook for a drive's torque (task 7.9) had never run with
+      the powertrain. Now the brakes are checked to hold the car while the
+      drive torque at each wheel is below theirs, carrying the half-shafts'
+      closed-form torque, and to give their whole torque once it is above.
+  - **What stays checked in direction only** is named in the report: the
+    anti-lock controller, and a car driving off once its brakes let go.
+- **Alternatives.**
+  - A second set of checks for every subsystem, in one file: it would
+    repeat what each task's tests already do, against the same closed
+    forms.
+  - The roll centre as the check of the suspensions' kinematics: the
+    library does not compute one yet (task 9.1's analyses will), so it
+    would test the test's own construction. The camber gain and the wheel
+    centre's path are the mechanism's own velocities.
+- **Consequences.**
+  - The instant centre's predictions hold within 9e-16 (camber gains 0.1294
+    and 1.239 rad/m); the five-link equals the double wishbone within
+    5.1e-15.
+  - The brakes hold against 368 N m per half-shaft with the shafts within
+    6.6e-10 of it; released, each gives its 294.4 N m within 1e-9.
+  - A first allowance for the shafts' ringing was too tight: the estimate
+    had left out the motor's and the gearbox's inertia reflected through
+    the ratio (4.48 of 4.54 kg m^2), which slows the decay from exp(-21) to
+    exp(-6.6) over the hold; the hold was lengthened to 4 s.
+- **Record.** Journal: Phase 7, subsystem tests; `docs/validation.md`,
+  `docs/suspensions.md`, `tests/vehicle/test_subsystems.cpp`.

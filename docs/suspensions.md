@@ -163,6 +163,20 @@ tests:
   on a top mount leaves the car's equilibrium unchanged, bit for bit.
 - Cars on every architecture have fourteen freedoms (validate()) and stay at
   rest (under 1.6e-12 m in a second).
+- **Camber gain from the front-view instant centre** (task 7.12,
+  `tests/vehicle/test_subsystems.cpp`). With the arms' axes along X and the
+  joints in the wheel centre's front-view plane (the default hardpoints), the
+  upright turns in that view about the instant centre. For the double
+  wishbone that is where the arms' lines meet; for the McPherson, where the
+  lower arm's line meets the perpendicular to the strut through its top
+  mount. The camber's rate is the inverse of the front-view swing arm, and
+  the wheel centre's sideways motion follows from the centre's height:
+  0.1294 rad/m (centre 7.7 m inboard) and 1.239 rad/m (0.81 m) from the
+  mechanism, equal to those predictions within 9e-16.
+- A five-link laid out as the double wishbone (two links to each ball joint
+  from two points of its arm's axis, the fifth along the tie rod) moves as
+  the double wishbone, every component of the upright's turn and of the
+  wheel centre's path within 5.1e-15.
 
 The steering, in `tests/vehicle/test_steering_system.cpp`: with vertical
 kingpins and level tie rods each side is a planar linkage, and the

@@ -362,7 +362,13 @@ statics, not a list of parts; virtual work gives an arm's share (half,
 when its centre of mass is midway) and how an upright's turning changes
 it; four supports and the convention that splits a car's weight across
 them; why a lever rule must be measured along the road once the car
-pitches. *J: Phase 7, mass properties. D72.*
+pitches. *J: Phase 7, mass properties. D72.* Checking subsystems: a
+table of what each is checked against, and the gaps it shows; the
+front-view instant centre as an exact statement about a mechanism's
+velocities; two links to one point as an arm; a brake's threshold against a
+compliant driveline, and an allowance that failed because its estimate
+left out an inertia multiplied by a gear ratio squared. *J: Phase 7,
+subsystem tests. D73.*
 
 Already marked for vehicle analyses (9): the virtual kingpin, the steering
 axis of a five-link as the screw axis of a motion, decided by what is held,

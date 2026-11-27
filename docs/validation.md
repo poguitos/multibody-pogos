@@ -242,6 +242,46 @@ wishbone's unsprung mass by virtual work against central differences of
 its positions, to 1.4e-9 kg. The split of the sprung mass side to side is a
 convention, not a result.
 
+Phase 7's subsystems, each with its analytic check (task 7.12, D73). The
+numbers are in the paragraphs above and in each subsystem's page; the rows
+marked "task 7.12" were added by that task, in
+`tests/vehicle/test_subsystems.cpp`, to close the gaps the table showed.
+
+| Subsystem (task) | Analytic check | Where |
+|---|---|---|
+| Axes (7.1) | None needed: a convention. Every vehicle scenario gives the same results in the legacy frame and in ISO 8855's (D60) | `tests/regression/` |
+| Road (7.2) | Ramp, bump, kerb and sine against their formulas; ISO 8608's spectra, every class; a gridded road reproduces a plane | `tests/forces/test_road.cpp` |
+| Wheel (7.3) | A thin disc's inertia; gyroscopic precession at m g l / (I_s omega_s); the contact point of a wheel turned, leaning, on an incline | `tests/vehicle/test_wheel.cpp`, `tests/forces/test_full_tire.cpp` |
+| The template's drivetrain and brakes (7.3) | Braking deceleration by hand; a car held on its brakes on a slope stays put | `tests/test_drivetrain.cpp` |
+| Magic Formula tyre (7.4) | Slip stiffnesses the curves' slopes, peaks mu Fz, a step's deflection 1 - 1/e after one relaxation length (and MFeval, another code) | `tests/forces/test_magic_formula.cpp`, `test_full_tire.cpp` |
+| Simple tyres (7.5) | Fiala's and the brush model's forces against Pacejka's (3.11) to (3.14) and (3.48) to (3.50) | `tests/forces/test_simple_tyres.cpp` |
+| Hysteresis (7.6) | The damper on a top mount against its closed-form response; Bouc-Wen against its exact branches | `tests/forces/test_hysteresis.cpp` |
+| Suspension linkages (7.6) | The motion ratio from the geometry against virtual work; a trailing arm's lever arms; a solid axle's roll about its Panhard rod's line | `tests/vehicle/test_suspensions.cpp` |
+| Suspension linkages (task 7.12) | The camber gain and the wheel centre's sideways path against the front-view instant centre (double wishbone, McPherson); a five-link laid out as a double wishbone moves as it | `tests/vehicle/test_subsystems.cpp` |
+| Springs, dampers, stops, anti-roll bars (7.6) | Stops from the design length; 4 k_arb in roll at the wheels; the quarter car's frequencies and mode shapes | `test_suspensions.cpp`, `tests/test_quarter_car.cpp`, `tests/forces/test_anti_roll_bar.cpp` |
+| Steering (7.7) | The rack as one piece; Ackermann against a planar linkage's closed form; the column's statics and two modes | `tests/vehicle/test_steering_system.cpp` |
+| Powertrain (7.8) | Anti-squat against its geometric value; a converter at stall; the differentials' rigid limits; engine braking; the shift | `tests/vehicle/test_powertrain.cpp` |
+| Brakes (7.9) | The stopping distance in closed form; locked wheels sliding at mu g | `tests/vehicle/test_brakes.cpp` |
+| Brakes with the powertrain (task 7.12) | The brakes hold the car while the drive torque at each wheel is below theirs, carrying the half-shafts' closed-form torque, and give their whole torque once it is above | `tests/vehicle/test_subsystems.cpp` |
+| Aerodynamics (7.10) | A multilinear map reproduced exactly; the constant model; a terminal velocity | `tests/forces/test_aerodynamics.cpp` |
+| Mass properties (7.11) | The roll-up against the inputs, part by part; the unsprung mass from velocities against positions | `tests/vehicle/test_mass_properties.cpp` |
+
+Checked only in direction: the anti-lock controller (a shorter stop, no
+wheel locked), and a car driving off once its brakes let go.
+
+The suspensions' instant centre (task 7.12): with the arms' axes along X
+and the joints in the wheel centre's front-view plane, the double wishbone's
+camber gain (0.1294 rad/m, its centre 7.7 m inboard) and the McPherson's
+(1.239 rad/m, 0.81 m) equal the inverse of the front-view swing arm within
+9e-16, the wheel centre's sideways path likewise; a five-link laid out as
+the double wishbone moves as it within 5.1e-15. The brakes against the
+powertrain: a motor's 100 N m through a ratio of 8 at 0.92 gives each rear
+half-shaft 368 N m. Brakes of 1.2 times that hold the car (it moves 0.16 mm
+over the throttle's ramp and 4 s), the shafts within 6.6e-10 of 368 N m and
+each brake carrying their torque within 3.2e-7 (it also carries the tyre's
+moment); at 0.8 times the wheels turn, and each brake gives its 294.4 N m
+within 1e-9.
+
 ## 10. A vehicle-sized stiff model: the HMMWV
 
 Task 5.4 (D47, D48; [the HMMWV benchmark](hmmwv.md)). The fourteen-body HMMWV
@@ -333,4 +373,5 @@ python scripts\mutation_test.py --build "..." --test ... # the mutations (see th
 |---|---|---|
 | 1 | 9 November 2026 | The end of Phase 5 (milestone M1): sections 1 to 12 |
 | 1.1 | 9 November 2026 | The nightly's first runs: A02's 40 loops measured on both platforms; contradicting constraints named from 48 starts (D50) |
+| 1.2 | 27 November 2026 | Phase 7's subsystems (tasks 7.1 to 7.12) in section 9, with the table of their analytic checks |
 | 1.2 | 25 November 2026 | Task 7.3: the wheel's precession and contact (section 9); change detection's figures after the wheels became bodies (section 11) |
